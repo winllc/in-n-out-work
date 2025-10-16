@@ -38,16 +38,7 @@
                             <span class="hide-menu">Groups</span>
                         </a>
                     </li>
-                    <!-- ---------------------------------- -->
-                    <!-- Dashboard -->
-                    <!-- ---------------------------------- -->
-                    <li class="sidebar-item">
-                        <a class="sidebar-link justify-content-between"
-                           href="#" aria-expanded="false">
-                            <div class="d-flex align-items-center gap-3">
-                            </div>
-                        </a>
-                    </li>
+
                 </ul>
             </nav>
             <!-- End Sidebar navigation -->
@@ -80,7 +71,7 @@
                             <div class="dropdown-menu dropdown-menu-end dropdown-menu-animate-up"
                                  aria-labelledby="drop2">
                                 <div class="message-body">
-                                    <a href="javascript:void(0)" class="d-flex align-items-center gap-2 dropdown-item">
+                                    <a th:href="@{/app/profile}" class="d-flex align-items-center gap-2 dropdown-item">
                                         <i class="ti ti-user fs-6"></i>
                                         <p class="mb-0 fs-3">My Profile</p>
                                     </a>

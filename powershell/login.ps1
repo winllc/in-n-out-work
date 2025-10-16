@@ -201,16 +201,9 @@ function Invoke-UserLogon {
         return
     }
 
-
     $content = Send-PostWithClientCert -PostUrl $PostUrl
 
     Create-OrUpdateLogoutFile -Contents $content
-}
-
-function Invoke-UserLogoff {
-    Write-Log "User logoff detected."
-    # You can add similar logic to POST or just mark file here
-    Create-OrUpdateLogoutFile -UserSid $env:USERNAME -Contents '{"eventType":"SessionLogoff","timestamp":"' + (Get-Date).ToUniversalTime().ToString("o") + '"}'
 }
 
 Invoke-UserLogon

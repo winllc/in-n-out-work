@@ -63,7 +63,7 @@ public class SecurityConfig {
             List<String> roles = new ArrayList<>();
 
             if(user != null){
-                return User.withUsername(username)
+                return User.withUsername(username.replace(", ",","))
                         .password("") // not used with X.509
                         .roles(roles.toArray(new String[0]))
                         .build();

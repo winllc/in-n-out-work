@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabulator + Spring Boot</title>
+    <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+</head>
+<body>
+<div layout:fragment="content">
+    <h3>Profile for <span th:text="${#authentication.name}"></span></h3>
+
+    <div class="card">
+        <div class="card-body">
+            <form th:action="@{/app/profile}" method="post" th:object="${form}">
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Notes</label>
+                    <input type="text" class="form-control" id="notes" aria-describedby="notesHelp" th:field="*{notes}">
+                    <div id="notesHelp" class="form-text">Add additional information about yourself</div>
+                </div>
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </form>
+        </div>
+    </div>
+</div>
+</body>
+</html>
