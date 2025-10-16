@@ -1,0 +1,40 @@
+
+
+server:
+  port: 8444
+  ssl:
+    enabled: true
+    key-store: classpath:winhal.p12
+    key-store-password: capassword
+    key-store-type: PKCS12
+    client-auth: want
+    trust-store: classpath:truststore.p12
+    trust-store-password: changeit
+    trust-store-type: PKCS12
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/appdb
+    username: appuser
+    password: secret123
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+  ldap:
+    urls: ldap://localhost:1389
+    #base: dc=winllc,dc=com
+    username: cn=admin,dc=winllc,dc=com
+    password: adminpassword
+ # thymeleaf:
+ #   prefix: classpath:/templates/
+#    suffix: .html
+ #   cache: false   # disable caching for dev
+#   mode: HTML
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env

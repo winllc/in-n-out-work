@@ -1,0 +1,73 @@
+{
+	"root": "/home/step/certs/root_ca.crt",
+	"federatedRoots": null,
+	"crt": "/home/step/certs/intermediate_ca.crt",
+	"key": "/home/step/secrets/intermediate_ca_key",
+	"address": ":8443",
+	"insecureAddress": "",
+	"dnsNames": [
+		"localhost"
+	],
+	"logger": {
+		"format": "text"
+	},
+	"db": {
+		"type": "badgerv2",
+		"dataSource": "/home/step/db",
+		"badgerFileLoadingMode": ""
+	},
+	"authority": {
+		"provisioners": [
+			{
+				"type": "JWK",
+				"name": "admin",
+				"key": {
+					"use": "sig",
+					"kty": "EC",
+					"kid": "Ak7gDC9AYEd0SbZFV7Qdo1CYlmLwyPnNODck_Of-ijE",
+					"crv": "P-256",
+					"alg": "ES256",
+					"x": "olLFlaMXZd9tDpMYtN9KMR0MyI1S2NOCTM7VrI4q2wc",
+					"y": "TcL9FebM14gYehbZmqxt7vkfSVTrh7ehzy49QsVMvFY"
+				},
+				"claims": {
+					"x509": {
+						"enabled": true,
+						"durations": {
+							"default": "17280h",
+							"min": "5m",
+							"max": "17280h"
+						}
+					}
+				},
+				"encryptedKey": "eyJhbGciOiJQQkVTMi1IUzI1NitBMTI4S1ciLCJjdHkiOiJqd2sranNvbiIsImVuYyI6IkEyNTZHQ00iLCJwMmMiOjYwMDAwMCwicDJzIjoiZGxJUG5mcnY4ZDh6SmxWUlJUWEJqdyJ9.WUCmWWLawv6zPZNK9lEWNvc5mzspxREaxPFQIUXqEO4k9fPJOTwR1A.1i7rKxCDYP9B2zwO.TIhsUONnncgJI7P5VHhu-m7BFxDAzwNjSVRcis5rRDQEOLkygEAGRLYfASSgzpCJvOJwPWO8lnusIX7J4FCPDRzZGApYp_4lXJq_D3a7KRYe-CbNmWaRQKHgsPrKN2rdQo_b7FQVt6G5ralK3HjThNy_Fu8WGuNsJ8ja3eyRsLmCoSBdA3-oN3bcPojqSCtJGHq4Pg-_aShQEDpXbfGEsnbxDVXfnuqyac3d43vyJLzt53-t72Z_iSXmp7JGFqKFHNOEykBIUh_rYFi-TB1rHiF9ZAmkm4AHf6JRTh08BSGmAhRxZkIAeMlFmvMoKL4yh69_pBMrhjudzgjjVv0.JYtmFJ_59ZtjDtHehSW26g",
+				"options": {
+					"x509": {
+						"templateFile": "templates/x509/custom.tpl"
+					}
+				}
+			}
+		],
+		"claims": {
+			"minTLSCertDuration": "5m",
+			"maxTLSCertDuration": "17280h",
+			"defaultTLSCertDuration": "17280h"
+		}
+	},
+	"tls": {
+		"cipherSuites": [
+			"TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256",
+			"TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256"
+		],
+		"minVersion": 1.2,
+		"maxVersion": 1.3,
+		"renegotiation": false
+	},
+	"templates": {
+		"x509": {
+			"custom": "templates/x509/custom.tpl"
+		}
+
+	}
+
+}

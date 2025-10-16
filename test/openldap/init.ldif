@@ -1,0 +1,12 @@
+dn: o=WinLLC,c=US
+objectClass: organization
+o: WinLLC
+c: US
+
+dn: ou=Users,o=WinLLC,c=US
+objectClass: organizationalUnit
+ou: Users
+
+dn: ou=Groups,o=WinLLC,c=US
+objectClass: organizationalUnit
+ou: Groups
