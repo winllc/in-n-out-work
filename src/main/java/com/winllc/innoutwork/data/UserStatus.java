@@ -14,6 +14,6 @@ public class UserStatus {
     private boolean checkedIn;
     private ZonedDateTime checkedInAt;
     private ZonedDateTime checkedOutAt;
-
+    private String notes;
 
 }

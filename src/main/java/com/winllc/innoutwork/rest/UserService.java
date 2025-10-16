@@ -3,6 +3,8 @@ package com.winllc.innoutwork.rest;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.model.UserRecord;
+import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.DatabaseService;
 import com.winllc.innoutwork.service.LdapService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,10 +15,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZonedDateTime;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @RestController
 @RequestMapping("/api/users")
@@ -26,6 +25,8 @@ public class UserService {
     private LdapService ldapService;
     @Autowired
     private DatabaseService databaseService;
+    @Autowired
+    private UserRecordRepository userRecordRepository;
 
     @GetMapping("/{groupName}")
     public Map<String, Object> getUsers(
@@ -64,6 +65,14 @@ public class UserService {
             }
             users.add(status);
         }
+
+        users.forEach(u -> {
+            Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(u.getDn());
+            if(recordOptional.isPresent()){
+                u.setNotes(recordOptional.get().getNotes());
+            }
+        });
+
 
         Map<String, Object> response = new HashMap<>();
         response.put("data", users);
