@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabulator + Spring Boot</title>
+    <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+</head>
+<body>
+<div layout:fragment="content">
+    <h3>User Table for <span th:text="${group}"></span></h3>
+    <div id="user-table"></div>
+
+    <script th:inline="javascript">
+        const groupName = /*[[${group}]]*/ "test";
+
+        const table = new Tabulator("#user-table", {
+            ajaxURL: "/api/users/" + groupName,
+
+            ajaxResponse: function (url, params, response) {
+                // Tabulator expects array of row data
+                return response.data;
+            },
+            pagination: "local",
+            paginationSize: 10,
+            layout:"fitColumns", //fit columns to width of table (optional)
+            columns: [
+                {title: "DN", field: "dn"},
+                {title: "Checked In", field: "checkedIn"},
+                {title: "Log In", field: "checkedInAt"},
+                {title: "Log Out", field: "checkedOutAt"}
+            ],
+        });
+    </script>
+</div>
+</body>
+</html>

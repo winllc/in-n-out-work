@@ -1,0 +1,5 @@
+docker run --rm -v ./step-ca-data:/home/step -v ./step-ca-password:/step-ca-password smallstep/step-ca:0.28.4  step ca init --name "WINLLC DEV CA" --dns "localhost" --address ":8443" --password-file /step-ca-password --provisioner "admin"--provisioner-password-file /step-ca-password
+
+docker exec -it step-ca /bin/sh
+
+step ca certificate "service.example.com" service.crt service.key

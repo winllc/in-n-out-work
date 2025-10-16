@@ -1,0 +1,88 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: secret123
+      POSTGRES_DB: appdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - backend
+
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: openldap
+    restart: unless-stopped
+    environment:
+      LDAP_ORGANISATION: "WINLLC"
+      LDAP_DOMAIN: "winllc.com"
+      #LDAP_BASE_DN: "o=winllc,c=US"
+      LDAP_ADMIN_PASSWORD: "adminpassword"
+      LDAP_CONFIG_PASSWORD: "configpassword"
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: "readonly"
+      LDAP_READONLY_USER_PASSWORD: "readonlypass"
+    ports:
+      - "1389:389"
+      - "1636:636"
+    volumes:
+      - openldap_data:/var/lib/ldap
+      - openldap_config:/etc/ldap/slapd.d
+    networks:
+      - backend
+
+  phpldapadmin:
+    image: osixia/phpldapadmin:0.9.0
+    container_name: phpldapadmin
+    restart: unless-stopped
+    environment:
+      PHPLDAPADMIN_LDAP_HOSTS: openldap
+      PHPLDAPADMIN_HTTPS: "false"
+    ports:
+      - "8081:80"
+    depends_on:
+      - openldap
+    networks:
+      - backend
+
+  adminer:
+    image: adminer:latest
+    container_name: adminer
+    restart: unless-stopped
+    ports:
+      - "8082:8080"
+    networks:
+      - backend
+    depends_on:
+      - postgres
+
+  ca:
+    image: smallstep/step-ca:0.28.4
+    container_name: step-ca
+    restart: unless-stopped
+    environment:
+      - STEP_CA_PASSWORD=capassword
+      - STEP_CA_CONFIG=/home/step/config/ca.json
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./step-ca-data:/home/step
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  openldap_data:
+  openldap_config:
+  step_ca_data:

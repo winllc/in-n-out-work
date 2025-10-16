@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabulator + Spring Boot</title>
+    <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
+    <script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+</head>
+<body>
+<h3>Record Table</h3>
+<div id="record-table"></div>
+
+<script>
+    const table = new Tabulator("#record-table", {
+        ajaxURL: "https://192.168.1.29:8444/api/check/records",
+        ajaxParams: { page: 0, size: 10 },
+        ajaxResponse: function(url, params, response) {
+            // Tabulator expects array of row data
+            return response.data;
+        },
+        pagination: "remote",
+        paginationSize: 10,
+        paginationDataSent: {
+            "page": "page",
+            "size": "size"
+        },
+        paginationDataReceived: {
+            "last_page": "last_page"
+        },
+        columns: [
+            { title: "ID", field: "id", width: 70 },
+            { title: "DN", field: "dn" },
+            { title: "Timestamp", field: "timestamp" },
+            { title: "Action", field: "action" }
+        ],
+    });
+</script>
+</body>
+</html>
