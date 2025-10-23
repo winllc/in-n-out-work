@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.service.LdapService;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -18,6 +19,8 @@ public class GroupService {
 
     @Autowired
     private LdapService ldapService;
+    @Autowired
+    private ApplicationProperties applicationProperties;
 
     @GetMapping
     public Map<String, Object> getGroups() {
@@ -27,5 +30,10 @@ public class GroupService {
         response.put("data", groups);
 
         return response;
+    }
+
+    @GetMapping("/hierarchy")
+    public LdapGroup groupHierarchy() {
+        return ldapService.getGroupHierarchy(applicationProperties.getGroupsBaseDn());
     }
 }

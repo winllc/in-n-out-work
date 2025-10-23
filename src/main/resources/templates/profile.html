@@ -5,8 +5,8 @@
 <head>
     <meta charset="UTF-8">
     <title>Tabulator + Spring Boot</title>
-    <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+    <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
+    <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
 </head>
 <body>
 <div layout:fragment="content">

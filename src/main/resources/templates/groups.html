@@ -5,37 +5,41 @@
 <head>
     <meta charset="UTF-8">
     <title>Tabulator + Spring Boot</title>
-    <link href="https://unpkg.com/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
-    <script src="https://unpkg.com/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+    <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
+    <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+
+
 </head>
 <body>
 
 <div layout:fragment="content">
-<h3>Groups</h3>
-<div id="group-table"></div>
+
+    <h2>Groups</h2>
+    <div id="myTreeview1"></div>
 
 <script th:inline="javascript">
-    const groupName = /*[[${group}]]*/ "test";
 
-    const table = new Tabulator("#group-table", {
-        ajaxURL: "/api/groups",
+    var jsonString = [[${groups}]];
+    var jsonData = JSON.parse(jsonString);
 
-        ajaxResponse: function(url, params, response) {
-            // Tabulator expects array of row data
-            return response.data;
-        },
-        layout:"fitColumns", //fit columns to width of table (optional)
-        pagination: "local",
-        paginationSize: 10,
-        columns: [
-            { title: "Name", field: "cn" }
-        ],
+    console.log(jsonData)
 
-    });
-
-    table.on("rowClick", function(e, row){
-        const data = row.getData();
-        window.location.href = `/app/users/${data.cn}`;
+    const tree1 = new Treeview({
+        containerId: 'myTreeview1',   // ID of the HTML element to render the tree into
+        data: jsonData,             // Your hierarchical data
+        searchEnabled: true,          // Enable the search bar (default: true)
+        initiallyExpanded: false,     // Start with nodes collapsed (default: false)
+        multiSelectEnabled: true,     // Enable multi-selection by clicking nodes
+        searchPlaceholder: "Search groups...", // Placeholder text for the search bar
+        onSelectionChange: (selectedNodesData) => { // Callback when selection changes
+            var selected = selectedNodesData.length > 0 ? selectedNodesData[0] : null
+            console.log('Selected Node (Tree 2):', selectedNodesData.length > 0 ? selectedNodesData[0] : null);
+            // Example: Update a display area with selected nodes
+            // document.getElementById('output-area').textContent = JSON.stringify(selectedNodesData, null, 2);
+            if(selected != null) {
+                window.location.href = `/app/users/${selected.id}`;
+            }
+        }
     });
 
 </script>

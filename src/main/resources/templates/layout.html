@@ -4,6 +4,11 @@
 <head>
     <title layout:title-pattern="In-N-Out-Work">In-N-Out-Work</title>
     <link rel="stylesheet" th:href="@{/css/styles.min.css}"/>
+
+    <link rel="stylesheet"
+          th:href="@{/css/treeview/treeview.css}"/>
+
+    <script th:src="@{/libs/treeview/treeview.js}"></script>
 </head>
 <body>
 
@@ -38,7 +43,13 @@
                             <span class="hide-menu">Groups</span>
                         </a>
                     </li>
+                    <li class="sidebar-item">
 
+                        <a class="sidebar-link" th:href="@{/app/user/search}" aria-expanded="false">
+                            <i class="ti ti-user"></i>
+                            <span class="hide-menu">Users</span>
+                        </a>
+                    </li>
                 </ul>
             </nav>
             <!-- End Sidebar navigation -->
@@ -111,7 +122,7 @@
 <script th:src="@{/libs/simplebar/dist/simplebar.js}"></script>
 <script th:src="@{/js/dashboard.js}"></script>
 <!-- solar icons -->
-<script src="https://cdn.jsdelivr.net/npm/iconify-icon@1.0.8/dist/iconify-icon.min.js"></script>
+<script th:src="@{/libs/iconify/iconify-icon.min.js}"></script>
 
 </body>
 </html>
