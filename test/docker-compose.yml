@@ -29,12 +29,19 @@ services:
       LDAP_READONLY_USER: "true"
       LDAP_READONLY_USER_USERNAME: "readonly"
       LDAP_READONLY_USER_PASSWORD: "readonlypass"
+      LDAP_RFC2307BIS_SCHEMA: "true"
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "false"
+      LDAP_TLS: "false"
+
+      # Enable PagedResults overlay
+      LDAP_ENABLE_PPOLICY: "true"
     ports:
       - "1389:389"
       - "1636:636"
     volumes:
       - openldap_data:/var/lib/ldap
       - openldap_config:/etc/ldap/slapd.d
+      - ./openldap/enable-pagination.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/enable-pagination.ldif
     networks:
       - backend
 

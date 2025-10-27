@@ -2,6 +2,7 @@ package com.winllc.innoutwork.controller;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.service.LdapService;
@@ -18,6 +19,8 @@ public class HomeController {
 
     @Autowired
     private LdapService ldapService;
+    @Autowired
+    private ApplicationProperties properties;
 
     @GetMapping
     public String index(Model model) {
@@ -39,7 +42,7 @@ public class HomeController {
 
     @GetMapping("/app/groups")
     public String groups(Model model) throws JsonProcessingException {
-        LdapGroup groupHierarchy = ldapService.getGroupHierarchy("ou=Groups,dc=winllc,dc=com");
+        LdapGroup groupHierarchy = ldapService.getGroupHierarchy(properties.getGroupsBaseDn());
 
         ObjectMapper objectMapper = new ObjectMapper();
 
