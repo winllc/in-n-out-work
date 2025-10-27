@@ -1,0 +1,17 @@
+# Enable PagedResults overlay
+# This should be saved as ldif/enable-pagination.ldif
+
+# Load the sssvlv module (contains pagedresults overlay)
+dn: cn=module{0},cn=config
+changetype: modify
+add: olcModuleLoad
+olcModuleLoad: sssvlv
+
+# Add pagedresults overlay to the database
+dn: olcOverlay=sssvlv,olcDatabase={1}mdb,cn=config
+changetype: add
+objectClass: olcOverlayConfig
+objectClass: olcSssVlvConfig
+olcOverlay: sssvlv
+olcSssVlvMax: 10
+olcSssVlvMaxKeys: 5

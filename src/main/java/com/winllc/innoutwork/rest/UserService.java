@@ -51,7 +51,7 @@ public class UserService {
     }
 
     @GetMapping("/search")
-    public PagedModel<UserStatus> searchUsers(
+    public List<UserStatus> searchUsers(
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -69,14 +69,10 @@ public class UserService {
             filter = "(&(objectclass=inetOrgPerson)(cn=*%s*))".formatted(search);
         }
 
-        List<LdapUser> users = ldapService.search(properties.getBaseDn(), filter, page, size);
+        List<UserStatus> pageResult = ldapService.search(properties.getBaseDn(), filter, page, size);
 
-        List<UserStatus> records = users.stream()
-                .map(u -> getUserStatus(u.getDn()))
-                .toList();
-
-        PagedModel<UserStatus> response = new PagedModel<>(new PageImpl<>(records, pageable, records.size()));
-        return response;
+        //PagedModel<UserStatus> response = new PagedModel<>(pageResult);
+        return pageResult;
     }
 
     @GetMapping("/checkinoutrecords/{dn}")

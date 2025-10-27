@@ -3,12 +3,17 @@ package com.winllc.innoutwork.service;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
+import com.winllc.innoutwork.data.UserStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.ldap.control.PagedResultsCookie;
 import org.springframework.ldap.control.PagedResultsDirContextProcessor;
 import org.springframework.ldap.core.*;
+import org.springframework.ldap.core.support.AbstractContextMapper;
 import org.springframework.ldap.filter.AndFilter;
 import org.springframework.ldap.filter.EqualsFilter;
 import org.springframework.ldap.query.LdapQuery;
@@ -55,49 +60,35 @@ public class LdapService {
         return buildGroupRecursive(dn);
     }
 
-    public List<LdapUser> search(String baseDn, String filter, int pageNumber, int pageSize) {
-        List<LdapUser> results = new ArrayList<>();
-
-        PagedResultsDirContextProcessor pageProcessor;
-
+    // Alternative: More efficient approach that doesn't iterate through all previous pages
+    public List<UserStatus> search(String baseDn, String filter, int pageNumber, int pageSize) {
         SearchControls controls = new SearchControls();
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
 
-        PagedResultsCookie pagedCookie = null;
-        int currentPage = 0;
+        List<UserStatus> page = ldapTemplate.search(
+                baseDn,
+                filter,
+                controls,
+                (ContextMapper<UserStatus>) ctx -> {
+                    DirContextAdapter context = (DirContextAdapter) ctx;
+                    UserStatus user = UserStatus.builder()
+                            .dn(context.getDn().toString())
+                            .build();
+                    return user;
+                }
+        );
 
-        do {
-            pageProcessor = new PagedResultsDirContextProcessor(pageSize, pagedCookie);
+        return page;
 
-            List<LdapUser> page = ldapTemplate.search(
-                    baseDn,
-                    filter,
-                    controls,
-                    (ContextMapper<LdapUser>) ctx -> {
-                        DirContextAdapter context = (DirContextAdapter) ctx;
+    }
 
-                        LdapUser user = new LdapUser();
-                        user.setDn(context.getDn().toString());
-                        user.setCn(context.getAttributes().get("cn").toString());
-                        user.setSn(context.getAttributes().get("sn").toString());
-                        //user.setEmail(attrs.get("mail") != null ? (String) attrs.get("mail").get() : null);
-                        return user;
-                    },
-                    pageProcessor
-            );
+    private long count(String baseDn, String filter) {
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+        controls.setReturningAttributes(new String[0]); // don’t fetch attributes, just DNs
 
-            if (currentPage == pageNumber) {
-                results.addAll(page);
-                break;
-            }
-
-            pagedCookie = pageProcessor.getCookie();
-            currentPage++;
-
-        } while (pagedCookie != null && pagedCookie.getCookie() != null &&
-                pagedCookie.getCookie().length > 0);
-
-        return results;
+        List<?> results = ldapTemplate.search(baseDn, filter, controls, (Object ctx) -> null);
+        return results.size();
     }
 
 

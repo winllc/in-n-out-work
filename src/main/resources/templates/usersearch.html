@@ -24,22 +24,12 @@
         var searchTerm = "";
 
         const table = new Tabulator("#user-table", {
-            ajaxURL: "/api/users/search",
 
-            ajaxResponse: function (url, params, response) {
-                // Tabulator expects array of row data
-                console.log("Server response:", response);
-                return {
-                    data: response.content,
-                    last_page: response.page.totalPages,
-                    total_records: response.page.totalElements
-                };
-            },
             ajaxParams: () => ({
                 search: searchTerm,
             }),
             pagination: true,
-            paginationMode: "remote",
+            paginationMode: "local",
             paginationSize: 10,
             paginationInitialPage: 1,
             layout:"fitColumns", //fit columns to width of table (optional)
@@ -59,7 +49,11 @@
 
         document.getElementById("search-btn").addEventListener("click", () => {
             searchTerm = document.getElementById("search-input").value;
-            table.setData(); // reload table with new search
+            if(searchTerm.length >= 3) {
+                table.setData("/api/users/search"); // reload table with new search
+            }else{
+                alert("Search must be 3 characters or more");
+            }
         });
 
     </script>
