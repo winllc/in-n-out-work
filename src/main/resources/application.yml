@@ -22,10 +22,13 @@ spring:
       ddl-auto: update
     show-sql: true
   ldap:
-    urls: ldap://fid.winllc-dev.com:2389
+    #urls: ldap://fid.winllc-dev.com:2389
+    urls: ldap://192.168.1.29:1389
+    username: cn=admin,dc=winllc,dc=com
+    password: adminpassword
     #base: dc=winllc,dc=com
-    username: cn=directory manager
-    password: secret1234
+    #username: cn=directory manager
+    #password: secret1234
  # thymeleaf:
  #   prefix: classpath:/templates/
 #    suffix: .html
@@ -40,3 +43,4 @@ management:
 application:
   base-dn: dc=winllc,dc=com
   groups-base-dn: ou=Groups,dc=winllc,dc=com
+  banner-text: BANNER TEXT

@@ -28,7 +28,8 @@
         containerId: 'myTreeview1',   // ID of the HTML element to render the tree into
         data: jsonData,             // Your hierarchical data
         searchEnabled: true,          // Enable the search bar (default: true)
-        initiallyExpanded: false,     // Start with nodes collapsed (default: false)
+        showExpandCollapseAllButtons: true,
+        initiallyExpanded: true,     // Start with nodes collapsed (default: false)
         multiSelectEnabled: true,     // Enable multi-selection by clicking nodes
         searchPlaceholder: "Search groups...", // Placeholder text for the search bar
         onSelectionChange: (selectedNodesData) => { // Callback when selection changes

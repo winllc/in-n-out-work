@@ -17,10 +17,13 @@ import java.util.Map;
 @RequestMapping("/api/groups")
 public class GroupService {
 
-    @Autowired
-    private LdapService ldapService;
-    @Autowired
-    private ApplicationProperties applicationProperties;
+    private final LdapService ldapService;
+    private final ApplicationProperties applicationProperties;
+
+    public GroupService(LdapService ldapService, ApplicationProperties applicationProperties) {
+        this.ldapService = ldapService;
+        this.applicationProperties = applicationProperties;
+    }
 
     @GetMapping
     public Map<String, Object> getGroups() {
