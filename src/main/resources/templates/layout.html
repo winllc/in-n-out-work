@@ -4,6 +4,7 @@
 <head>
     <title layout:title-pattern="In-N-Out-Work">In-N-Out-Work</title>
     <link rel="stylesheet" th:href="@{/css/styles.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
 
     <link rel="stylesheet"
           th:href="@{/css/treeview/treeview.css}"/>
@@ -12,6 +13,11 @@
 </head>
 <body>
 
+<header class="banner">
+    <span th:text="${T(com.winllc.innoutwork.config.GlobalProperties).BANNER_TEXT}">
+        Default Banner
+    </span>
+</header>
 
 <!--  Body Wrapper -->
 <div class="page-wrapper" id="main-wrapper" data-layout="vertical" data-navbarbg="skin6" data-sidebartype="full"
@@ -112,6 +118,12 @@
                                                         class="pe-1 text-primary text-decoration-underline">WIN LLC</a>
         </p>
     </div>
+</footer>
+
+<footer class="footer">
+    <span th:text="${T(com.winllc.innoutwork.config.GlobalProperties).BANNER_TEXT}">
+        Default Banner
+    </span>
 </footer>
 
 <script th:src="@{/libs/jquery/dist/jquery.min.js}"></script>

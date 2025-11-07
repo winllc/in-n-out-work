@@ -1,0 +1,38 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, sans-serif;
+}
+
+/* Fixed header at top */
+.banner {
+    position: sticky;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background-color: darkgreen;
+    color: white;
+    text-align: center;
+    padding: 4px 0;
+    z-index: 1000;
+}
+
+/* Fixed footer at bottom */
+.footer {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background-color: darkgreen;
+    color: white;
+    text-align: center;
+    padding: 4px 0;
+    z-index: 1000;
+}
+
+/* Page content area - add padding to avoid overlap with fixed header & footer */
+.content {
+    margin-top: 70px;  /* Adjust to match header height */
+    margin-bottom: 50px; /* Adjust to match footer height */
+    padding: 20px;
+}

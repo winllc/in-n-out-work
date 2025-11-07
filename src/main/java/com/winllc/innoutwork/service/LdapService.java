@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.service;
 
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
@@ -27,6 +29,7 @@ import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.SearchControls;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -37,13 +40,20 @@ public class LdapService {
 
     private static final Logger log = LoggerFactory.getLogger(LdapService.class);
 
+    private final Cache<String, LdapGroup> groupCache;
+
     private final LdapTemplate ldapTemplate;
-    @Autowired
-    private ApplicationProperties properties;
+    private final ApplicationProperties properties;
 
 
-    public LdapService(LdapTemplate ldapTemplate) {
+    public LdapService(LdapTemplate ldapTemplate, ApplicationProperties properties) {
         this.ldapTemplate = ldapTemplate;
+
+        groupCache = Caffeine.newBuilder()
+                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationMinutes()))  // adjust as needed
+                .maximumSize(5000) // prevent unbounded memory use
+                .build();
+        this.properties = properties;
     }
 
     /**
@@ -57,7 +67,7 @@ public class LdapService {
     }
 
     public LdapGroup getGroupHierarchy(String dn) {
-        return buildGroupRecursive(dn);
+        return buildGroupRecursiveInternal(dn);
     }
 
     // Alternative: More efficient approach that doesn't iterate through all previous pages
@@ -65,7 +75,7 @@ public class LdapService {
         SearchControls controls = new SearchControls();
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
 
-        List<UserStatus> page = ldapTemplate.search(
+        return ldapTemplate.search(
                 baseDn,
                 filter,
                 controls,
@@ -77,8 +87,6 @@ public class LdapService {
                     return user;
                 }
         );
-
-        return page;
 
     }
 
@@ -195,7 +203,7 @@ public class LdapService {
         List<Name> childDns = ldapTemplate.search(
                 LdapQueryBuilder.query()
                         .base(dn)
-                        .searchScope(org.springframework.ldap.query.SearchScope.ONELEVEL)
+                        .searchScope(SearchScope.ONELEVEL)
                         .where("objectClass").is("groupOfUniqueNames"),
                 new ContextMapper<Name>() {
                     @Override
@@ -208,6 +216,50 @@ public class LdapService {
 
         for (Name childDn : childDns) {
             LdapGroup childNode = buildGroupRecursive(childDn.toString());
+            if (childNode != null) {
+                node.addChild(childNode);
+            }
+        }
+
+        return node;
+    }
+
+    private LdapGroup buildGroupRecursiveInternal(String dn) {
+
+        // ✅ Check cache first
+        LdapGroup cached = groupCache.getIfPresent(dn);
+        if (cached != null) {
+            return cached;
+        }
+
+        // Lookup LDAP entry for this DN
+        DirContextOperations ctx;
+        try {
+            ctx = ldapTemplate.lookupContext(dn);
+        } catch (Exception e) {
+            return null;
+        }
+
+        String ouName = getOuNameFromDn(dn);
+        LdapGroup node = new LdapGroup(dn, ouName);
+
+        // Put in cache immediately to avoid recursion loops
+        groupCache.put(dn, node);
+
+        // 🔍 Find immediate child OUs of this DN
+        List<Name> childDns = ldapTemplate.search(
+                LdapQueryBuilder.query()
+                        .base(dn)
+                        .searchScope(SearchScope.ONELEVEL)
+                        .where("objectClass").is("groupOfUniqueNames"),
+                (ContextMapper<Name>) ctxObj -> {
+                    DirContextAdapter context = (DirContextAdapter) ctxObj;
+                    return context.getDn();
+                }
+        );
+
+        for (Name childDn : childDns) {
+            LdapGroup childNode = buildGroupRecursiveInternal(childDn.toString());
             if (childNode != null) {
                 node.addChild(childNode);
             }

@@ -70,9 +70,14 @@ public class UserService {
         }
 
         List<UserStatus> pageResult = ldapService.search(properties.getBaseDn(), filter, page, size);
+        List<UserStatus> users = new ArrayList<>();
+
+        for(UserStatus user : pageResult){
+            users.add(getUserStatus(user.getDn()));
+        }
 
         //PagedModel<UserStatus> response = new PagedModel<>(pageResult);
-        return pageResult;
+        return users;
     }
 
     @GetMapping("/checkinoutrecords/{dn}")
