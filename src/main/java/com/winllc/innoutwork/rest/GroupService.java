@@ -2,6 +2,7 @@ package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapGroup;
+import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.LdapService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,12 +18,15 @@ import java.util.Map;
 @RequestMapping("/api/groups")
 public class GroupService {
 
+    private final CacheService cacheService;
     private final LdapService ldapService;
     private final ApplicationProperties applicationProperties;
 
-    public GroupService(LdapService ldapService, ApplicationProperties applicationProperties) {
+    public GroupService(LdapService ldapService, ApplicationProperties applicationProperties,
+                        CacheService cacheService) {
         this.ldapService = ldapService;
         this.applicationProperties = applicationProperties;
+        this.cacheService = cacheService;
     }
 
     @GetMapping
@@ -37,6 +41,6 @@ public class GroupService {
 
     @GetMapping("/hierarchy")
     public LdapGroup groupHierarchy() {
-        return ldapService.getGroupHierarchy(applicationProperties.getGroupsBaseDn());
+        return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
     }
 }

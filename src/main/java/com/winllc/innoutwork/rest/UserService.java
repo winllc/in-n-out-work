@@ -98,8 +98,7 @@ public class UserService {
 
         Page<CheckInOutRecord> records = checkInOutRecordRepository.findByDnIgnoreCaseOrderByTimestampDesc(pageable, dn);
 
-        PagedModel<CheckInOutRecord> response = new PagedModel<>(new PageImpl<>(records.getContent(), pageable, records.getTotalElements()));
-        return response;
+        return new PagedModel<>(new PageImpl<>(records.getContent(), pageable, records.getTotalElements()));
     }
 
     private UserStatus getUserStatus(String dn){
@@ -108,25 +107,22 @@ public class UserService {
 
         List<CheckInOutRecord> todaysRecordsForUser = databaseService.findTodaysRecordsForUser(dn);
         if(todaysRecordsForUser != null && !todaysRecordsForUser.isEmpty()){
-            todaysRecordsForUser.stream()
-                    .filter(r -> r.getAction() == CheckInOutEnum.CHECK_IN)
-                    .findFirst()
-                    .ifPresent(r -> status.setCheckedInAt(r.getTimestamp()));
 
-            todaysRecordsForUser.stream()
-                    .filter(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)
-                    .findFirst()
-                    .ifPresent(r -> status.setCheckedOutAt(r.getTimestamp()));
+            Optional<CheckInOutRecord> mostRecent = todaysRecordsForUser.stream()
+                    .sorted()
+                    .findFirst();
 
-            if(status.getCheckedInAt() != null){
+            CheckInOutRecord record = mostRecent.get();
+            if(record.getAction() == CheckInOutEnum.CHECK_IN ||  record.getAction() == CheckInOutEnum.UNLOCK){
                 status.setCheckedIn(true);
-                if(status.getCheckedOutAt() != null){
-                    if(status.getCheckedOutAt().isAfter(status.getCheckedInAt())){
-                        status.setCheckedIn(false);
-                    }
-                }
+                status.setLocked(false);
+            }else if(record.getAction() == CheckInOutEnum.CHECK_OUT){
+                status.setCheckedIn(false);
+                status.setLocked(false);
+            }else if(record.getAction() == CheckInOutEnum.LOCK){
+                status.setCheckedIn(true);
+                status.setLocked(true);
             }
-
         } else {
             status.setCheckedIn(false);
         }

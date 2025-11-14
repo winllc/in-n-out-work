@@ -10,10 +10,16 @@
 </head>
 <body>
 <div layout:fragment="content">
-    <h3>Profile for <span th:text="${#authentication.name}"></span></h3>
+
 
     <div class="card">
         <div class="card-body">
+            <div class="d-flex justify-content-center">
+                <div>
+                    <h3>Profile for <span th:text="${#authentication.name}"></span></h3>
+                </div>
+            </div>
+
             <form th:action="@{/app/profile}" method="post" th:object="${form}">
                 <div class="mb-3">
                     <label for="notes" class="form-label">Notes</label>

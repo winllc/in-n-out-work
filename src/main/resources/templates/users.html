@@ -27,8 +27,33 @@
             paginationSize: 10,
             layout:"fitColumns", //fit columns to width of table (optional)
             columns: [
-                {title: "DN", field: "dn"},
-                {title: "Checked In", field: "checkedIn"},
+                {title: "DN", field: "dn", headerFilter: "input"},
+                {title: "Checked In", field: "checkedIn", formatter: function(cell){
+                    let value = cell.getValue();
+
+                    if(value === "true"){
+                        cell.getElement().style.color = "green";
+                    }else{
+                        cell.getElement().style.color = "gray";
+                    }
+                    return value === "true" ? "Yes" : "No";
+                    }},
+                {title: "Screen Locked", field: "locked", formatter: function(cell){
+                        let value = cell.getValue();
+                        let checkedIn = cell.getRow().getData().checkedIn;
+
+                        if(checkedIn === "true") {
+
+                            if (value === "true") {
+                                cell.getElement().style.color = "gray";
+                            } else {
+                                cell.getElement().style.color = "green";
+                            }
+                            return value === "true" ? "Yes" : "No";
+                        }else{
+                            return "N/A";
+                        }
+                    }},
                 {title: "Log In", field: "checkedInAt"},
                 {title: "Log Out", field: "checkedOutAt"},
                 {title: "Notes", field: "notes"}
