@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.ProfileForm;
+import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.LdapService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -12,15 +13,19 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
+import java.util.Collections;
 
 @Controller
 @RequestMapping("/")
 public class HomeController {
 
-    @Autowired
-    private LdapService ldapService;
-    @Autowired
-    private ApplicationProperties properties;
+    private final CacheService cacheService;
+    private final ApplicationProperties properties;
+
+    public HomeController(CacheService cacheService, ApplicationProperties properties) {
+        this.cacheService = cacheService;
+        this.properties = properties;
+    }
 
     @GetMapping
     public String index(Model model) {
@@ -42,11 +47,11 @@ public class HomeController {
 
     @GetMapping("/app/groups")
     public String groups(Model model) throws JsonProcessingException {
-        LdapGroup groupHierarchy = ldapService.getGroupHierarchy(properties.getGroupsBaseDn());
+        LdapGroup groupHierarchy = cacheService.getGroup(properties.getGroupsBaseDn());
 
         ObjectMapper objectMapper = new ObjectMapper();
 
-        model.addAttribute("groups", objectMapper.writeValueAsString(Arrays.asList(groupHierarchy)));
+        model.addAttribute("groups", objectMapper.writeValueAsString(Collections.singletonList(groupHierarchy)));
         return "groups"; // resolves to src/main/resources/templates/index.html
     }
 

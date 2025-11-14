@@ -9,6 +9,7 @@ import com.winllc.innoutwork.data.UserStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -40,19 +41,14 @@ public class LdapService {
 
     private static final Logger log = LoggerFactory.getLogger(LdapService.class);
 
-    private final Cache<String, LdapGroup> groupCache;
-
     private final LdapTemplate ldapTemplate;
     private final ApplicationProperties properties;
 
 
-    public LdapService(LdapTemplate ldapTemplate, ApplicationProperties properties) {
+    public LdapService(LdapTemplate ldapTemplate,
+                       ApplicationProperties properties) {
         this.ldapTemplate = ldapTemplate;
 
-        groupCache = Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationMinutes()))  // adjust as needed
-                .maximumSize(5000) // prevent unbounded memory use
-                .build();
         this.properties = properties;
     }
 
@@ -224,13 +220,9 @@ public class LdapService {
         return node;
     }
 
-    private LdapGroup buildGroupRecursiveInternal(String dn) {
+    @Cacheable(cacheNames = "ldapGroups", key = "#dn")
+    public LdapGroup buildGroupRecursiveInternal(String dn) {
 
-        // ✅ Check cache first
-        LdapGroup cached = groupCache.getIfPresent(dn);
-        if (cached != null) {
-            return cached;
-        }
 
         // Lookup LDAP entry for this DN
         DirContextOperations ctx;
@@ -242,9 +234,6 @@ public class LdapService {
 
         String ouName = getOuNameFromDn(dn);
         LdapGroup node = new LdapGroup(dn, ouName);
-
-        // Put in cache immediately to avoid recursion loops
-        groupCache.put(dn, node);
 
         // 🔍 Find immediate child OUs of this DN
         List<Name> childDns = ldapTemplate.search(

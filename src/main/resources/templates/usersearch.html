@@ -10,14 +10,34 @@
 </head>
 <body>
 <div layout:fragment="content">
-    <h3>User Table</h3>
 
-    <div style="margin: 1em 0;">
-        <input id="search-input" type="text" placeholder="Search name..." style="padding: 6px;">
-        <button type="submit" id="search-btn" class="btn btn-primary">Search</button>
+        <div class="row">
+            <div class="col-md-11">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-center">
+                            <div>
+                                <h3>User Search</h3>
+                            </div>
+                        </div>
+
+                        <div style="margin: 1em 0;">
+                            <form>
+                                <input id="search-input" type="text" placeholder="Search name..." style="padding: 6px;">
+                                <button type="submit" id="search-btn" class="btn btn-primary">Search</button>
+                            </form>
+                        </div>
+
+                        <div id="user-table"></div>
+                    </div>
+                </div>
+            </div>
+
+
     </div>
 
-    <div id="user-table"></div>
+
+
 
     <script th:inline="javascript">
 
@@ -35,7 +55,32 @@
             layout:"fitColumns", //fit columns to width of table (optional)
             columns: [
                 {title: "DN", field: "dn"},
-                {title: "Checked In", field: "checkedIn"},
+                {title: "Checked In", field: "checkedIn", formatter: function(cell){
+                        let value = cell.getValue();
+
+                        if(value === "true"){
+                            cell.getElement().style.color = "green";
+                        }else{
+                            cell.getElement().style.color = "gray";
+                        }
+                        return value === "true" ? "Yes" : "No";
+                    }},
+                {title: "Screen Locked", field: "locked", formatter: function(cell){
+                        let value = cell.getValue();
+                        let checkedIn = cell.getRow().getData().checkedIn;
+
+                        if(checkedIn === "true") {
+
+                            if (value === "true") {
+                                cell.getElement().style.color = "gray";
+                            } else {
+                                cell.getElement().style.color = "green";
+                            }
+                            return value === "true" ? "Yes" : "No";
+                        }else{
+                            return "N/A";
+                        }
+                    }},
                 {title: "Log In", field: "checkedInAt"},
                 {title: "Log Out", field: "checkedOutAt"},
                 {title: "Notes", field: "notes"}
@@ -47,7 +92,9 @@
             window.location.href = `/app/user/details/${data.dn}`;
         });
 
-        document.getElementById("search-btn").addEventListener("click", () => {
+        document.getElementById("search-btn").addEventListener("click", (event) => {
+            event.preventDefault()
+
             searchTerm = document.getElementById("search-input").value;
             if(searchTerm.length >= 3) {
                 table.setData("/api/users/search"); // reload table with new search

@@ -13,6 +13,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZonedDateTime;
@@ -29,19 +30,45 @@ public class CheckInOutService {
     @Autowired
     private DatabaseService databaseService;
 
-    @PostMapping("/in")
+    @PostMapping("/{action}")
     public CheckInOutRecord checkIn(Authentication auth,
+                        @PathVariable String action,
                         @RequestBody CheckInOut checkInOut) {
         log.info("Check-in request received: {}, for user: {}", checkInOut, auth.getName());
 
-        CheckInOutRecord record = CheckInOutRecord.builder()
-                .dn(auth.getName().replace(", ", ","))
-                .windowsUserId(checkInOut.getWindowsUserId())
-                .timestamp(ZonedDateTime.now())
-                .action(CheckInOutEnum.CHECK_IN)
-                .build();
+        if(StringUtils.isEmpty(action)) {
+            throw new RuntimeException("action is empty");
+        }else{
+            CheckInOutRecord record;
 
-        return databaseService.saveCheckInOutRecord(record);
+            if(action.equals("in")) {
+                record = CheckInOutRecord.builder()
+                        .dn(auth.getName().replace(", ", ","))
+                        .windowsUserId(checkInOut.getWindowsUserId())
+                        .timestamp(ZonedDateTime.now())
+                        .action(CheckInOutEnum.CHECK_IN)
+                        .build();
+            }else if(action.equals("lock")) {
+                record = CheckInOutRecord.builder()
+                        .dn(auth.getName().replace(", ", ","))
+                        .windowsUserId(checkInOut.getWindowsUserId())
+                        .timestamp(ZonedDateTime.now())
+                        .action(CheckInOutEnum.LOCK)
+                        .build();
+            }else if(action.equals("unlock")) {
+                record = CheckInOutRecord.builder()
+                        .dn(auth.getName().replace(", ", ","))
+                        .windowsUserId(checkInOut.getWindowsUserId())
+                        .timestamp(ZonedDateTime.now())
+                        .action(CheckInOutEnum.LOCK)
+                        .build();
+            }else{
+                throw new RuntimeException("invalid action");
+            }
+            return databaseService.saveCheckInOutRecord(record);
+        }
+
+
     }
 
     @PostMapping("/out")

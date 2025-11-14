@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.model;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -7,6 +8,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.io.Serializable;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
@@ -15,7 +17,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @Entity
 @Table(name = "check_in_out_records")
-public class CheckInOutRecord {
+public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -24,6 +26,7 @@ public class CheckInOutRecord {
     private String dn;
 
     @Column(nullable = false)
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm a z")
     private ZonedDateTime timestamp;
 
     private String sessionId;
@@ -42,5 +45,10 @@ public class CheckInOutRecord {
         if (this.sessionId == null) {
             this.sessionId = UUID.randomUUID().toString();
         }
+    }
+
+    @Override
+    public int compareTo(CheckInOutRecord o) {
+        return o.timestamp.compareTo(this.timestamp);
     }
 }
