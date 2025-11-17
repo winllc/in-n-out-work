@@ -15,4 +15,6 @@ import java.util.List;
 public class UserDetails {
     private String dn;
     private List<String> memberOf = new ArrayList<>();
+    private String notes;
+    private boolean checkedIn = false;
 }

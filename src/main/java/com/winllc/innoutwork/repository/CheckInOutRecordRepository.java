@@ -20,7 +20,7 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
 
     List<CheckInOutRecord> findByDnAndTimestampIsBetweenOrderByTimestampDesc(String dn, ZonedDateTime timestamp, ZonedDateTime timestamp2);
 
-    Optional<CheckInOutRecord> findBySessionId(String sessionId);
+    Optional<CheckInOutRecord> findFirstBySessionId(String sessionId);
 
     Page<CheckInOutRecord> findByTimestampBetween(ZonedDateTime start, ZonedDateTime end, Pageable pageable);
 
@@ -33,10 +33,9 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
     Long countCheckInOutRecordByActionAndTimestampIsBetween(CheckInOutEnum action, ZonedDateTime timestamp, ZonedDateTime timestamp2);
 
     @Query("""
-    SELECT count(r)
+    SELECT r.action
     FROM CheckInOutRecord r
-    WHERE r.action = :action
-      AND r.timestamp >= :since
+    WHERE r.timestamp >= :since
       AND r.timestamp = (
           SELECT MAX(r2.timestamp)
           FROM CheckInOutRecord r2
@@ -44,5 +43,5 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
             AND r2.timestamp >= :since
       )
 """)
-    Long findTotalCurrentStatuses(CheckInOutEnum action, ZonedDateTime since);
+    List<CheckInOutEnum> findTotalCurrentStatuses(ZonedDateTime since);
 }

@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.model;
 
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -20,4 +21,5 @@ public class UserRecord {
     @Column(nullable = false)
     private String dn;
     private String notes;
+    private UserStatusEnum status;
 }

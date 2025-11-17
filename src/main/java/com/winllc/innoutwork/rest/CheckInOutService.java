@@ -27,40 +27,58 @@ public class CheckInOutService {
 
     private static final Logger log = LoggerFactory.getLogger(CheckInOutService.class);
 
-    @Autowired
-    private DatabaseService databaseService;
+    private final DatabaseService databaseService;
+
+    public CheckInOutService(DatabaseService databaseService) {
+        this.databaseService = databaseService;
+    }
 
     @PostMapping("/{action}")
     public CheckInOutRecord checkIn(Authentication auth,
                         @PathVariable String action,
                         @RequestBody CheckInOut checkInOut) {
-        log.info("Check-in request received: {}, for user: {}", checkInOut, auth.getName());
+        log.info("Status change {} request received: {}, for user: {}", action, checkInOut, auth != null ? auth.getName() : "NONE");
 
         if(StringUtils.isEmpty(action)) {
             throw new RuntimeException("action is empty");
         }else{
+            Optional<CheckInOutRecord> optionalRecord = databaseService.lookupBySessionId(checkInOut.getSessionId());
+
             CheckInOutRecord record;
+
+            String dn = auth != null ? auth.getName().replace(", ", ",") : null;
+
+            if (optionalRecord.isPresent()) {
+                dn = optionalRecord.get().getDn().replace(", ", ",");
+            }
 
             if(action.equals("in")) {
                 record = CheckInOutRecord.builder()
-                        .dn(auth.getName().replace(", ", ","))
+                        .dn(dn)
                         .windowsUserId(checkInOut.getWindowsUserId())
                         .timestamp(ZonedDateTime.now())
                         .action(CheckInOutEnum.CHECK_IN)
                         .build();
             }else if(action.equals("lock")) {
                 record = CheckInOutRecord.builder()
-                        .dn(auth.getName().replace(", ", ","))
+                        .dn(dn)
                         .windowsUserId(checkInOut.getWindowsUserId())
                         .timestamp(ZonedDateTime.now())
                         .action(CheckInOutEnum.LOCK)
                         .build();
             }else if(action.equals("unlock")) {
                 record = CheckInOutRecord.builder()
-                        .dn(auth.getName().replace(", ", ","))
+                        .dn(dn)
                         .windowsUserId(checkInOut.getWindowsUserId())
                         .timestamp(ZonedDateTime.now())
-                        .action(CheckInOutEnum.LOCK)
+                        .action(CheckInOutEnum.UNLOCK)
+                        .build();
+            } else if(action.equals("out")) {
+                record = CheckInOutRecord.builder()
+                        .dn(dn)
+                        .timestamp(ZonedDateTime.now())
+                        .action(CheckInOutEnum.CHECK_OUT)
+                        .sessionId(checkInOut.getSessionId())
                         .build();
             }else{
                 throw new RuntimeException("invalid action");
@@ -68,9 +86,9 @@ public class CheckInOutService {
             return databaseService.saveCheckInOutRecord(record);
         }
 
-
     }
 
+    /*
     @PostMapping("/out")
     public CheckInOutRecord checkOut(@RequestBody CheckInOut checkInOut) {
         log.info("Check-out request received: {}", checkInOut);
@@ -90,6 +108,8 @@ public class CheckInOutService {
 
         return databaseService.saveCheckInOutRecord(record);
     }
+
+     */
 
     @GetMapping("/records")
     public Map<String, Object> getRecords(

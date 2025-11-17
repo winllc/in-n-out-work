@@ -18,6 +18,9 @@ public class UserStatus {
     private ZonedDateTime checkedInAt;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm a z")
     private ZonedDateTime checkedOutAt;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm a z")
+    private ZonedDateTime lastStatusChangeAt;
     private String notes;
+    private String status;
 
 }
