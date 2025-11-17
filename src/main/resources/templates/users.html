@@ -31,25 +31,25 @@
                 {title: "Checked In", field: "checkedIn", formatter: function(cell){
                     let value = cell.getValue();
 
-                    if(value === "true"){
+                    if(value === true){
                         cell.getElement().style.color = "green";
                     }else{
                         cell.getElement().style.color = "gray";
                     }
-                    return value === "true" ? "Yes" : "No";
+                    return value === true ? "Yes" : "No";
                     }},
                 {title: "Screen Locked", field: "locked", formatter: function(cell){
                         let value = cell.getValue();
                         let checkedIn = cell.getRow().getData().checkedIn;
 
-                        if(checkedIn === "true") {
+                        if(checkedIn === true) {
 
-                            if (value === "true") {
+                            if (value === true) {
                                 cell.getElement().style.color = "gray";
                             } else {
                                 cell.getElement().style.color = "green";
                             }
-                            return value === "true" ? "Yes" : "No";
+                            return value === true ? "Yes" : "No";
                         }else{
                             return "N/A";
                         }

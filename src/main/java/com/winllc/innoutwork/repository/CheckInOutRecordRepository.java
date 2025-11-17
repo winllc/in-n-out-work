@@ -1,9 +1,11 @@
 package com.winllc.innoutwork.repository;
 
+import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.PagingAndSortingRepository;
 import org.springframework.stereotype.Repository;
 
@@ -24,5 +26,23 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
 
     List<CheckInOutRecord> findByTimestampBetweenAndDnIgnoreCaseOrderByTimestampDesc(ZonedDateTime start, ZonedDateTime end, String dn);
 
+    List<CheckInOutRecord> findByTimestampBetweenOrderByTimestampDesc(ZonedDateTime start, ZonedDateTime end);
+
     Page<CheckInOutRecord> findByDnIgnoreCaseOrderByTimestampDesc(Pageable pageable, String dn);
+
+    Long countCheckInOutRecordByActionAndTimestampIsBetween(CheckInOutEnum action, ZonedDateTime timestamp, ZonedDateTime timestamp2);
+
+    @Query("""
+    SELECT count(r)
+    FROM CheckInOutRecord r
+    WHERE r.action = :action
+      AND r.timestamp >= :since
+      AND r.timestamp = (
+          SELECT MAX(r2.timestamp)
+          FROM CheckInOutRecord r2
+          WHERE r2.dn = r.dn
+            AND r2.timestamp >= :since
+      )
+""")
+    Long findTotalCurrentStatuses(CheckInOutEnum action, ZonedDateTime since);
 }

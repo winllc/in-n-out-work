@@ -37,6 +37,7 @@ public class SecurityConfig {
                         .requestMatchers("/libs/**").permitAll()
                         .requestMatchers("/css/**").permitAll()
                         .requestMatchers("/js/**").permitAll()
+                        .requestMatchers("/images/**").permitAll()
                         .requestMatchers("/api/check/out").permitAll()
                         .anyRequest().authenticated()
                 )
