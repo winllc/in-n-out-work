@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.service;
 
+import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import org.springframework.data.domain.Page;
@@ -8,7 +9,9 @@ import org.springframework.stereotype.Service;
 
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 @Service
@@ -44,5 +47,27 @@ public class DatabaseService {
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         return checkinInOutRecordRepository.findByTimestampBetweenAndDnIgnoreCaseOrderByTimestampDesc(beginning, ending, dn);
+    }
+
+    public Map<CheckInOutEnum, Long> getTodaysStatistics(){
+        Map<CheckInOutEnum, Long> metrics = new HashMap<>();
+
+        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
+
+        for(CheckInOutEnum checkInOutEnum : CheckInOutEnum.values()){
+            Long count = checkinInOutRecordRepository
+                    .findTotalCurrentStatuses(checkInOutEnum, beginning);
+            metrics.put(checkInOutEnum, count);
+        }
+
+        return metrics;
+    }
+
+    public List<CheckInOutRecord> findTodaysRecords() {
+        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
+
+        return checkinInOutRecordRepository.findByTimestampBetweenOrderByTimestampDesc(beginning, ending);
     }
 }

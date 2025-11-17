@@ -1,22 +1,12 @@
 package com.winllc.innoutwork.service;
 
-import com.github.benmanes.caffeine.cache.Cache;
-import com.github.benmanes.caffeine.cache.Caffeine;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapGroup;
-import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.ldap.control.PagedResultsCookie;
-import org.springframework.ldap.control.PagedResultsDirContextProcessor;
 import org.springframework.ldap.core.*;
-import org.springframework.ldap.core.support.AbstractContextMapper;
 import org.springframework.ldap.filter.AndFilter;
 import org.springframework.ldap.filter.EqualsFilter;
 import org.springframework.ldap.query.LdapQuery;
@@ -30,11 +20,8 @@ import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.SearchControls;
-import java.time.Duration;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 
 @Service
 public class LdapService {
@@ -48,7 +35,6 @@ public class LdapService {
     public LdapService(LdapTemplate ldapTemplate,
                        ApplicationProperties properties) {
         this.ldapTemplate = ldapTemplate;
-
         this.properties = properties;
     }
 
@@ -86,7 +72,7 @@ public class LdapService {
 
     }
 
-    private long count(String baseDn, String filter) {
+    public long count(String baseDn, String filter) {
         SearchControls controls = new SearchControls();
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
         controls.setReturningAttributes(new String[0]); // don’t fetch attributes, just DNs
