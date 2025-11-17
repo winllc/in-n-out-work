@@ -2,6 +2,7 @@ package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.CheckInOutRecord;
@@ -101,7 +102,7 @@ public class UserService {
         return new PagedModel<>(new PageImpl<>(records.getContent(), pageable, records.getTotalElements()));
     }
 
-    private UserStatus getUserStatus(String dn){
+    public UserStatus getUserStatus(String dn){
         UserStatus status = UserStatus.builder()
                 .dn(dn).build();
 
@@ -113,6 +114,8 @@ public class UserService {
                     .findFirst();
 
             CheckInOutRecord record = mostRecent.get();
+            status.setLastStatusChangeAt(record.getTimestamp());
+
             if(record.getAction() == CheckInOutEnum.CHECK_IN ||  record.getAction() == CheckInOutEnum.UNLOCK){
                 status.setCheckedIn(true);
                 status.setLocked(false);
@@ -129,7 +132,9 @@ public class UserService {
 
         Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(status.getDn());
         if(recordOptional.isPresent()){
-            status.setNotes(recordOptional.get().getNotes());
+            UserRecord record = recordOptional.get();
+            status.setNotes(record.getNotes());
+            status.setStatus(record.getStatus() != null ? record.getStatus().toString() : UserStatusEnum.STANDARD.toString());
         }
 
         return status;

@@ -13,6 +13,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class DatabaseService {
@@ -32,7 +33,7 @@ public class DatabaseService {
     }
 
     public Optional<CheckInOutRecord> lookupBySessionId(String sessionId) {
-        return checkinInOutRecordRepository.findBySessionId(sessionId);
+        return checkinInOutRecordRepository.findFirstBySessionId(sessionId);
     }
 
     public Page<CheckInOutRecord> findTodaysRecords(Pageable pageable) {
@@ -55,11 +56,15 @@ public class DatabaseService {
         ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
-        for(CheckInOutEnum checkInOutEnum : CheckInOutEnum.values()){
-            Long count = checkinInOutRecordRepository
-                    .findTotalCurrentStatuses(checkInOutEnum, beginning);
-            metrics.put(checkInOutEnum, count);
-        }
+        List<CheckInOutEnum> totalCurrentStatuses = checkinInOutRecordRepository
+                .findTotalCurrentStatuses(beginning);
+
+        Map<CheckInOutEnum, Long> collect = totalCurrentStatuses.stream()
+                .collect(Collectors.groupingBy(s -> s, Collectors.counting()));
+
+        collect.forEach((key, value) -> {
+            metrics.put(key, value);
+        });
 
         return metrics;
     }

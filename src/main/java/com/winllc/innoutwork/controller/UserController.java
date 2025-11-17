@@ -1,6 +1,8 @@
 package com.winllc.innoutwork.controller;
 
 import com.winllc.innoutwork.data.UserDetails;
+import com.winllc.innoutwork.data.UserStatus;
+import com.winllc.innoutwork.rest.UserService;
 import com.winllc.innoutwork.service.LdapService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
@@ -15,8 +17,13 @@ import java.util.List;
 @RequestMapping("/app/user")
 public class UserController {
 
-    @Autowired
-    private LdapService ldapService;
+    private final LdapService ldapService;
+    private final UserService userService;
+
+    public UserController(LdapService ldapService, UserService userService) {
+        this.ldapService = ldapService;
+        this.userService = userService;
+    }
 
     @GetMapping("/details/{dn}")
     public ModelAndView details(@PathVariable String dn){
@@ -26,6 +33,10 @@ public class UserController {
 
         List<String> groupsForUser = ldapService.findGroupsForUser(dn);
         userDetails.setMemberOf(groupsForUser);
+
+        UserStatus userStatus = userService.getUserStatus(dn);
+        userDetails.setNotes(userStatus.getNotes());
+        userDetails.setCheckedIn(userStatus.isCheckedIn());
 
         return  new ModelAndView("userdetails", "user", userDetails);
     }

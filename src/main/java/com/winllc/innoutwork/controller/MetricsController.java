@@ -17,11 +17,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.ModelAndView;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Controller
 @RequestMapping("/app/metrics")
@@ -30,6 +32,15 @@ public class MetricsController {
     private final CacheService cacheService;
     private final DatabaseService databaseService;
     private final ApplicationProperties properties;
+
+    private static final Map<CheckInOutEnum, String> colorMap = new HashMap<>();
+
+    static {
+        colorMap.put(CheckInOutEnum.CHECK_IN, "green");
+        colorMap.put(CheckInOutEnum.CHECK_OUT, "purple");
+        colorMap.put(CheckInOutEnum.LOCK, "yellow");
+        colorMap.put(CheckInOutEnum.UNLOCK, "blue");
+    }
 
     public MetricsController(ApplicationProperties properties,
                              CacheService cacheService, DatabaseService databaseService) {
@@ -64,11 +75,6 @@ public class MetricsController {
     }
 
     private TotalLoginChartData getTotalLoginChartData(){
-        Map<CheckInOutEnum, String> colorMap = new HashMap<>();
-        colorMap.put(CheckInOutEnum.CHECK_IN, "green");
-        colorMap.put(CheckInOutEnum.CHECK_OUT, "purple");
-        colorMap.put(CheckInOutEnum.LOCK, "yellow");
-        colorMap.put(CheckInOutEnum.UNLOCK, "blue");
 
         TotalLoginChartData data = new TotalLoginChartData();
 
@@ -87,10 +93,10 @@ public class MetricsController {
             totalWithAction.addAndGet(value.intValue());
         });
 
-        Long noActivity = totalUsers - totalWithAction.get();
+        long noActivity = totalUsers - totalWithAction.get();
 
         data.getLabels().add("No Activity");
-        dataSet.getData().add(noActivity.intValue());
+        dataSet.getData().add((int) noActivity);
         dataSet.getBackgroundColor().add("grey");
 
         data.getDatasets().add(dataSet);
@@ -99,12 +105,6 @@ public class MetricsController {
     }
 
     private LoginByTimeChartData getLoginByTimeChart(){
-        Map<CheckInOutEnum, String> colorMap = new HashMap<>();
-        colorMap.put(CheckInOutEnum.CHECK_IN, "green");
-        colorMap.put(CheckInOutEnum.CHECK_OUT, "grey");
-        colorMap.put(CheckInOutEnum.LOCK, "yellow");
-        colorMap.put(CheckInOutEnum.UNLOCK, "blue");
-
         LoginByTimeChartData data = new LoginByTimeChartData();
 
         ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
@@ -115,7 +115,6 @@ public class MetricsController {
         buckets.forEach(bucket -> {
             data.getLabels().add(bucket.toString());
         });
-
 
         List<CheckInOutRecord> todaysRecords = databaseService.findTodaysRecords();
 
@@ -133,11 +132,19 @@ public class MetricsController {
             for(ZonedDateTime val : value){
                 ZonedDateTime snapped = snapTo15Min(val);
 
-                collect.merge(snapped, 1, Integer::sum);
+               // collect.merge(snapped, 1, Integer::sum);
+                Integer i = collect.get(snapped);
+                collect.put(snapped, i == null ? 1 : ++i);
             }
 
+            List<Integer> vals = collect.entrySet()
+                    .stream()
+                    .sorted(Comparator.comparing(Map.Entry::getKey))
+                    .map(Map.Entry::getValue)
+                    .toList();
+
             lineChartDataSet.setLabel(key.toString());
-            lineChartDataSet.setData(new ArrayList<>(collect.values()));
+            lineChartDataSet.setData(vals);
             lineChartDataSet.setBorderColor(colorMap.get(key));
             data.getDatasets().add(lineChartDataSet);
         });
@@ -163,6 +170,6 @@ public class MetricsController {
 
     private static ZonedDateTime snapTo15Min(ZonedDateTime ts) {
         int snapped = (ts.getMinute() / 15) * 15;
-        return ts.withMinute(snapped).withSecond(0).withNano(0);
+        return ts.withMinute(snapped).withSecond(0).withNano(0).withZoneSameInstant(ZoneId.systemDefault());
     }
 }

@@ -19,6 +19,23 @@
 
         <div class="row">
             <div class="col-md-6">
+                <table class="table">
+                    <tbody>
+                    <tr>
+                        <td>Checked In</td>
+                        <td><span th:text="${user.checkedIn}" /></td>
+                    </tr>
+                    <tr>
+                        <td>Notes</td>
+                        <td><span th:text="${user.notes}" /></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
                         <h3>Member Of</h3>
