@@ -7,6 +7,9 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "application")
 public class ApplicationProperties {
     private String baseDn;
+    private String userLdapFilter = "(objectclass=*)";
+    private boolean lookupOnDnAttribute = false;
+    private String userDnAttribute = "";
     private String groupsBaseDn;
     private int cacheDurationMinutes = 60;
 }

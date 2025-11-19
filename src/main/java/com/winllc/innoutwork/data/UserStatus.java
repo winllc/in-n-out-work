@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.data;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.winllc.innoutwork.constant.DateTimeConstants;
 import lombok.Builder;
 import lombok.Data;
 import lombok.ToString;
@@ -12,15 +13,25 @@ import java.time.ZonedDateTime;
 @Builder
 public class UserStatus {
     private String dn;
-    private boolean checkedIn;
-    private boolean locked;
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm a z")
+    private String cn;
+    private String status;
+    //private boolean checkedIn;
+    //private boolean locked;
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_FORMAT)
     private ZonedDateTime checkedInAt;
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm a z")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_FORMAT)
     private ZonedDateTime checkedOutAt;
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm a z")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_FORMAT)
     private ZonedDateTime lastStatusChangeAt;
     private String notes;
-    private String status;
 
+    public String getCn(){
+        if(dn != null){
+            String[] parts = dn.split(",");
+            if(parts.length > 0){
+                return parts[0].trim().replace("cn=", "").replace("CN=", "");
+            }
+        }
+        return "";
+    }
 }

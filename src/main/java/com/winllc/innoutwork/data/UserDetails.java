@@ -14,7 +14,7 @@ import java.util.List;
 @AllArgsConstructor
 public class UserDetails {
     private String dn;
-    private List<String> memberOf = new ArrayList<>();
+    private List<LdapGroup> memberOf = new ArrayList<>();
     private String notes;
-    private boolean checkedIn = false;
+    private String status;
 }

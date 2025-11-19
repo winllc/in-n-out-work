@@ -48,10 +48,6 @@ public class LdapService {
         return buildGroupHierarchyFromAttribute(dn, new ArrayList<>());
     }
 
-    public LdapGroup getGroupHierarchy(String dn) {
-        return buildGroupRecursiveInternal(dn);
-    }
-
     // Alternative: More efficient approach that doesn't iterate through all previous pages
     public List<UserStatus> search(String baseDn, String filter, int pageNumber, int pageSize) {
         SearchControls controls = new SearchControls();
@@ -83,12 +79,15 @@ public class LdapService {
 
 
     public List<LdapGroup> getGroups(){
-        List<LdapGroup> groups = ldapTemplate.search(
+        return ldapTemplate.search(
                 properties.getBaseDn(),
                 "(objectClass=groupOfUniqueNames)",
-                (AttributesMapper<LdapGroup>) attrs -> mapGroup(attrs)
+                (ContextMapper<LdapGroup>) ctx -> {
+                    DirContextAdapter context = (DirContextAdapter) ctx;
+
+                    return mapGroup(context.getDn().toString(), context.getAttributes());
+                }
         );
-        return groups;
     }
 
     public List<String> getGroupMembers(String groupName) {
@@ -129,7 +128,11 @@ public class LdapService {
         List<LdapGroup> results = ldapTemplate.search(
                 "",
                 "(distinguishedName=" + dn + ")",
-                (AttributesMapper<LdapGroup>) attrs -> mapGroup(attrs)
+                (ContextMapper<LdapGroup>) ctx -> {
+                    DirContextAdapter context = (DirContextAdapter) ctx;
+
+                    return mapGroup(context.getDn().toString(), context.getAttributes());
+                }
         );
 
         if (results.isEmpty()) return null;
@@ -157,8 +160,9 @@ public class LdapService {
         return group;
     }
 
-    private LdapGroup mapGroup(Attributes attrs) throws NamingException {
+    private LdapGroup mapGroup(String dn, Attributes attrs) throws NamingException {
         LdapGroup group = new LdapGroup();
+        group.setDn(dn);
         if (attrs.get("distinguishedName") != null)
             group.setDn((String) attrs.get("distinguishedName").get());
         if (attrs.get("cn") != null)
@@ -170,9 +174,8 @@ public class LdapService {
 
     private LdapGroup buildGroupRecursive(String dn) {
         // Lookup the current OU entry (might also be the base context)
-        DirContextOperations ctx;
         try {
-            ctx = ldapTemplate.lookupContext(dn);
+            ldapTemplate.lookupContext(dn);
         } catch (Exception e) {
             return null;
         }
@@ -187,12 +190,9 @@ public class LdapService {
                         .base(dn)
                         .searchScope(SearchScope.ONELEVEL)
                         .where("objectClass").is("groupOfUniqueNames"),
-                new ContextMapper<Name>() {
-                    @Override
-                    public Name mapFromContext(Object ctx) throws NamingException {
-                        DirContextAdapter context = (DirContextAdapter) ctx;
-                        return context.getDn();
-                    }
+                (ContextMapper<Name>) ctx1 -> {
+                    DirContextAdapter context = (DirContextAdapter) ctx1;
+                    return context.getDn();
                 }
         );
 
@@ -211,9 +211,8 @@ public class LdapService {
 
 
         // Lookup LDAP entry for this DN
-        DirContextOperations ctx;
         try {
-            ctx = ldapTemplate.lookupContext(dn);
+            ldapTemplate.lookupContext(dn);
         } catch (Exception e) {
             return null;
         }
@@ -261,7 +260,7 @@ public class LdapService {
      * @param userDn full DN of the user, e.g. "uid=john,ou=Users,dc=example,dc=com"
      * @return list of group CNs (or full DNs, depending on mapping)
      */
-    public List<String> findGroupsForUser(String userDn) {
+    public List<LdapGroup> findGroupsForUser(String userDn) {
         // Build LDAP filter: (&(objectClass=groupOfUniqueNames)(uniqueMember=<userDn>))
         AndFilter filter = new AndFilter();
         filter.and(new EqualsFilter("objectClass", "groupOfUniqueNames"));
@@ -270,9 +269,10 @@ public class LdapService {
         return ldapTemplate.search(
                 properties.getBaseDn(),  // base DN (empty means use the default search base)
                 filter.encode(),
-                (AttributesMapper<String>) attrs -> {
-                    Attribute cn = attrs.get("cn");
-                    return cn != null ? (String) cn.get() : null;
+                (ContextMapper<LdapGroup>) ctx -> {
+                    DirContextAdapter context = (DirContextAdapter) ctx;
+
+                    return mapGroup(context.getDn().toString(), context.getAttributes());
                 }
         );
     }

@@ -22,8 +22,8 @@
                 <table class="table">
                     <tbody>
                     <tr>
-                        <td>Checked In</td>
-                        <td><span th:text="${user.checkedIn}" /></td>
+                        <td>Current Status</td>
+                        <td><span th:text="${user.status}" /></td>
                     </tr>
                     <tr>
                         <td>Notes</td>
@@ -45,7 +45,7 @@
                             <tbody>
                             <tr th:each="group : ${user.memberOf}">
                                 <td>
-                                    <a th:href="@{'/app/users/'+${group}}" th:text="${group}"></a>
+                                    <a th:href="@{'/app/users/'+${group.dn}}" th:text="${group.cn}"></a>
                                 </td>
                             </tr>
                             </tbody>

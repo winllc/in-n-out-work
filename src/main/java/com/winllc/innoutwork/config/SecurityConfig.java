@@ -4,18 +4,23 @@ import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.service.LdapService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.ldap.core.AttributesMapper;
 import org.springframework.ldap.core.ContextMapper;
 import org.springframework.ldap.core.DirContextAdapter;
 import org.springframework.ldap.core.LdapTemplate;
+import org.springframework.ldap.filter.EqualsFilter;
+import org.springframework.ldap.query.LdapQuery;
+import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -24,6 +29,9 @@ import java.util.List;
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
+    @Autowired
+    private ApplicationProperties properties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
@@ -61,15 +69,34 @@ public class SecurityConfig {
 
             LdapUser user = null;
             try {
-                user = ldapTemplate.lookup(username, new ContextMapper<LdapUser>() {
-                    @Override
-                    public LdapUser mapFromContext(Object ctx) {
+
+                if(properties.isLookupOnDnAttribute()){
+                    LdapQuery query = LdapQueryBuilder.query()
+                            .base(properties.getBaseDn())
+                            .countLimit(1)
+                            .filter(new EqualsFilter(properties.getUserDnAttribute(), username));
+
+                    List<LdapUser> users = ldapTemplate.search(query, (ContextMapper<LdapUser>) ctx -> {
                         DirContextAdapter context = (DirContextAdapter) ctx;
                         return LdapUser.builder()
                                 .dn(context.getDn().toString())
                                 .build();
+                    });
+
+                    if(!CollectionUtils.isEmpty(users)){
+                        user =  users.getFirst();
                     }
-                });
+
+                }else{
+                    user = ldapTemplate.lookup(username, (ContextMapper<LdapUser>) ctx -> {
+                        DirContextAdapter context = (DirContextAdapter) ctx;
+                        return LdapUser.builder()
+                                .dn(context.getDn().toString())
+                                .build();
+                    });
+                }
+
+
             }catch (Exception e) {log.error("Not found: %s".formatted(username), e);}
 
             List<String> roles = new ArrayList<>();

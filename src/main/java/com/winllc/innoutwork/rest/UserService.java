@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.rest;
 
+import ch.qos.logback.core.util.StringUtil;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
@@ -11,6 +12,7 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.DatabaseService;
 import com.winllc.innoutwork.service.LdapService;
+import io.micrometer.common.util.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
@@ -23,16 +25,21 @@ import java.util.*;
 @RequestMapping("/api/users")
 public class UserService {
 
-    @Autowired
-    private LdapService ldapService;
-    @Autowired
-    private DatabaseService databaseService;
-    @Autowired
-    private UserRecordRepository userRecordRepository;
-    @Autowired
-    private CheckInOutRecordRepository checkInOutRecordRepository;
-    @Autowired
-    private ApplicationProperties properties;
+    private final LdapService ldapService;
+    private final DatabaseService databaseService;
+    private final UserRecordRepository userRecordRepository;
+    private final CheckInOutRecordRepository checkInOutRecordRepository;
+    private final ApplicationProperties properties;
+
+    public UserService(LdapService ldapService, DatabaseService databaseService,
+                       UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
+                       ApplicationProperties properties) {
+        this.ldapService = ldapService;
+        this.databaseService = databaseService;
+        this.userRecordRepository = userRecordRepository;
+        this.checkInOutRecordRepository = checkInOutRecordRepository;
+        this.properties = properties;
+    }
 
     @GetMapping("/group/{groupName}")
     public Map<String, Object> getUsers(
@@ -113,28 +120,39 @@ public class UserService {
                     .sorted()
                     .findFirst();
 
+            Optional<CheckInOutRecord> firstLogin = todaysRecordsForUser.stream()
+                    .sorted(Comparator.reverseOrder())
+                    .filter(r -> r.getAction() == CheckInOutEnum.CHECK_IN)
+                    .findFirst();
+
+            Optional<CheckInOutRecord> lastLogout = todaysRecordsForUser.stream()
+                    .sorted()
+                    .filter(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)
+                    .findFirst();
+
             CheckInOutRecord record = mostRecent.get();
             status.setLastStatusChangeAt(record.getTimestamp());
+            firstLogin.ifPresent(r -> status.setCheckedInAt(r.getTimestamp()));
+            lastLogout.ifPresent(r -> status.setCheckedOutAt(r.getTimestamp()));
 
             if(record.getAction() == CheckInOutEnum.CHECK_IN ||  record.getAction() == CheckInOutEnum.UNLOCK){
-                status.setCheckedIn(true);
-                status.setLocked(false);
+                status.setStatus("IN");
             }else if(record.getAction() == CheckInOutEnum.CHECK_OUT){
-                status.setCheckedIn(false);
-                status.setLocked(false);
+                status.setStatus("OUT");
             }else if(record.getAction() == CheckInOutEnum.LOCK){
-                status.setCheckedIn(true);
-                status.setLocked(true);
+                status.setStatus("AWAY");
             }
         } else {
-            status.setCheckedIn(false);
+            status.setStatus("NONE");
         }
 
         Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(status.getDn());
         if(recordOptional.isPresent()){
             UserRecord record = recordOptional.get();
             status.setNotes(record.getNotes());
-            status.setStatus(record.getStatus() != null ? record.getStatus().toString() : UserStatusEnum.STANDARD.toString());
+            if(status.getStatus().equals("NONE") && record.getStatus() != null && record.getStatus() != UserStatusEnum.STANDARD){
+                status.setStatus(record.getStatus().toString());
+            }
         }
 
         return status;

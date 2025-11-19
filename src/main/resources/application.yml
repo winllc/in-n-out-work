@@ -20,7 +20,10 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
   ldap:
     #urls: ldap://fid.winllc-dev.com:2389
     urls: ldap://192.168.1.29:1389
@@ -45,5 +48,7 @@ management:
         include: health,info,metrics,env
 application:
   base-dn: dc=winllc,dc=com
+  user-ldap-filter: (objectclass=inetOrgPerson)
   groups-base-dn: ou=Groups,dc=winllc,dc=com
   banner-text: BANNER TEXT
+  timezone: America/New_York

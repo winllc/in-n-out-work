@@ -11,10 +11,29 @@
 <body>
 <div layout:fragment="content">
     <h3>User Table for <span th:text="${group}"></span></h3>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" th:checked="${isFavorite}" id="favorite-btn">
+                <label class="form-check-label" for="advanced-btn">Favorite</label>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12 d-flex justify-content-end">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                <label class="form-check-label" for="advanced-btn">Advanced</label>
+            </div>
+        </div>
+    </div>
     <div id="user-table"></div>
 
     <script th:inline="javascript">
         const groupName = /*[[${group}]]*/ "test";
+        const groupDn = /*[[${groupDn}]]*/ "test";
 
         const table = new Tabulator("#user-table", {
             ajaxURL: "/api/users/group/" + groupName,
@@ -25,43 +44,70 @@
             },
             pagination: "local",
             paginationSize: 10,
-            layout:"fitColumns", //fit columns to width of table (optional)
+            layout:"fitDataStretch", //fit columns to width of table (optional)
+            layoutColumnsOnNewData:true,
             columns: [
-                {title: "DN", field: "dn", headerFilter: "input"},
-                {title: "Checked In", field: "checkedIn", formatter: function(cell){
-                    let value = cell.getValue();
-
-                    if(value === true){
-                        cell.getElement().style.color = "green";
-                    }else{
-                        cell.getElement().style.color = "gray";
-                    }
-                    return value === true ? "Yes" : "No";
-                    }},
-                {title: "Screen Locked", field: "locked", formatter: function(cell){
+                {title: "Name", field: "cn", minWidth: 100, resizable:true, headerFilter: "input"},
+                {title: "DN", field: "dn", minWidth: 150, visible: false, resizable:true, headerFilter: "input"},
+                {title: "Status", field: "status", formatter: function(cell){
                         let value = cell.getValue();
-                        let checkedIn = cell.getRow().getData().checkedIn;
 
-                        if(checkedIn === true) {
-
-                            if (value === true) {
-                                cell.getElement().style.color = "gray";
-                            } else {
-                                cell.getElement().style.color = "green";
-                            }
-                            return value === true ? "Yes" : "No";
-                        }else{
-                            return "N/A";
+                        if(value === "IN"){
+                            cell.getElement().style.color = "green";
+                        }else if(value === "OUT"){
+                            cell.getElement().style.color = "blue";
+                        }else if(value === "AWAY"){
+                            cell.getElement().style.color = "purple";
+                        }else if(value === "NONE"){
+                            cell.getElement().style.color = "gray";
                         }
+                        return value;
                     }},
-                {title: "Last Status Change", field: "lastStatusChangeAt"},
-                {title: "Notes", field: "notes"}
+                {title: "Checked In", field: "checkedInAt", visible: false, resizable:true},
+                {title: "Last Status Change", field: "lastStatusChangeAt", resizable:true},
+                {title: "Checked Out", field: "checkedOutAt", visible: false, resizable:true},
+                {title: "Notes", field: "notes", widthGrow: 3}
             ],
         });
 
         table.on("rowClick", function(e, row){
             const data = row.getData();
             window.location.href = `/app/user/details/${data.dn}`;
+        });
+
+        document.getElementById("advanced-btn").addEventListener("change", (event) => {
+
+            if((event.target.checked)){
+                table.showColumn("checkedInAt");
+                table.showColumn("checkedOutAt");
+                table.showColumn("dn");
+                table.hideColumn("cn");
+            }else{
+                table.hideColumn("checkedInAt");
+                table.hideColumn("checkedOutAt");
+                table.hideColumn("dn");
+                table.showColumn("cn");
+            }
+            table.redraw(true);
+
+        });
+
+        document.getElementById("favorite-btn").addEventListener("change", async (event) => {
+            const url = "/api/groups/favoriteGroup";
+
+            const data = {
+                groupDn: groupDn,
+                selected: event.target.checked
+            }
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data),
+            });
+
         });
 
     </script>
