@@ -13,7 +13,7 @@
 </head>
 <body>
 
-<header class="banner">
+<header class="banner" th:style="'background-color: ' + ${T(com.winllc.innoutwork.config.GlobalProperties).BANNER_COLOR}">
     <span th:text="${T(com.winllc.innoutwork.config.GlobalProperties).BANNER_TEXT}">
         Default Banner
     </span>
@@ -122,8 +122,8 @@
 
 <footer>
     <div class="py-6 px-6 text-center">
-        <p class="mb-0 fs-4">Designed and Developed by <a href="#"
-                                                        class="pe-1 text-primary text-decoration-underline">WIN LLC</a>
+        <p class="mb-0 fs-4">Designed and Developed by <a href="https://ens-solutions.com/"
+                                                        class="pe-1 text-primary text-decoration-underline">ENS Solutions, LLC</a>
         </p>
     </div>
 </footer>

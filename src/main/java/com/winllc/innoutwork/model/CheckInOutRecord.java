@@ -31,7 +31,7 @@ public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
 
     private String sessionId;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "text")
     @Enumerated(EnumType.STRING)
     private CheckInOutEnum action;
     private String windowsUserId;

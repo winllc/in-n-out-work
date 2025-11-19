@@ -3,6 +3,7 @@ package com.winllc.innoutwork.controller;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.service.UserRecordService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -18,8 +19,13 @@ import java.util.Optional;
 @RequestMapping("/app/profile")
 public class ProfileController {
 
-    @Autowired
-    private UserRecordRepository recordRepository;
+    private final UserRecordRepository recordRepository;
+    private final UserRecordService userRecordService;
+
+    public ProfileController(UserRecordRepository recordRepository, UserRecordService userRecordService) {
+        this.recordRepository = recordRepository;
+        this.userRecordService = userRecordService;
+    }
 
     @GetMapping
     public String profile(Authentication authentication, Model model) {
@@ -38,19 +44,7 @@ public class ProfileController {
     public String profileSubmit(Authentication authentication,
                                 Model model, @ModelAttribute ProfileForm form) {
 
-
-        UserRecord userRecord = new UserRecord();
-
-        Optional<UserRecord> optionalRecord = recordRepository.findByDnIgnoreCase(authentication.getName());
-        if(optionalRecord.isPresent()) {
-            userRecord = optionalRecord.get();
-            userRecord.setNotes(form.getNotes());
-        }else{
-            userRecord.setDn(authentication.getName());
-            userRecord.setNotes(form.getNotes());
-        }
-
-        UserRecord updated = recordRepository.save(userRecord);
+        UserRecord updated = userRecordService.updateNotes(authentication, form.getNotes());
 
         model.addAttribute("form", ProfileForm.builder().notes(updated.getNotes()).build());
 

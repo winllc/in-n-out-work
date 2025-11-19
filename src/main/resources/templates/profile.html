@@ -20,6 +20,10 @@
                 </div>
             </div>
 
+            <div class="alert alert-danger" role="alert">
+                <span th:utext="#{profile.warning}"></span>
+            </div>
+
             <form th:action="@{/app/profile}" method="post" th:object="${form}">
                 <div class="mb-3">
                     <label for="notes" class="form-label">Notes</label>

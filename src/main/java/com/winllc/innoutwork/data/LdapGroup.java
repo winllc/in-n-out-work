@@ -14,6 +14,7 @@ public class LdapGroup {
     private String id;
     private String name;
     private boolean selectable = true;
+    private boolean favorite;
 
     private String dn;
     private String cn;

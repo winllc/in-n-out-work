@@ -24,6 +24,7 @@ $script:ProfileWaitTimeoutSec = 30
 $script:ProfileCheckIntervalSec = 2
 $script:Subfolder = "InOutWorker"
 
+$filePath = Join-Path $baseDir "$SessionFile"
 $BasePostUrl = "https://192.168.1.29:8444/api/check/"
 
 # -------------------------------
@@ -116,7 +117,8 @@ function Send-PostWithClientCert {
     param(
         [string] $PostUrl,               # URL to send the POST request to
         [string] $EventReason = "Unknown", # Optional event reason (default is "Unknown")
-        [hashtable] $AdditionalData = @{ }  # Additional data that can be included in the body (optional)
+        [hashtable] $AdditionalData = @{ },  # Additional data that can be included in the body (optional)
+        [boolean] $WithCert
     )
 
     try {
@@ -124,8 +126,10 @@ function Send-PostWithClientCert {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
         # Find the client certificate (this function is assumed to be implemented elsewhere in your code)
-        $cert = Find-UserCertificate
-        Write-Log "Cert: $cert"  # Log the certificate (for debugging or auditing purposes)
+        if($WithCert == true){
+            $cert = Find-UserCertificate
+            Write-Log "Cert: $cert"  # Log the certificate (for debugging or auditing purposes)
+        }
 
         # Prepare the body of the POST request, including eventType and username from the environment
         $Body = @{
@@ -136,12 +140,30 @@ function Send-PostWithClientCert {
         # Convert the body hashtable to a compressed JSON string
         $jsonBody = $Body | ConvertTo-Json -Compress
 
-        # Send the POST request with the certificate for mTLS authentication
-        $response = Invoke-RestMethod -Uri $PostUrl `
+        if($null -eq $cert){
+            try {
+                $json = Get-Content -Path $filePath -Raw -ErrorAction Stop
+                Write-Host "Read logout file for $UserName ($($json.Length) chars)."
+            }
+            catch {
+                Write-Host "Failed to read logout file: $($_.Exception.Message)"
+                #exit 1
+                $json = "{}"
+            }
+
+            $response = Invoke-RestMethod -Uri $PostUrl `
+            -Method Post `
+            -ContentType "application/json" `
+            -Body $json | ConvertTo-Json
+        }else{
+            $response = Invoke-RestMethod -Uri $PostUrl `
             -Method Post `
             -Certificate $cert `
             -ContentType "application/json" `
             -Body $jsonBody | ConvertTo-Json
+        }
+        # Send the POST request with the certificate for mTLS authentication
+
 
         # Return the response from the server
         return $response
@@ -194,12 +216,29 @@ function Create-OrUpdateLogoutFile {
 # Public wrappers for login/logout
 # -------------------------------
 function Invoke-PostWithProfile {
+    param(
+        [string] $action
+    )
     Write-Log "User logon detected."
     $username = $env:USERNAME
     if (!(Wait-ForUserProfile $username)) {
         Write-Log "Profile for $username not ready within timeout." "WARN"
         return
     }
+
+    $PostUrl = $BasePostUrl + $action
+
+    $content = Send-PostWithClientCert -PostUrl $PostUrl
+
+    Create-OrUpdateLogoutFile -Contents $content
+}
+
+function Invoke-PostWithoutProfile {
+    param(
+        [string] $action
+    )
+
+    $PostUrl = $BasePostUrl + $action
 
     $content = Send-PostWithClientCert -PostUrl $PostUrl
 
@@ -212,13 +251,13 @@ function Invoke-StatusChange {
     )
 
     if($status == "login" ){
-
+        Invoke-PostWithProfile -action "in"
     } elseif($status == "logoff" ){
-
+        Invoke-PostWithOutProfile -action "out"
     } elseif($status == "lock" ){
-
+        Invoke-PostWithOutProfile -action "lock"
     } elseif ($status == "unlock" ){
-
+        Invoke-PostWithProfile -action "unlock"
     }
 }
 

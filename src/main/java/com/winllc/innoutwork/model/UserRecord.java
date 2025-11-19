@@ -7,6 +7,13 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 @Data
 @Builder
 @NoArgsConstructor
@@ -21,5 +28,36 @@ public class UserRecord {
     @Column(nullable = false)
     private String dn;
     private String notes;
+    @Column(nullable = true, columnDefinition = "text")
+    @Enumerated(EnumType.ORDINAL)
     private UserStatusEnum status;
+    @Column(length = 2000)
+    private String favoriteGroups;
+
+
+    public void addGroup(String group) {
+        Set<String> groupSet = new HashSet<>(getFavoriteGroupsList());
+        groupSet.add(group);
+        this.favoriteGroups = String.join(";", groupSet);
+    }
+
+    public void removeGroup(String group) {
+        List<String> groupList = new ArrayList<>(getFavoriteGroupsList());
+        groupList.remove(group);
+        this.favoriteGroups = String.join(";", groupList);
+    }
+
+    public List<String> getFavoriteGroupsList(){
+        if(favoriteGroups != null){
+            String[] split = favoriteGroups.split(";");
+            return Stream.of(split)
+                    .collect(Collectors.toList());
+        }else{
+            return new ArrayList<>();
+        }
+    }
+
+    public boolean containsGroupDn(String groupDn){
+        return getFavoriteGroupsList().contains(groupDn);
+    }
 }

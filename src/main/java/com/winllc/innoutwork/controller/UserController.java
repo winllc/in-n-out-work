@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.UserDetails;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.rest.UserService;
@@ -31,12 +32,12 @@ public class UserController {
         UserDetails userDetails = new UserDetails();
         userDetails.setDn(dn);
 
-        List<String> groupsForUser = ldapService.findGroupsForUser(dn);
+        List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(dn);
         userDetails.setMemberOf(groupsForUser);
 
         UserStatus userStatus = userService.getUserStatus(dn);
         userDetails.setNotes(userStatus.getNotes());
-        userDetails.setCheckedIn(userStatus.isCheckedIn());
+        userDetails.setStatus(userStatus.getStatus());
 
         return  new ModelAndView("userdetails", "user", userDetails);
     }
