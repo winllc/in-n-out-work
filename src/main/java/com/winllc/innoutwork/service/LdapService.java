@@ -2,6 +2,7 @@ package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapGroup;
+import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +14,7 @@ import org.springframework.ldap.query.LdapQuery;
 import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.ldap.query.SearchScope;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 import javax.naming.Name;
 import javax.naming.NamingEnumeration;
@@ -22,6 +24,7 @@ import javax.naming.directory.Attributes;
 import javax.naming.directory.SearchControls;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class LdapService {
@@ -66,6 +69,33 @@ public class LdapService {
                 }
         );
 
+    }
+
+    public Optional<LdapUser> lookupUser(String dn) {
+        LdapUser user = null;
+        try {
+
+            if (properties.isLookupOnDnAttribute()) {
+                LdapQuery query = LdapQueryBuilder.query()
+                        .base(properties.getBaseDn())
+                        .countLimit(1)
+                        .filter(new EqualsFilter(properties.getUserDnAttribute(), dn));
+
+                List<LdapUser> users = ldapTemplate.search(query, new LdapUserContextMapper(properties));
+
+                if (!CollectionUtils.isEmpty(users)) {
+                    user = users.getFirst();
+                }
+
+            } else {
+                user = ldapTemplate.lookup(dn, new LdapUserContextMapper(properties));
+            }
+
+        } catch (Exception e) {
+            log.error("Not found: %s".formatted(dn), e);
+        }
+
+        return Optional.ofNullable(user);
     }
 
     public long count(String baseDn, String filter) {
@@ -172,39 +202,6 @@ public class LdapService {
         return group;
     }
 
-    private LdapGroup buildGroupRecursive(String dn) {
-        // Lookup the current OU entry (might also be the base context)
-        try {
-            ldapTemplate.lookupContext(dn);
-        } catch (Exception e) {
-            return null;
-        }
-
-        String ouName = getOuNameFromDn(dn);
-        LdapGroup node = new LdapGroup(dn, ouName);
-
-        // Find child OUs directly under this DN
-
-        List<Name> childDns = ldapTemplate.search(
-                LdapQueryBuilder.query()
-                        .base(dn)
-                        .searchScope(SearchScope.ONELEVEL)
-                        .where("objectClass").is("groupOfUniqueNames"),
-                (ContextMapper<Name>) ctx1 -> {
-                    DirContextAdapter context = (DirContextAdapter) ctx1;
-                    return context.getDn();
-                }
-        );
-
-        for (Name childDn : childDns) {
-            LdapGroup childNode = buildGroupRecursive(childDn.toString());
-            if (childNode != null) {
-                node.addChild(childNode);
-            }
-        }
-
-        return node;
-    }
 
     @Cacheable(cacheNames = "ldapGroups", key = "#dn")
     public LdapGroup buildGroupRecursiveInternal(String dn) {
@@ -277,4 +274,44 @@ public class LdapService {
         );
     }
 
+    private static final class LdapUserContextMapper  implements ContextMapper<LdapUser> {
+
+        private final ApplicationProperties appProperties;
+
+        LdapUserContextMapper(ApplicationProperties properties) {
+            this.appProperties = properties;
+        }
+
+        @Override
+        public LdapUser mapFromContext(Object o) throws NamingException {
+            LdapUser.LdapUserBuilder builder = LdapUser.builder();
+            DirContextAdapter context = (DirContextAdapter) o;
+
+            builder.dn(context.getNameInNamespace().replaceAll(", ", ","));
+
+            if(context.getAttributes() != null) {
+
+                context.getAttributes().getAll().asIterator().forEachRemaining(attr -> {
+                    if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapOrganizationAttribute())) {
+                        try {
+                            String org = attr.get().toString();
+                            builder.organization(org);
+                        } catch (NamingException e) {
+                            log.error("Could not map org attribute: ", e);
+                        }
+                    }else if(attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmployeeTypeAttribute())){
+                        try {
+                            String type = attr.get().toString();
+                            builder.employeeType(type);
+                        } catch (NamingException e) {
+                            log.error("Could not map org attribute: ", e);
+                        }
+                    }
+                });
+
+            }
+
+            return builder.build();
+        }
+    }
 }

@@ -38,6 +38,8 @@ public class UserController {
         UserStatus userStatus = userService.getUserStatus(dn);
         userDetails.setNotes(userStatus.getNotes());
         userDetails.setStatus(userStatus.getStatus());
+        userDetails.setOrganization(userStatus.getOrganization());
+        userDetails.setEmployeeType(userStatus.getEmployeeType());
 
         return  new ModelAndView("userdetails", "user", userDetails);
     }

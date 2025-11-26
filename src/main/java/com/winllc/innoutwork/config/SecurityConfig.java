@@ -1,6 +1,8 @@
 package com.winllc.innoutwork.config;
 
 import com.winllc.innoutwork.data.LdapUser;
+import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.service.AppUserDetailsService;
 import com.winllc.innoutwork.service.LdapService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,17 +32,15 @@ public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
-    @Autowired
-    private ApplicationProperties properties;
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
-                                                   UserDetailsService ldapUserDetailsService) throws Exception {
+                                                   AppUserDetailsService appUserDetailsService) throws Exception {
         http
                 // Require HTTPS with client certificate
                 .x509(x509 -> x509
                         .subjectPrincipalRegex("(.*)") // Extract CN as username
-                        .userDetailsService(ldapUserDetailsService)
+                        .userDetailsService(appUserDetailsService)
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/**").permitAll()
@@ -62,57 +62,4 @@ public class SecurityConfig {
         );
     }
 
-    @Bean
-    public UserDetailsService ldapUserDetailsService(LdapTemplate ldapTemplate) {
-        return username -> {
-            log.info("Looking up user: {}", username);
-
-            LdapUser user = null;
-            try {
-
-                if(properties.isLookupOnDnAttribute()){
-                    LdapQuery query = LdapQueryBuilder.query()
-                            .base(properties.getBaseDn())
-                            .countLimit(1)
-                            .filter(new EqualsFilter(properties.getUserDnAttribute(), username));
-
-                    List<LdapUser> users = ldapTemplate.search(query, (ContextMapper<LdapUser>) ctx -> {
-                        DirContextAdapter context = (DirContextAdapter) ctx;
-                        return LdapUser.builder()
-                                .dn(context.getDn().toString())
-                                .build();
-                    });
-
-                    if(!CollectionUtils.isEmpty(users)){
-                        user =  users.getFirst();
-                    }
-
-                }else{
-                    user = ldapTemplate.lookup(username, (ContextMapper<LdapUser>) ctx -> {
-                        DirContextAdapter context = (DirContextAdapter) ctx;
-                        return LdapUser.builder()
-                                .dn(context.getDn().toString())
-                                .build();
-                    });
-                }
-
-
-            }catch (Exception e) {log.error("Not found: %s".formatted(username), e);}
-
-            List<String> roles = new ArrayList<>();
-
-            if(user != null){
-                return User.withUsername(username.replace(", ",","))
-                        .password("") // not used with X.509
-                        .roles(roles.toArray(new String[0]))
-                        .build();
-            }else{
-                return User.withUsername("NOTFOUND")
-                        .password("") // not used with X.509
-                        .roles(roles.toArray(new String[0]))
-                        .build();
-            }
-
-        };
-    }
 }

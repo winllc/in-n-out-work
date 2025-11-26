@@ -150,6 +150,8 @@ public class UserService {
         if(recordOptional.isPresent()){
             UserRecord record = recordOptional.get();
             status.setNotes(record.getNotes());
+            status.setOrganization(record.getOrganization());
+            status.setEmployeeType(record.getEmployeeType());
             if(status.getStatus().equals("NONE") && record.getStatus() != null && record.getStatus() != UserStatusEnum.STANDARD){
                 status.setStatus(record.getStatus().toString());
             }
