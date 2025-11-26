@@ -22,9 +22,11 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 @Service
@@ -84,11 +86,11 @@ public class AppUserDetailsService implements UserDetailsService {
         }else{
             UserRecord userRecord = byDnIgnoreCase.get();
             boolean updated = false;
-            if(ldapUser.getEmployeeType().equalsIgnoreCase(ldapUser.getEmployeeType())){
+            if(!Objects.equals(ldapUser.getEmployeeType(), userRecord.getEmployeeType())){
                 userRecord.setEmployeeType(ldapUser.getEmployeeType());
                 updated = true;
             }
-            if(ldapUser.getOrganization().equalsIgnoreCase(ldapUser.getOrganization())){
+            if(!Objects.equals(ldapUser.getOrganization(), userRecord.getOrganization())){
                 userRecord.setOrganization(ldapUser.getOrganization());
                 updated = true;
             }
