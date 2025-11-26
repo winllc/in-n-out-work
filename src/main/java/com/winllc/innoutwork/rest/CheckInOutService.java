@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.constant.CheckInOutEnum;
+import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.CheckInOut;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.service.DatabaseService;
@@ -83,6 +84,12 @@ public class CheckInOutService {
             }else{
                 throw new RuntimeException("invalid action");
             }
+
+            if(auth.getPrincipal() != null && auth.getPrincipal() instanceof AppUserDetails details){
+                record.setOrganization(details.getOrganization());
+                record.setEmployeeType(details.getEmployeeType());
+            }
+
             return databaseService.saveCheckInOutRecord(record);
         }
 

@@ -46,9 +46,11 @@ public class MetricsService {
         List<CheckInOutRecord> totalCurrentRecords = checkInOutRecordRepository.findTotalCurrentRecords(beginning);
 
         Map<String, List<CheckInOutRecord>> orgGroup = totalCurrentRecords.stream()
+                .filter(r -> r.getOrganization() != null)
                 .collect(Collectors.groupingBy(CheckInOutRecord::getOrganization));
 
         Map<String, List<CheckInOutRecord>> employeeTypeGroup = totalCurrentRecords.stream()
+                .filter(r -> r.getEmployeeType() != null)
                 .collect(Collectors.groupingBy(CheckInOutRecord::getEmployeeType));
 
         Map<String, Map<CheckInOutEnum, Long>> orgGroupStats = new HashMap<>();
