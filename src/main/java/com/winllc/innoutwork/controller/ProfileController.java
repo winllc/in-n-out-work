@@ -34,6 +34,8 @@ public class ProfileController {
         Optional<UserRecord> optionalRecord = recordRepository.findByDnIgnoreCase(authentication.getName());
         if(optionalRecord.isPresent()) {
             form.setNotes(optionalRecord.get().getNotes());
+
+            model.addAttribute("user", optionalRecord.get());
         }
 
         model.addAttribute("form", form);

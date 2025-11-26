@@ -17,4 +17,6 @@ public class UserDetails {
     private List<LdapGroup> memberOf = new ArrayList<>();
     private String notes;
     private String status;
+    private String employeeType;
+    private String organization;
 }

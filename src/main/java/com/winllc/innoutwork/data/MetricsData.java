@@ -16,6 +16,7 @@ public class MetricsData {
     private Map<CheckInOutEnum, Long> statusCounts = new HashMap<>();
     private Map<CheckInOutEnum, List<ZonedDateTime>> recordSeries = new HashMap<>();
     private Long totalUsers;
-
     private String totalLoginChartData;
+    private Map<String, Map<CheckInOutEnum, Long>> employeeTypeStatusCounts = new HashMap<>();
+    private Map<String, Map<CheckInOutEnum, Long>> orgStatusCounts = new HashMap<>();
 }

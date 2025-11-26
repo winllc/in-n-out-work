@@ -12,6 +12,8 @@ import com.winllc.innoutwork.data.charts.PieChartDataSet;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.DatabaseService;
+import com.winllc.innoutwork.service.MetricsService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -32,6 +34,7 @@ public class MetricsController {
     private final CacheService cacheService;
     private final DatabaseService databaseService;
     private final ApplicationProperties properties;
+    private final MetricsService metricsService;
 
     private static final Map<CheckInOutEnum, String> colorMap = new HashMap<>();
 
@@ -43,17 +46,18 @@ public class MetricsController {
     }
 
     public MetricsController(ApplicationProperties properties,
-                             CacheService cacheService, DatabaseService databaseService) {
+                             CacheService cacheService, DatabaseService databaseService, MetricsService metricsService) {
         this.properties = properties;
         this.cacheService = cacheService;
         this.databaseService = databaseService;
+        this.metricsService = metricsService;
     }
 
     @GetMapping
     public ModelAndView get() throws JsonProcessingException {
         ModelAndView mv = new ModelAndView("metrics");
 
-        MetricsData data = new MetricsData();
+        MetricsData data = metricsService.getCombinedStatistics();
         data.setTotalUsers(cacheService.getLdapCount(properties.getBaseDn()));
 
         TotalLoginChartData totalLoginChartData = getTotalLoginChartData();
@@ -79,7 +83,7 @@ public class MetricsController {
         TotalLoginChartData data = new TotalLoginChartData();
 
         Long totalUsers = cacheService.getLdapCount(properties.getBaseDn());
-        Map<CheckInOutEnum, Long> todaysStatistics = databaseService.getTodaysStatistics();
+        Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics();
 
         PieChartDataSet dataSet = new PieChartDataSet();
         dataSet.setLabel("Total Users");

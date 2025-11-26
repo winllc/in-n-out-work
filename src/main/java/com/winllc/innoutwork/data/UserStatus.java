@@ -24,6 +24,8 @@ public class UserStatus {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_FORMAT)
     private ZonedDateTime lastStatusChangeAt;
     private String notes;
+    private String organization;
+    private String employeeType;
 
     public String getCn(){
         if(dn != null){

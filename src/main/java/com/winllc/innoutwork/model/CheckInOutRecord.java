@@ -35,6 +35,8 @@ public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     @Enumerated(EnumType.STRING)
     private CheckInOutEnum action;
     private String windowsUserId;
+    private String organization;
+    private String employeeType;
 
     public CheckInOutRecord() {
         this.sessionId = UUID.randomUUID().toString(); // Generate UUID in constructor

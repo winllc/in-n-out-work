@@ -28,11 +28,13 @@ public class UserRecord {
     @Column(nullable = false)
     private String dn;
     private String notes;
-    @Column(nullable = true, columnDefinition = "text")
-    @Enumerated(EnumType.ORDINAL)
+    @Column(columnDefinition = "text")
+    @Enumerated(EnumType.STRING)
     private UserStatusEnum status;
     @Column(length = 2000)
     private String favoriteGroups;
+    private String organization;
+    private String employeeType;
 
 
     public void addGroup(String group) {
