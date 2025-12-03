@@ -16,6 +16,7 @@ import io.micrometer.common.util.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZonedDateTime;
@@ -42,6 +43,7 @@ public class UserService {
     }
 
     @GetMapping("/group/{groupName}")
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public Map<String, Object> getUsers(
             @PathVariable String groupName) {
 
@@ -59,6 +61,7 @@ public class UserService {
     }
 
     @GetMapping("/search")
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public List<UserStatus> searchUsers(
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "1") int page,
@@ -89,6 +92,7 @@ public class UserService {
     }
 
     @GetMapping("/checkinoutrecords/{dn}")
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public PagedModel<CheckInOutRecord> getUserCheckInOutRecords(
             @PathVariable String dn,
             @RequestParam(defaultValue = "1") int page,

@@ -5,6 +5,7 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.UserRecordService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -28,6 +29,7 @@ public class ProfileController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public String profile(Authentication authentication, Model model) {
         ProfileForm form = new ProfileForm();
 
@@ -43,6 +45,7 @@ public class ProfileController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public String profileSubmit(Authentication authentication,
                                 Model model, @ModelAttribute ProfileForm form) {
 
