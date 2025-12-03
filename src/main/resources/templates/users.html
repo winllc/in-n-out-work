@@ -36,7 +36,7 @@
         const groupDn = /*[[${groupDn}]]*/ "test";
 
         const table = new Tabulator("#user-table", {
-            ajaxURL: "/api/users/group/" + groupName,
+            ajaxURL: "/api/users/group/" + groupDn,
 
             ajaxResponse: function (url, params, response) {
                 // Tabulator expects array of row data

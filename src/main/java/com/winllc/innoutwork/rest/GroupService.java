@@ -11,6 +11,7 @@ import com.winllc.innoutwork.service.UserRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -39,6 +40,7 @@ public class GroupService {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public Map<String, Object> getGroups() {
         List<LdapGroup> groups = ldapService.getGroups();
 
@@ -49,11 +51,13 @@ public class GroupService {
     }
 
     @GetMapping("/hierarchy")
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public LdapGroup groupHierarchy() {
         return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
     }
 
     @PostMapping("/favoriteGroup")
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public void favoriteGroup(Authentication authentication, @RequestBody GroupFavorite groupFavorite) {
         //return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
         userRecordService.updateGroupFavorite(authentication, groupFavorite);

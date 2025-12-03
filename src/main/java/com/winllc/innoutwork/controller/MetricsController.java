@@ -14,6 +14,7 @@ import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.DatabaseService;
 import com.winllc.innoutwork.service.MetricsService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -54,6 +55,7 @@ public class MetricsController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public ModelAndView get() throws JsonProcessingException {
         ModelAndView mv = new ModelAndView("metrics");
 

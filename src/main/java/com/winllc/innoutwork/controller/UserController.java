@@ -6,6 +6,7 @@ import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.rest.UserService;
 import com.winllc.innoutwork.service.LdapService;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -27,6 +28,7 @@ public class UserController {
     }
 
     @GetMapping("/details/{dn}")
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public ModelAndView details(@PathVariable String dn){
 
         UserDetails userDetails = new UserDetails();
@@ -45,6 +47,7 @@ public class UserController {
     }
 
     @GetMapping("/search")
+    @PreAuthorize("hasAuthority('SUPER_USER')")
     public ModelAndView search(){
 
         return  new ModelAndView("usersearch");

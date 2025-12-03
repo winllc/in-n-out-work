@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
@@ -108,7 +109,7 @@ public class LdapService {
     }
 
 
-    public List<LdapGroup> getGroups(){
+    public List<LdapGroup> getGroups() {
         return ldapTemplate.search(
                 properties.getBaseDn(),
                 "(objectClass=groupOfUniqueNames)",
@@ -121,31 +122,32 @@ public class LdapService {
     }
 
     public List<String> getGroupMembers(String groupName) {
-        List<String> members = new ArrayList<>();
+        List<LdapDn> members = new ArrayList<>();
 
         try {
-            LdapQuery query = LdapQueryBuilder.query()
-                    .base(properties.getBaseDn())
-                    .attributes("uniqueMember")
-                    .searchScope(SearchScope.SUBTREE)
-                    .countLimit(1)
-                    .filter("cn=" + groupName);
+            members = ldapTemplate.lookup(groupName, (AttributesMapper<List<LdapDn>>) attrs -> {
+                List<LdapDn> members1 = new ArrayList<>();
+                attrs.getIDs().asIterator().forEachRemaining(a -> {
+                    if (a.equalsIgnoreCase("uniqueMember")) {
+                        Attribute attribute = attrs.get(a);
+                        try {
+                            attribute.getAll().asIterator().forEachRemaining(m -> members1.add(new LdapDn(m.toString())));
+                        } catch (NamingException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                });
 
-            List<Attribute> uniqueMember = ldapTemplate.search(query, (AttributesMapper<Attribute>)
-                    attributes -> attributes.get("uniqueMember"));
+                return members1;
+            });
 
-            if (uniqueMember != null) {
-                NamingEnumeration<?> enumeration = uniqueMember.get(0).getAll();
-                while (enumeration.hasMore()) {
-                    String memberDn = (String) enumeration.next();
-                    members.add(memberDn);
-                }
-            }
         } catch (Exception e) {
             log.error("Failed to get members for group: {}", groupName, e);
         }
 
-        return members;
+        return members.stream()
+                .map(LdapDn::toString)
+                .toList();
     }
 
     private LdapGroup buildGroupHierarchyFromAttribute(String dn, List<String> visited) {
@@ -274,7 +276,7 @@ public class LdapService {
         );
     }
 
-    private static final class LdapUserContextMapper  implements ContextMapper<LdapUser> {
+    private static final class LdapUserContextMapper implements ContextMapper<LdapUser> {
 
         private final ApplicationProperties appProperties;
 
@@ -289,7 +291,7 @@ public class LdapService {
 
             builder.dn(context.getNameInNamespace().replaceAll(", ", ","));
 
-            if(context.getAttributes() != null) {
+            if (context.getAttributes() != null) {
 
                 context.getAttributes().getAll().asIterator().forEachRemaining(attr -> {
                     if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapOrganizationAttribute())) {
@@ -299,7 +301,7 @@ public class LdapService {
                         } catch (NamingException e) {
                             log.error("Could not map org attribute: ", e);
                         }
-                    }else if(attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmployeeTypeAttribute())){
+                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmployeeTypeAttribute())) {
                         try {
                             String type = attr.get().toString();
                             builder.employeeType(type);
