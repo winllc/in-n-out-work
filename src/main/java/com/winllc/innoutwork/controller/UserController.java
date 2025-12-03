@@ -3,11 +3,10 @@ package com.winllc.innoutwork.controller;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.UserDetails;
 import com.winllc.innoutwork.data.UserStatus;
-import com.winllc.innoutwork.rest.UserService;
+import com.winllc.innoutwork.rest.UserRestService;
 import com.winllc.innoutwork.service.LdapService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -26,11 +25,11 @@ public class UserController {
 
 
     private final LdapService ldapService;
-    private final UserService userService;
+    private final UserRestService userRestService;
 
-    public UserController(LdapService ldapService, UserService userService) {
+    public UserController(LdapService ldapService, UserRestService userRestService) {
         this.ldapService = ldapService;
-        this.userService = userService;
+        this.userRestService = userRestService;
     }
 
     @GetMapping("/details/{dn}")
@@ -44,7 +43,7 @@ public class UserController {
         List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(dn);
         userDetails.setMemberOf(groupsForUser);
 
-        UserStatus userStatus = userService.getUserStatus(dn);
+        UserStatus userStatus = userRestService.getUserStatus(dn);
         userDetails.setNotes(userStatus.getNotes());
         userDetails.setStatus(userStatus.getStatus());
         userDetails.setOrganization(userStatus.getOrganization());
