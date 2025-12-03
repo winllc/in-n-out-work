@@ -45,6 +45,9 @@ dependencies {
     implementation 'com.github.ben-manes.caffeine:caffeine'
     implementation 'org.springframework.boot:spring-boot-starter-cache'
 
+    // https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
+    implementation("org.apache.commons:commons-lang3:3.20.0")
+
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
 

@@ -5,16 +5,14 @@ import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.CheckInOut;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.service.DatabaseService;
-import com.winllc.innoutwork.service.LdapService;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
-import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZonedDateTime;
@@ -24,13 +22,13 @@ import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/check")
-public class CheckInOutService {
+public class CheckInOutRestService {
 
-    private static final Logger log = LoggerFactory.getLogger(CheckInOutService.class);
+    private static final Logger log = LoggerFactory.getLogger(CheckInOutRestService.class);
 
     private final DatabaseService databaseService;
 
-    public CheckInOutService(DatabaseService databaseService) {
+    public CheckInOutRestService(DatabaseService databaseService) {
         this.databaseService = databaseService;
     }
 
@@ -45,45 +43,33 @@ public class CheckInOutService {
         }else{
             Optional<CheckInOutRecord> optionalRecord = databaseService.lookupBySessionId(checkInOut.getSessionId());
 
-            CheckInOutRecord record;
-
             String dn = auth != null ? auth.getName().replace(", ", ",") : null;
 
             if (optionalRecord.isPresent()) {
                 dn = optionalRecord.get().getDn().replace(", ", ",");
             }
 
-            if(action.equals("in")) {
-                record = CheckInOutRecord.builder()
-                        .dn(dn)
-                        .windowsUserId(checkInOut.getWindowsUserId())
-                        .timestamp(ZonedDateTime.now())
+            CheckInOutRecord.CheckInOutRecordBuilder recordBuilder = CheckInOutRecord.builder()
+                    .dn(dn)
+                    .windowsUserId(checkInOut.getWindowsUserId())
+                    .timestamp(ZonedDateTime.now());
+
+            CheckInOutRecord record = switch (action) {
+                case "in" -> recordBuilder
                         .action(CheckInOutEnum.CHECK_IN)
                         .build();
-            }else if(action.equals("lock")) {
-                record = CheckInOutRecord.builder()
-                        .dn(dn)
-                        .windowsUserId(checkInOut.getWindowsUserId())
-                        .timestamp(ZonedDateTime.now())
+                case "lock" -> recordBuilder
                         .action(CheckInOutEnum.LOCK)
                         .build();
-            }else if(action.equals("unlock")) {
-                record = CheckInOutRecord.builder()
-                        .dn(dn)
-                        .windowsUserId(checkInOut.getWindowsUserId())
-                        .timestamp(ZonedDateTime.now())
+                case "unlock" -> recordBuilder
                         .action(CheckInOutEnum.UNLOCK)
                         .build();
-            } else if(action.equals("out")) {
-                record = CheckInOutRecord.builder()
-                        .dn(dn)
-                        .timestamp(ZonedDateTime.now())
+                case "out" -> recordBuilder
                         .action(CheckInOutEnum.CHECK_OUT)
                         .sessionId(checkInOut.getSessionId())
                         .build();
-            }else{
-                throw new RuntimeException("invalid action");
-            }
+                default -> throw new RuntimeException("invalid action");
+            };
 
             if(auth != null && auth.getPrincipal() != null && auth.getPrincipal() instanceof AppUserDetails details){
                 record.setOrganization(details.getOrganization());

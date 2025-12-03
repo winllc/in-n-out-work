@@ -2,10 +2,7 @@ package com.winllc.innoutwork.model;
 
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -36,6 +33,8 @@ public class UserRecord {
     private String organization;
     private String employeeType;
 
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<PermissionRecord> permissions = new ArrayList<>();
 
     public void addGroup(String group) {
         Set<String> groupSet = new HashSet<>(getFavoriteGroupsList());
@@ -50,7 +49,7 @@ public class UserRecord {
     }
 
     public List<String> getFavoriteGroupsList(){
-        if(favoriteGroups != null){
+        if(favoriteGroups != null && !favoriteGroups.isEmpty()){
             String[] split = favoriteGroups.split(";");
             return Stream.of(split)
                     .collect(Collectors.toList());

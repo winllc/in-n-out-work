@@ -1,11 +1,9 @@
 package com.winllc.innoutwork.rest;
 
-import ch.qos.logback.core.util.StringUtil;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
-import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
@@ -13,11 +11,10 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.DatabaseService;
 import com.winllc.innoutwork.service.LdapService;
-import io.micrometer.common.util.StringUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZonedDateTime;
@@ -25,7 +22,7 @@ import java.util.*;
 
 @RestController
 @RequestMapping("/api/users")
-public class UserService {
+public class UserRestService {
 
     private final LdapService ldapService;
     private final DatabaseService databaseService;
@@ -33,9 +30,9 @@ public class UserService {
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
 
-    public UserService(LdapService ldapService, DatabaseService databaseService,
-                       UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
-                       ApplicationProperties properties) {
+    public UserRestService(LdapService ldapService, DatabaseService databaseService,
+                           UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
+                           ApplicationProperties properties) {
         this.ldapService = ldapService;
         this.databaseService = databaseService;
         this.userRecordRepository = userRecordRepository;
@@ -44,9 +41,9 @@ public class UserService {
     }
 
     @GetMapping("/group/{groupName}")
-    @PreAuthorize("hasAuthority('SUPER_USER')")
-    public Map<String, Object> getUsers(
-            @PathVariable String groupName) {
+    @PreAuthorize("hasAuthority('SUPER_USER') or @permissionEvaluator.groupCheck(#groupName, #authentication)")
+    public Map<String, Object> getUsers(Authentication authentication,
+                                        @PathVariable String groupName) {
 
         List<String> dns = ldapService.getGroupMembers(LdapDn.builder().dn(groupName).build());
 

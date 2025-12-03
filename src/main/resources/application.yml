@@ -12,7 +12,7 @@ server:
 
 logging:
   level:
-    root: debug
+    root: info
 
 spring:
   datasource:
@@ -61,3 +61,4 @@ application:
     - CN=user3,OU=Users,DC=winllc,DC=com
   groups:
     - groups-base-dn: ou=Groups,dc=winllc,dc=com
+    - groups-base-dn: ou=Companies,dc=winllc,dc=com
