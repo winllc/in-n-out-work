@@ -13,4 +13,6 @@ public class LdapUser {
     private String sn;
     private String mail;
     private String uid;
+    private String employeeType;
+    private String organization;
 }

@@ -13,7 +13,7 @@ server:
 
 spring:
   datasource:
-    url: jdbc:postgresql://192.168.1.29:5432/appdb
+    url: jdbc:postgresql://localhost:5432/appdb
     username: appuser
     password: secret123
     driver-class-name: org.postgresql.Driver
@@ -26,7 +26,7 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
   ldap:
     #urls: ldap://fid.winllc-dev.com:2389
-    urls: ldap://192.168.1.29:1389
+    urls: ldap://localhost:1389
     username: cn=admin,dc=winllc,dc=com
     password: adminpassword
   jackson:
@@ -52,3 +52,5 @@ application:
   groups-base-dn: ou=Groups,dc=winllc,dc=com
   banner-text: BANNER TEXT
   timezone: America/New_York
+  user-ldap-employee-type-attribute: employeeType
+  user-ldap-organization-attribute: o

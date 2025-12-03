@@ -50,24 +50,7 @@ public class DatabaseService {
         return checkinInOutRecordRepository.findByTimestampBetweenAndDnIgnoreCaseOrderByTimestampDesc(beginning, ending, dn);
     }
 
-    public Map<CheckInOutEnum, Long> getTodaysStatistics(){
-        Map<CheckInOutEnum, Long> metrics = new HashMap<>();
 
-        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
-        ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
-
-        List<CheckInOutEnum> totalCurrentStatuses = checkinInOutRecordRepository
-                .findTotalCurrentStatuses(beginning);
-
-        Map<CheckInOutEnum, Long> collect = totalCurrentStatuses.stream()
-                .collect(Collectors.groupingBy(s -> s, Collectors.counting()));
-
-        collect.forEach((key, value) -> {
-            metrics.put(key, value);
-        });
-
-        return metrics;
-    }
 
     public List<CheckInOutRecord> findTodaysRecords() {
         ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);

@@ -34,6 +34,51 @@
                     <canvas id="myChart2"></canvas>
                 </div>
             </div>
+            <div class="row">
+                <div class="col-md-6 mx-auto">
+                    <h3>By Organization</h3>
+
+                    <div th:each="org : ${data.getOrgStatusCounts()}">
+                        <h4 th:text="${org.getKey()}"></h4>
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Count</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="status : ${org.getValue()}">
+                                <td th:text="${status.key}"></td>
+                                <td th:text="${status.getValue()}"></td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="col-md-6 mx-auto">
+                    <h3>By Employee Type</h3>
+
+                    <div th:each="org : ${data.getEmployeeTypeStatusCounts()}">
+                        <h4 th:text="${org.getKey()}"></h4>
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>Status</th>
+                                <th>Count</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="status : ${org.getValue()}">
+                                <td th:text="${status.key}"></td>
+                                <td th:text="${status.getValue()}"></td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
 
             <script th:inline="javascript">
                 /*<![CDATA[*/
