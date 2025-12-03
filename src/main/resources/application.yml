@@ -10,6 +10,9 @@ server:
     trust-store-password: changeit
     trust-store-type: PKCS12
 
+logging:
+  level:
+    root: debug
 
 spring:
   datasource:
@@ -47,12 +50,14 @@ management:
       exposure:
         include: health,info,metrics,env
 application:
-  base-dn: dc=winllc,dc=com
+  user-base-dn: dc=winllc,dc=com
   user-ldap-filter: (objectclass=inetOrgPerson)
-  groups-base-dn: ou=Groups,dc=winllc,dc=com
+
   banner-text: BANNER TEXT
   timezone: America/New_York
   user-ldap-employee-type-attribute: employeeType
   user-ldap-organization-attribute: o
   super-user-dns:
     - CN=user3,OU=Users,DC=winllc,DC=com
+  groups:
+    - groups-base-dn: ou=Groups,dc=winllc,dc=com

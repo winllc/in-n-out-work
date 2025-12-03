@@ -85,7 +85,7 @@ public class CheckInOutService {
                 throw new RuntimeException("invalid action");
             }
 
-            if(auth.getPrincipal() != null && auth.getPrincipal() instanceof AppUserDetails details){
+            if(auth != null && auth.getPrincipal() != null && auth.getPrincipal() instanceof AppUserDetails details){
                 record.setOrganization(details.getOrganization());
                 record.setEmployeeType(details.getEmployeeType());
             }

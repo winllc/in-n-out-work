@@ -50,7 +50,7 @@
                             <tbody>
                             <tr th:each="status : ${org.getValue()}">
                                 <td th:text="${status.key}"></td>
-                                <td th:text="${status.getValue()}"></td>
+                                <td class="d-flex justify-content-end" th:text="${status.getValue()}"></td>
                             </tr>
                             </tbody>
                         </table>
@@ -72,7 +72,7 @@
                             <tbody>
                             <tr th:each="status : ${org.getValue()}">
                                 <td th:text="${status.key}"></td>
-                                <td th:text="${status.getValue()}"></td>
+                                <td class="d-flex justify-content-end" th:text="${status.getValue()}"></td>
                             </tr>
                             </tbody>
                         </table>

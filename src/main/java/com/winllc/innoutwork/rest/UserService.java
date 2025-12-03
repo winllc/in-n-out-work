@@ -4,6 +4,7 @@ import ch.qos.logback.core.util.StringUtil;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.CheckInOutRecord;
@@ -47,7 +48,7 @@ public class UserService {
     public Map<String, Object> getUsers(
             @PathVariable String groupName) {
 
-        List<String> dns = ldapService.getGroupMembers(groupName);
+        List<String> dns = ldapService.getGroupMembers(LdapDn.builder().dn(groupName).build());
 
         List<UserStatus> users = new ArrayList<>();
         for(String dn : dns){
@@ -80,7 +81,7 @@ public class UserService {
             filter = "(&(objectclass=inetOrgPerson)(cn=*%s*))".formatted(search);
         }
 
-        List<UserStatus> pageResult = ldapService.search(properties.getBaseDn(), filter, page, size);
+        List<UserStatus> pageResult = ldapService.search(properties.getUserBaseDn(), filter, page, size);
         List<UserStatus> users = new ArrayList<>();
 
         for(UserStatus user : pageResult){

@@ -39,6 +39,7 @@ public class GroupService {
         this.userRecordService = userRecordService;
     }
 
+    /*
     @GetMapping
     @PreAuthorize("hasAuthority('SUPER_USER')")
     public Map<String, Object> getGroups() {
@@ -50,10 +51,13 @@ public class GroupService {
         return response;
     }
 
+     */
+
     @GetMapping("/hierarchy")
     @PreAuthorize("hasAuthority('SUPER_USER')")
     public LdapGroup groupHierarchy() {
-        return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
+        //return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
+        return null; //unused?
     }
 
     @PostMapping("/favoriteGroup")

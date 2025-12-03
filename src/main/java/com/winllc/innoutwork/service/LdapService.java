@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.config.TopLevelGroupProperties;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
@@ -72,15 +73,15 @@ public class LdapService {
 
     }
 
-    public Optional<LdapUser> lookupUser(String dn) {
+    public Optional<LdapUser> lookupUser(LdapDn dn) {
         LdapUser user = null;
         try {
 
             if (properties.isLookupOnDnAttribute()) {
                 LdapQuery query = LdapQueryBuilder.query()
-                        .base(properties.getBaseDn())
+                        .base(properties.getUserBaseDn())
                         .countLimit(1)
-                        .filter(new EqualsFilter(properties.getUserDnAttribute(), dn));
+                        .filter(new EqualsFilter(properties.getUserDnAttribute(), dn.toString()));
 
                 List<LdapUser> users = ldapTemplate.search(query, new LdapUserContextMapper(properties));
 
@@ -89,7 +90,7 @@ public class LdapService {
                 }
 
             } else {
-                user = ldapTemplate.lookup(dn, new LdapUserContextMapper(properties));
+                user = ldapTemplate.lookup(dn.toString(), new LdapUserContextMapper(properties));
             }
 
         } catch (Exception e) {
@@ -109,9 +110,9 @@ public class LdapService {
     }
 
 
-    public List<LdapGroup> getGroups() {
+    public List<LdapGroup> getGroups(TopLevelGroupProperties topProps) {
         return ldapTemplate.search(
-                properties.getBaseDn(),
+                topProps.getGroupsBaseDn(),
                 "(objectClass=groupOfUniqueNames)",
                 (ContextMapper<LdapGroup>) ctx -> {
                     DirContextAdapter context = (DirContextAdapter) ctx;
@@ -121,11 +122,11 @@ public class LdapService {
         );
     }
 
-    public List<String> getGroupMembers(String groupName) {
+    public List<String> getGroupMembers(LdapDn dn) {
         List<LdapDn> members = new ArrayList<>();
 
         try {
-            members = ldapTemplate.lookup(groupName, (AttributesMapper<List<LdapDn>>) attrs -> {
+            members = ldapTemplate.lookup(dn.toString(), (AttributesMapper<List<LdapDn>>) attrs -> {
                 List<LdapDn> members1 = new ArrayList<>();
                 attrs.getIDs().asIterator().forEachRemaining(a -> {
                     if (a.equalsIgnoreCase("uniqueMember")) {
@@ -142,7 +143,7 @@ public class LdapService {
             });
 
         } catch (Exception e) {
-            log.error("Failed to get members for group: {}", groupName, e);
+            log.error("Failed to get members for group: {}", dn.toString(), e);
         }
 
         return members.stream()
@@ -216,8 +217,12 @@ public class LdapService {
             return null;
         }
 
-        String ouName = getOuNameFromDn(dn);
-        LdapGroup node = new LdapGroup(dn, ouName);
+        LdapDn ldapDn = new LdapDn(dn);
+
+        LdapGroup node = new LdapGroup(dn, ldapDn.getName());
+
+        List<String> groupMembers = getGroupMembers(ldapDn);
+        node.setGroupSize(groupMembers.size());
 
         // 🔍 Find immediate child OUs of this DN
         List<Name> childDns = ldapTemplate.search(
@@ -241,6 +246,7 @@ public class LdapService {
         return node;
     }
 
+    /*
     private String getOuNameFromDn(String dn) {
         // Example: "ou=Engineering,ou=People,dc=example,dc=com" -> "Engineering"
         if (dn == null) return "";
@@ -253,6 +259,8 @@ public class LdapService {
         return dn;
     }
 
+     */
+
     /**
      * Finds all groupOfUniqueNames where the given userDN is a uniqueMember.
      *
@@ -261,12 +269,25 @@ public class LdapService {
      */
     public List<LdapGroup> findGroupsForUser(String userDn) {
         // Build LDAP filter: (&(objectClass=groupOfUniqueNames)(uniqueMember=<userDn>))
+
+        List<LdapGroup> groups = new  ArrayList<>();
+
+        for(TopLevelGroupProperties topProp : properties.getGroups()) {
+            List<LdapGroup> temp = findGroupsForUserWithBaseDn(new LdapDn(topProp.getGroupsBaseDn()),
+                    new LdapDn(userDn));
+            groups.addAll(temp);
+        }
+
+        return groups;
+    }
+
+    private List<LdapGroup> findGroupsForUserWithBaseDn(LdapDn groupDn, LdapDn userDn) {
         AndFilter filter = new AndFilter();
         filter.and(new EqualsFilter("objectClass", "groupOfUniqueNames"));
-        filter.and(new EqualsFilter("uniqueMember", userDn));
+        filter.and(new EqualsFilter("uniqueMember", userDn.toString()));
 
         return ldapTemplate.search(
-                properties.getBaseDn(),  // base DN (empty means use the default search base)
+                groupDn.toString(),  // base DN (empty means use the default search base)
                 filter.encode(),
                 (ContextMapper<LdapGroup>) ctx -> {
                     DirContextAdapter context = (DirContextAdapter) ctx;

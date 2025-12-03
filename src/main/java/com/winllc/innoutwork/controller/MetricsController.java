@@ -60,7 +60,7 @@ public class MetricsController {
         ModelAndView mv = new ModelAndView("metrics");
 
         MetricsData data = metricsService.getCombinedStatistics();
-        data.setTotalUsers(cacheService.getLdapCount(properties.getBaseDn()));
+        data.setTotalUsers(cacheService.getLdapCount(properties.getUserBaseDn()));
 
         TotalLoginChartData totalLoginChartData = getTotalLoginChartData();
         LoginByTimeChartData loginByTimeChart = getLoginByTimeChart();
@@ -84,7 +84,7 @@ public class MetricsController {
 
         TotalLoginChartData data = new TotalLoginChartData();
 
-        Long totalUsers = cacheService.getLdapCount(properties.getBaseDn());
+        Long totalUsers = cacheService.getLdapCount(properties.getUserBaseDn());
         Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics();
 
         PieChartDataSet dataSet = new PieChartDataSet();

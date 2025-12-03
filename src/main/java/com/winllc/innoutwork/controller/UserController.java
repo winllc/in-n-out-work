@@ -5,8 +5,11 @@ import com.winllc.innoutwork.data.UserDetails;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.rest.UserService;
 import com.winllc.innoutwork.service.LdapService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -19,6 +22,9 @@ import java.util.List;
 @RequestMapping("/app/user")
 public class UserController {
 
+    private static final Logger log = LoggerFactory.getLogger(UserController.class);
+
+
     private final LdapService ldapService;
     private final UserService userService;
 
@@ -29,7 +35,8 @@ public class UserController {
 
     @GetMapping("/details/{dn}")
     @PreAuthorize("hasAuthority('SUPER_USER')")
-    public ModelAndView details(@PathVariable String dn){
+    public ModelAndView details(@PathVariable String dn, Authentication auth) {
+        log.debug("%s requested details for: %s".formatted(auth.getName(), dn));
 
         UserDetails userDetails = new UserDetails();
         userDetails.setDn(dn);
