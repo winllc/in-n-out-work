@@ -3,7 +3,10 @@ package com.winllc.innoutwork.controller;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserRecordService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -19,6 +22,9 @@ import java.util.Optional;
 @Controller
 @RequestMapping("/app/profile")
 public class ProfileController {
+
+    private static final Logger log = LoggerFactory.getLogger(ProfileController.class);
+
 
     private final UserRecordRepository recordRepository;
     private final UserRecordService userRecordService;
@@ -48,6 +54,7 @@ public class ProfileController {
     @PreAuthorize("hasAuthority('SUPER_USER')")
     public String profileSubmit(Authentication authentication,
                                 Model model, @ModelAttribute ProfileForm form) {
+        log.debug("%s updating profile".formatted(authentication.getName()));
 
         UserRecord updated = userRecordService.updateNotes(authentication, form.getNotes());
 

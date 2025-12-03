@@ -9,13 +9,13 @@ import java.util.List;
 @Data
 @ConfigurationProperties(prefix = "application")
 public class ApplicationProperties {
-    private String baseDn;
+    private String userBaseDn;
     private String userLdapFilter = "(objectclass=*)";
     private String userLdapOrganizationAttribute = "organization";
     private String userLdapEmployeeTypeAttribute = "employeeType";
     private boolean lookupOnDnAttribute = false;
     private String userDnAttribute = "";
-    private String groupsBaseDn;
     private int cacheDurationMinutes = 60;
     private List<String> superUserDns = new ArrayList<>();
+    private List<TopLevelGroupProperties> groups = new ArrayList<>();
 }

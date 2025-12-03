@@ -2,6 +2,7 @@ package com.winllc.innoutwork.security;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.AppUserDetails;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
@@ -36,7 +37,7 @@ public class AppUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        String dn = username.replace(", ", ",");
+        LdapDn dn = LdapDn.builder().dn(username).build();
 
         log.info("Looking up user: {}", dn);
 
@@ -64,11 +65,11 @@ public class AppUserDetailsService implements UserDetailsService {
         }
     }
 
-    private UserRecord createUserIfDoesNotExist(String dn, LdapUser ldapUser) {
-        Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(dn);
+    private UserRecord createUserIfDoesNotExist(LdapDn dn, LdapUser ldapUser) {
+        Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(dn.toString());
         if(byDnIgnoreCase.isEmpty()){
             UserRecord userRecord = UserRecord.builder()
-                    .dn(dn)
+                    .dn(dn.toString())
                     .employeeType(ldapUser.getEmployeeType())
                     .organization(ldapUser.getOrganization())
                     .build();

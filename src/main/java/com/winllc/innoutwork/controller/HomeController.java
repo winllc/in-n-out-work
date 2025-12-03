@@ -3,6 +3,7 @@ package com.winllc.innoutwork.controller;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.config.TopLevelGroupProperties;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.ProfileForm;
@@ -50,7 +51,7 @@ public class HomeController {
     }
 
     @GetMapping("/app/users/{group}")
-    @PreAuthorize("hasAuthority('SUPER_USER') or @permissionEvaluator.checkPermission(#group, #authentication)")
+    @PreAuthorize("hasAuthority('SUPER_USER') or @permissionEvaluator.groupCheck(#group, #authentication)")
     public String users(Authentication authentication, Model model, @PathVariable String group) {
         LdapGroup ldapGroup = cacheService.getGroup(group);
         model.addAttribute("group", ldapGroup.getName());
@@ -70,7 +71,12 @@ public class HomeController {
     @GetMapping("/app/groups")
     @PreAuthorize("hasAuthority('SUPER_USER')")
     public String groups(Authentication authentication, Model model) throws JsonProcessingException {
-        LdapGroup groupHierarchy = cacheService.getGroup(properties.getGroupsBaseDn());
+        List<LdapGroup> topLevelGroups = new ArrayList<>();
+
+        for(TopLevelGroupProperties topProps: properties.getGroups()) {
+            LdapGroup groupHierarchy = cacheService.getGroup(topProps.getGroupsBaseDn());
+            topLevelGroups.add(groupHierarchy);
+        }
 
         Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(authentication.getName());
         if(recordOptional.isPresent()) {
@@ -81,7 +87,7 @@ public class HomeController {
             model.addAttribute("favoriteMap", favoriteMap);
         }
 
-        model.addAttribute("groups", Collections.singletonList(groupHierarchy));
+        model.addAttribute("groups", topLevelGroups);
         return "groups"; // resolves to src/main/resources/templates/index.html
     }
 
