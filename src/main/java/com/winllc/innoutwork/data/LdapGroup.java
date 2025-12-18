@@ -3,6 +3,7 @@ package com.winllc.innoutwork.data;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.springframework.util.CollectionUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -31,5 +32,40 @@ public class LdapGroup {
 
     public void addChild(LdapGroup group) {
         this.children.add(group);
+    }
+
+    public LdapGroup filterByWhitelist(List<LdapDn> whitelist) {
+
+        return filterGroup(this, whitelist);
+    }
+
+    public LdapGroup filterGroup(LdapGroup group, List<LdapDn> whitelist) {
+        LdapGroup ldapGroup = new LdapGroup();
+        ldapGroup.setId(group.getId());
+        ldapGroup.setName(group.getName());
+        ldapGroup.setSelectable(group.isSelectable());
+        ldapGroup.setFavorite(group.isFavorite());
+        ldapGroup.setGroupSize(group.getGroupSize());
+        ldapGroup.setDn(group.getDn());
+
+        if(!CollectionUtils.isEmpty(group.getChildren())){
+            List<LdapGroup> children = new ArrayList<>();
+
+            for(LdapGroup child : group.getChildren()){
+                LdapGroup childFiltered = filterGroup(child, whitelist);
+                if(childFiltered != null){
+                    children.add(childFiltered);
+                }
+            }
+            ldapGroup.setChildren(children);
+        }
+
+        boolean whitelisted = whitelist.stream()
+                .anyMatch(d -> new LdapDn(ldapGroup.getDn()).equals(d));
+        if(whitelisted){
+            return ldapGroup;
+        }else{
+            return null;
+        }
     }
 }

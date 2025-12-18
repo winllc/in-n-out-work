@@ -13,9 +13,11 @@ public class ApplicationProperties {
     private String userLdapFilter = "(objectclass=*)";
     private String userLdapOrganizationAttribute = "organization";
     private String userLdapEmployeeTypeAttribute = "employeeType";
+    private String userLdapLocationAttribute = "location";
     private boolean lookupOnDnAttribute = false;
     private String userDnAttribute = "";
-    private int cacheDurationMinutes = 60;
+    private int cacheDurationRefreshMinutes = 60;
+    private int cacheDurationExpirationMinutes = 120;
     private List<String> superUserDns = new ArrayList<>();
     private List<TopLevelGroupProperties> groups = new ArrayList<>();
 }

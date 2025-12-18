@@ -26,6 +26,7 @@ public class UserStatus {
     private String notes;
     private String organization;
     private String employeeType;
+    private String location;
 
     public String getCn(){
         if(dn != null){

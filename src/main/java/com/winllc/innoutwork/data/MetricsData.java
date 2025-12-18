@@ -19,4 +19,5 @@ public class MetricsData {
     private String totalLoginChartData;
     private Map<String, Map<CheckInOutEnum, Long>> employeeTypeStatusCounts = new HashMap<>();
     private Map<String, Map<CheckInOutEnum, Long>> orgStatusCounts = new HashMap<>();
+    private Map<String, Map<CheckInOutEnum, Long>> locationStatusCounts = new HashMap<>();
 }

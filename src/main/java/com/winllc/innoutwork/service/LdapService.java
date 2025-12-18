@@ -209,7 +209,6 @@ public class LdapService {
     @Cacheable(cacheNames = "ldapGroups", key = "#dn")
     public LdapGroup buildGroupRecursiveInternal(String dn) {
 
-
         // Lookup LDAP entry for this DN
         try {
             ldapTemplate.lookupContext(dn);
@@ -270,9 +269,9 @@ public class LdapService {
     public List<LdapGroup> findGroupsForUser(String userDn) {
         // Build LDAP filter: (&(objectClass=groupOfUniqueNames)(uniqueMember=<userDn>))
 
-        List<LdapGroup> groups = new  ArrayList<>();
+        List<LdapGroup> groups = new ArrayList<>();
 
-        for(TopLevelGroupProperties topProp : properties.getGroups()) {
+        for (TopLevelGroupProperties topProp : properties.getGroups()) {
             List<LdapGroup> temp = findGroupsForUserWithBaseDn(new LdapDn(topProp.getGroupsBaseDn()),
                     new LdapDn(userDn));
             groups.addAll(temp);
@@ -327,7 +326,14 @@ public class LdapService {
                             String type = attr.get().toString();
                             builder.employeeType(type);
                         } catch (NamingException e) {
-                            log.error("Could not map org attribute: ", e);
+                            log.error("Could not map empType attribute: ", e);
+                        }
+                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapLocationAttribute())) {
+                        try {
+                            String type = attr.get().toString();
+                            builder.location(type);
+                        } catch (NamingException e) {
+                            log.error("Could not map location attribute: ", e);
                         }
                     }
                 });

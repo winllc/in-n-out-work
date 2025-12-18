@@ -12,30 +12,20 @@ import java.util.List;
 @Service
 public class PermissionEvaluator {
 
-    private final LdapService ldapService;
 
-    @Autowired
-    private PermissionService permissionService;
+    private final PermissionService permissionService;
 
-    public PermissionEvaluator(LdapService ldapService) {
-        this.ldapService = ldapService;
+    public PermissionEvaluator(PermissionService permissionService) {
+        this.permissionService = permissionService;
     }
 
-    public boolean groupCheck(String group, Authentication authentication) {
 
+    public boolean groupCheck(String group, Authentication authentication) {
         LdapDn ldapDn = new LdapDn(group);
 
-        List<LdapDn> userGroups = permissionService.getUserGroupPermissions(new LdapDn(authentication.getName()));
+        List<LdapDn> userGroups = permissionService.getUserGroupPermissionsAndMemberOfGroups(new LdapDn(authentication.getName()));
 
-        List<String> groupMembers = ldapService.getGroupMembers(LdapDn.builder().dn(group).build());
-
-        boolean inGroup = groupMembers.stream()
-                .map(m -> LdapDn.builder().dn(m).build())
-                .anyMatch(m -> m.toString().equalsIgnoreCase(authentication.getName()));
-
-        boolean allowedGroup = userGroups.stream()
+        return userGroups.stream()
                 .anyMatch(g -> g.equals(ldapDn));
-
-        return allowedGroup || inGroup;
     }
 }

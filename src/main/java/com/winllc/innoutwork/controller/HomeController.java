@@ -11,6 +11,7 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.LdapService;
+import com.winllc.innoutwork.service.PermissionService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
@@ -28,6 +29,8 @@ public class HomeController {
     private final CacheService cacheService;
     private final ApplicationProperties properties;
     private final UserRecordRepository userRecordRepository;
+    @Autowired
+    private PermissionService permissionService;
 
     public HomeController(CacheService cacheService, ApplicationProperties properties,
                           UserRecordRepository userRecordRepository) {
@@ -76,6 +79,11 @@ public class HomeController {
         for(TopLevelGroupProperties topProps: properties.getGroups()) {
             LdapGroup groupHierarchy = cacheService.getGroup(topProps.getGroupsBaseDn());
             topLevelGroups.add(groupHierarchy);
+
+            List<LdapDn> groupWhitelist = permissionService.getUserGroupPermissions(new LdapDn(authentication.getName()));
+
+            LdapGroup whitelistedGroup = groupHierarchy.filterByWhitelist(groupWhitelist);
+            //System.out.println("DEBUG");
         }
 
         Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(authentication.getName());
