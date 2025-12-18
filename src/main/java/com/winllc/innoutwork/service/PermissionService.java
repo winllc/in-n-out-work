@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.model.PermissionRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.PermissionRecordRepository;
@@ -9,8 +10,7 @@ import com.winllc.innoutwork.rest.UserRestService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class PermissionService {
@@ -19,6 +19,8 @@ public class PermissionService {
     private UserRecordRepository userRecordRepository;
     @Autowired
     private PermissionRecordRepository permissionRecordRepository;
+    @Autowired
+    private LdapService ldapService;
 
     public List<LdapDn> getUserGroupPermissions(LdapDn userDn){
         List<PermissionRecord> byUserDn = permissionRecordRepository.findByUser_Dn(userDn.dn());
@@ -26,6 +28,20 @@ public class PermissionService {
         return byUserDn.stream()
                 .map(r -> new LdapDn(r.getGroupDn()))
                 .toList();
+    }
+
+    public List<LdapDn> getUserGroupPermissionsAndMemberOfGroups(LdapDn userDn){
+        List<LdapDn> permissionGroups = getUserGroupPermissions(userDn);
+
+        List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(userDn.dn());
+        List<LdapDn> memberOf = groupsForUser.stream()
+                .map(g -> new LdapDn(g.getDn()))
+                .toList();
+
+        Set<LdapDn> memberOfGroups = new HashSet<>(permissionGroups);
+        memberOfGroups.addAll(memberOf);
+
+        return new ArrayList<>(memberOfGroups);
     }
 
     public void addGroupToUser(LdapDn groupDn, LdapDn userDn) {

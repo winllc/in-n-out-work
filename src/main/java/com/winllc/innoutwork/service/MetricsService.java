@@ -53,8 +53,13 @@ public class MetricsService {
                 .filter(r -> r.getEmployeeType() != null)
                 .collect(Collectors.groupingBy(CheckInOutRecord::getEmployeeType));
 
+        Map<String, List<CheckInOutRecord>> locationGroup = totalCurrentRecords.stream()
+                .filter(r -> r.getLocation() != null)
+                .collect(Collectors.groupingBy(CheckInOutRecord::getLocation));
+
         Map<String, Map<CheckInOutEnum, Long>> orgGroupStats = new HashMap<>();
         Map<String, Map<CheckInOutEnum, Long>> employeeTypeGroupStats = new HashMap<>();
+        Map<String, Map<CheckInOutEnum, Long>> locationGroupStats = new HashMap<>();
 
         orgGroup.forEach((key, value) -> {
             Map<CheckInOutEnum, Long> collect = value.stream()
@@ -68,12 +73,19 @@ public class MetricsService {
             employeeTypeGroupStats.put(key, collect);
         });
 
+        locationGroup.forEach((key, value) -> {
+            Map<CheckInOutEnum, Long> collect = value.stream()
+                    .collect(Collectors.groupingBy(CheckInOutRecord::getAction, Collectors.counting()));
+            locationGroupStats.put(key, collect);
+        });
+
         Map<CheckInOutEnum, Long> allStats = totalCurrentRecords.stream()
                 .collect(Collectors.groupingBy(s -> s.getAction(), Collectors.counting()));
 
         metricsData.setStatusCounts(allStats);
         metricsData.setOrgStatusCounts(orgGroupStats);
         metricsData.setEmployeeTypeStatusCounts(employeeTypeGroupStats);
+        metricsData.setLocationStatusCounts(locationGroupStats);
         return metricsData;
     }
 }

@@ -18,7 +18,8 @@ public class CacheConfig {
     @Bean
     public Caffeine<Object, Object> caffeineConfig(ApplicationProperties properties) {
         return Caffeine.newBuilder()
-                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationMinutes()))  // default expiration
+                //.refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))
+                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationExpirationMinutes()))  // default expiration
                 .maximumSize(5000);
     }
 
@@ -27,8 +28,8 @@ public class CacheConfig {
                                                                  LdapGroupLoader loader) {
         return Caffeine.newBuilder()
                 .maximumSize(5000)
-                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationMinutes()))  // adjust as needed
-                .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationMinutes() / 2))
+                .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))
+                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationExpirationMinutes()))  // default expiration
                 .build(loader);
     }
 
@@ -37,8 +38,8 @@ public class CacheConfig {
                                                                  LdapTotalCountLoader loader) {
         return Caffeine.newBuilder()
                 .maximumSize(5000)
-                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationMinutes()))  // adjust as needed
-                .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationMinutes() / 2))
+                .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))
+                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationExpirationMinutes()))  // default expiration
                 .build(loader);
     }
 

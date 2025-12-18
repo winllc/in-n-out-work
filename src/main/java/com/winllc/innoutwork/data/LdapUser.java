@@ -15,4 +15,5 @@ public class LdapUser {
     private String uid;
     private String employeeType;
     private String organization;
+    private String location;
 }

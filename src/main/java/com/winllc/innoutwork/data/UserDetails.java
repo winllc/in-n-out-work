@@ -19,4 +19,5 @@ public class UserDetails {
     private String status;
     private String employeeType;
     private String organization;
+    private String location;
 }

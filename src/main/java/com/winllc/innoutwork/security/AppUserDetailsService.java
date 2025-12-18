@@ -55,6 +55,9 @@ public class AppUserDetailsService implements UserDetailsService {
                     .anyMatch(s -> user.getDn().equalsIgnoreCase(s))) {
                 details.addAuthority("SUPER_USER");
             }
+
+            details.addAuthority("USER");
+
             return details;
 
         } else {
