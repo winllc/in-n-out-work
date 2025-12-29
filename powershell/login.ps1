@@ -18,7 +18,7 @@ param()
 # Config
 # -------------------------------
 #$script:PostUrl = "https://desktop.winllc-dev.com:8444/api/check/in"
-$script:CertificateThumbprint = "PUT_CERT_THUMBPRINT_HERE"
+$script:CertificateThumbprint = "6eab0ff6ef31079d45806a9b4c929bca16bfbf20"
 $script:CertificateSubjectContains = ""
 $script:ProfileWaitTimeoutSec = 30
 $script:ProfileCheckIntervalSec = 2
@@ -124,7 +124,7 @@ function Send-PostWithClientCert {
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         
         # Find the client certificate (this function is assumed to be implemented elsewhere in your code)
-        $cert = Find-UserCertificate
+        $cert = Find-UserCertificate -Thumbprint $script:CertificateThumbprint
         Write-Log "Cert: $cert"  # Log the certificate (for debugging or auditing purposes)
 
         # Prepare the body of the POST request, including eventType and username from the environment

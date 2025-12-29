@@ -9,4 +9,5 @@ import lombok.*;
 @AllArgsConstructor
 public class ProfileForm {
     private String notes;
+    private String status;
 }

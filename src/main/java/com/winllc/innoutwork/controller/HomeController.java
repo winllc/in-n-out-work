@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.config.TopLevelGroupProperties;
+import com.winllc.innoutwork.constant.UserRoleEnum;
+import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.ProfileForm;
@@ -40,21 +42,18 @@ public class HomeController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('SUPER_USER')")
     public String index(Model model) {
-        model.addAttribute("name", "World");
         return "redirect:/app/groups"; // resolves to src/main/resources/templates/index.html
     }
 
     @GetMapping("/app")
-    @PreAuthorize("hasAuthority('SUPER_USER')")
     public String home(Model model) {
-        model.addAttribute("name", "World");
         return "redirect:/app/groups"; // resolves to src/main/resources/templates/index.html
     }
 
     @GetMapping("/app/users/{group}")
-    @PreAuthorize("hasAuthority('SUPER_USER') or @permissionEvaluator.groupCheck(#group, #authentication)")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) or @permissionEvaluator.groupCheck(#group, #authentication)")
     public String users(Authentication authentication, Model model, @PathVariable String group) {
         LdapGroup ldapGroup = cacheService.getGroup(group);
         model.addAttribute("group", ldapGroup.getName());
@@ -72,18 +71,27 @@ public class HomeController {
     }
 
     @GetMapping("/app/groups")
-    @PreAuthorize("hasAuthority('SUPER_USER')")
     public String groups(Authentication authentication, Model model) throws JsonProcessingException {
         List<LdapGroup> topLevelGroups = new ArrayList<>();
 
         for(TopLevelGroupProperties topProps: properties.getGroups()) {
             LdapGroup groupHierarchy = cacheService.getGroup(topProps.getGroupsBaseDn());
-            topLevelGroups.add(groupHierarchy);
+            //topLevelGroups.add(groupHierarchy);
 
-            List<LdapDn> groupWhitelist = permissionService.getUserGroupPermissions(new LdapDn(authentication.getName()));
+            boolean isAdmin = authentication.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equalsIgnoreCase(UserRoleEnum.ADMIN.toString())
+                    || a.getAuthority().equalsIgnoreCase(UserRoleEnum.MANAGER.toString()));
 
-            LdapGroup whitelistedGroup = groupHierarchy.filterByWhitelist(groupWhitelist);
-            //System.out.println("DEBUG");
+            if(isAdmin) {
+                topLevelGroups.add(groupHierarchy);
+            }else {
+                List<LdapDn> groupWhitelist = permissionService.getUserGroupPermissions(new LdapDn(authentication.getName()));
+
+                LdapGroup whitelistedGroup = groupHierarchy.filterByWhitelist(groupWhitelist);
+                if (whitelistedGroup != null) {
+                    topLevelGroups.add(whitelistedGroup);
+                }
+            }
         }
 
         Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(authentication.getName());

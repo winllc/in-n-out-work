@@ -41,7 +41,8 @@ public class UserRestService {
     }
 
     @GetMapping("/group/{groupName}")
-    @PreAuthorize("hasAuthority('SUPER_USER') or @permissionEvaluator.groupCheck(#groupName, #authentication)")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) or @permissionEvaluator.groupCheck(#groupName, #authentication)")
     public Map<String, Object> getUsers(Authentication authentication,
                                         @PathVariable String groupName) {
 
@@ -59,7 +60,8 @@ public class UserRestService {
     }
 
     @GetMapping("/search")
-    @PreAuthorize("hasAuthority('SUPER_USER')")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public List<UserStatus> searchUsers(
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "1") int page,
@@ -90,7 +92,8 @@ public class UserRestService {
     }
 
     @GetMapping("/checkinoutrecords/{dn}")
-    @PreAuthorize("hasAuthority('SUPER_USER')")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public PagedModel<CheckInOutRecord> getUserCheckInOutRecords(
             @PathVariable String dn,
             @RequestParam(defaultValue = "1") int page,

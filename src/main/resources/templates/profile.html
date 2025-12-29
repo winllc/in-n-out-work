@@ -20,6 +20,15 @@
                 </div>
             </div>
 
+            <div th:if="${message}" class="alert alert-success">
+                <span th:text="${message}"></span>
+            </div>
+
+            <!-- Display error message if present -->
+            <div th:if="${error}" class="alert alert-danger">
+                <span th:text="${error}"></span>
+            </div>
+
             <div class="alert alert-danger" role="alert">
                 <span th:utext="#{profile.warning}"></span>
             </div>
@@ -29,6 +38,14 @@
                     <label for="notes" class="form-label">Notes</label>
                     <input type="text" class="form-control" id="notes" aria-describedby="notesHelp" th:field="*{notes}">
                     <div id="notesHelp" class="form-text">Add additional information about yourself</div>
+                </div>
+                <div class="mb-3">
+                    <label for="notes" class="form-label">Status</label>
+                    <select class="form-select" id="status" th:field="*{status}">
+                        <option th:each="status : ${statuses}" th:value="${status}" th:text="${status}"></option>
+                    </select>
+
+                    <div id="statusHelp" class="form-text">Current Status</div>
                 </div>
                 <button type="submit" class="btn btn-primary">Submit</button>
             </form>

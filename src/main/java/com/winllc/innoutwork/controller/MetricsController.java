@@ -55,7 +55,8 @@ public class MetricsController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('SUPER_USER')")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public ModelAndView get() throws JsonProcessingException {
         ModelAndView mv = new ModelAndView("metrics");
 

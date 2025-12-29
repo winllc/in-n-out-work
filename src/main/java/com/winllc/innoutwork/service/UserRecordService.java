@@ -1,6 +1,10 @@
 package com.winllc.innoutwork.service;
 
+import com.winllc.innoutwork.constant.UserRoleEnum;
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.GroupFavorite;
+import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import org.slf4j.Logger;
@@ -9,6 +13,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @Service
 public class UserRecordService {
@@ -21,7 +26,11 @@ public class UserRecordService {
         this.userRecordRepository = userRecordRepository;
     }
 
-    public UserRecord updateNotes(Authentication authentication, String notes) {
+    public Optional<UserRecord> getUserByDn(LdapDn dn) {
+        return userRecordRepository.findByDnIgnoreCase(dn.dn());
+    }
+
+    public UserRecord updateProfile(Authentication authentication, ProfileForm form) {
         log.debug("Update Notes {}",  authentication.getName());
         UserRecord userRecord = new UserRecord();
 
@@ -32,7 +41,26 @@ public class UserRecordService {
             userRecord.setDn(authentication.getName());
         }
 
-        userRecord.setNotes(notes);
+        userRecord.setNotes(form.getNotes());
+        if(form.getStatus() != null &&
+                Stream.of(UserStatusEnum.values()).anyMatch(userStatus -> userStatus.name().equals(form.getStatus()))) {
+            userRecord.setStatus(UserStatusEnum.valueOf(form.getStatus()));
+        }
+
+        return userRecordRepository.save(userRecord);
+    }
+
+    public UserRecord updateRole(LdapDn dn, UserRoleEnum role) {
+        UserRecord userRecord = new UserRecord();
+
+        Optional<UserRecord> optionalRecord = userRecordRepository.findByDnIgnoreCase(dn.dn());
+        if(optionalRecord.isPresent()) {
+            userRecord = optionalRecord.get();
+        }else{
+            userRecord.setDn(dn.dn());
+        }
+
+        userRecord.setUserRole(role);
 
         return userRecordRepository.save(userRecord);
     }

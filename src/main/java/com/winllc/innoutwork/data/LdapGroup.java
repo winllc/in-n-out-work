@@ -62,7 +62,7 @@ public class LdapGroup {
 
         boolean whitelisted = whitelist.stream()
                 .anyMatch(d -> new LdapDn(ldapGroup.getDn()).equals(d));
-        if(whitelisted){
+        if(whitelisted || !ldapGroup.getChildren().isEmpty()){
             return ldapGroup;
         }else{
             return null;

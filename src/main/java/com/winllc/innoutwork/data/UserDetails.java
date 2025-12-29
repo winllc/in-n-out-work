@@ -20,4 +20,5 @@ public class UserDetails {
     private String employeeType;
     private String organization;
     private String location;
+    private String role;
 }

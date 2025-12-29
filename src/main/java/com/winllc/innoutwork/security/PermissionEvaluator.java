@@ -28,4 +28,5 @@ public class PermissionEvaluator {
         return userGroups.stream()
                 .anyMatch(g -> g.equals(ldapDn));
     }
+
 }

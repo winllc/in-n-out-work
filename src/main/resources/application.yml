@@ -57,7 +57,7 @@ application:
   timezone: America/New_York
   user-ldap-employee-type-attribute: employeeType
   user-ldap-organization-attribute: o
-  user-ldap-location-attribute: location
+  user-ldap-location-attribute: l
   super-user-dns:
     - CN=user3,OU=Users,DC=winllc,DC=com
   groups:
