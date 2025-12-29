@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.model;
 
+import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import jakarta.persistence.*;
 import lombok.*;
@@ -32,6 +33,9 @@ public class UserRecord {
     private String favoriteGroups;
     private String organization;
     private String employeeType;
+    @Column(columnDefinition = "text")
+    @Enumerated(EnumType.STRING)
+    private UserRoleEnum userRole;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<PermissionRecord> permissions = new ArrayList<>();

@@ -8,6 +8,7 @@ import com.winllc.innoutwork.service.UserRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -23,6 +24,8 @@ public class PermissionsRestService {
     private PermissionService permissionService;
 
     @PostMapping("/update")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public void addGroupToUser(@RequestBody PermissionUpdate permissionUpdate) {
         log.info("updating permission to group: {}", permissionUpdate);
 

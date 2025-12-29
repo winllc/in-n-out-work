@@ -36,14 +36,16 @@ public class GroupRestService {
      */
 
     @GetMapping("/hierarchy")
-    @PreAuthorize("hasAuthority('SUPER_USER')")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public LdapGroup groupHierarchy() {
         //return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
         return null; //unused?
     }
 
     @PostMapping("/favoriteGroup")
-    @PreAuthorize("hasAuthority('SUPER_USER')")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public void favoriteGroup(Authentication authentication, @RequestBody GroupFavorite groupFavorite) {
         //return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
         userRecordService.updateGroupFavorite(authentication, groupFavorite);

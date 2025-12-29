@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.security;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapUser;
@@ -43,8 +44,6 @@ public class AppUserDetailsService implements UserDetailsService {
 
         Optional<LdapUser> ldapUserOptional = ldapService.lookupUser(dn);
 
-        List<String> roles = new ArrayList<>();
-
         if (ldapUserOptional.isPresent()) {
             LdapUser user =  ldapUserOptional.get();
             UserRecord record = createUserIfDoesNotExist(dn, user);
@@ -53,17 +52,22 @@ public class AppUserDetailsService implements UserDetailsService {
 
             if(properties.getSuperUserDns().stream()
                     .anyMatch(s -> user.getDn().equalsIgnoreCase(s))) {
-                details.addAuthority("SUPER_USER");
+                details.addAuthority(UserRoleEnum.ADMIN.name());
             }
 
-            details.addAuthority("USER");
+            UserRoleEnum userRole = record.getUserRole();
+            if(userRole != null) {
+                details.addAuthority(userRole.name());
+            }else{
+                details.addAuthority(UserRoleEnum.USER.name());
+            }
 
             return details;
 
         } else {
             return User.withUsername("NOTFOUND")
                     .password("") // not used with X.509
-                    .roles(roles.toArray(new String[0]))
+                    .roles(new String[]{})
                     .build();
         }
     }
@@ -75,6 +79,7 @@ public class AppUserDetailsService implements UserDetailsService {
                     .dn(dn.toString())
                     .employeeType(ldapUser.getEmployeeType())
                     .organization(ldapUser.getOrganization())
+                    .userRole(UserRoleEnum.USER)
                     .build();
             return userRecordRepository.save(userRecord);
         }else{

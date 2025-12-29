@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
@@ -16,8 +17,10 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.Optional;
+import java.util.stream.Stream;
 
 @Controller
 @RequestMapping("/app/profile")
@@ -35,31 +38,37 @@ public class ProfileController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('SUPER_USER')")
     public String profile(Authentication authentication, Model model) {
         ProfileForm form = new ProfileForm();
 
         Optional<UserRecord> optionalRecord = recordRepository.findByDnIgnoreCase(authentication.getName());
         if(optionalRecord.isPresent()) {
-            form.setNotes(optionalRecord.get().getNotes());
+            UserRecord userRecord = optionalRecord.get();
+            form.setNotes(userRecord.getNotes());
+            if(userRecord.getStatus() != null) {
+                form.setStatus(userRecord.getStatus().name());
+            }
 
-            model.addAttribute("user", optionalRecord.get());
+            model.addAttribute("user", userRecord);
         }
 
+        model.addAttribute("statuses", Stream.of(UserStatusEnum.values()).toList());
         model.addAttribute("form", form);
         return "profile"; // resolves to src/main/resources/templates/index.html
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('SUPER_USER')")
     public String profileSubmit(Authentication authentication,
+                                RedirectAttributes redirectAttributes,
                                 Model model, @ModelAttribute ProfileForm form) {
         log.debug("%s updating profile".formatted(authentication.getName()));
 
-        UserRecord updated = userRecordService.updateNotes(authentication, form.getNotes());
+        UserRecord updated = userRecordService.updateProfile(authentication, form);
 
-        model.addAttribute("form", ProfileForm.builder().notes(updated.getNotes()).build());
 
-        return "profile"; // resolves to src/main/resources/templates/index.html
+        //model.addAttribute("form", ProfileForm.builder().notes(updated.getNotes()).build());
+        redirectAttributes.addFlashAttribute("message", "Successfully updated profile");
+
+        return "redirect:/app/profile";
     }
 }

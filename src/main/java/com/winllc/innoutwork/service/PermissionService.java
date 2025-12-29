@@ -15,18 +15,24 @@ import java.util.*;
 @Service
 public class PermissionService {
 
-    @Autowired
-    private UserRecordRepository userRecordRepository;
-    @Autowired
-    private PermissionRecordRepository permissionRecordRepository;
-    @Autowired
-    private LdapService ldapService;
+    private final UserRecordRepository userRecordRepository;
+    private final PermissionRecordRepository permissionRecordRepository;
+    private final LdapService ldapService;
+
+    public PermissionService(UserRecordRepository userRecordRepository,
+                             PermissionRecordRepository permissionRecordRepository, LdapService ldapService) {
+        this.userRecordRepository = userRecordRepository;
+        this.permissionRecordRepository = permissionRecordRepository;
+        this.ldapService = ldapService;
+    }
 
     public List<LdapDn> getUserGroupPermissions(LdapDn userDn){
+        List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(userDn.dn());
+
         List<PermissionRecord> byUserDn = permissionRecordRepository.findByUser_Dn(userDn.dn());
 
-        return byUserDn.stream()
-                .map(r -> new LdapDn(r.getGroupDn()))
+        return groupsForUser.stream()
+                .map(r -> new LdapDn(r.getDn()))
                 .toList();
     }
 
