@@ -4,6 +4,7 @@ import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.MetricsData;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -24,14 +25,14 @@ public class MetricsService {
     }
 
 
-    public Map<CheckInOutEnum, Long> getTodaysStatistics(){
+    public Map<CheckInOutEnum, Long> getTodaysStatistics(HttpSession session){
         Map<CheckInOutEnum, Long> metrics = new HashMap<>();
 
-        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime beginning = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         List<CheckInOutEnum> totalCurrentStatuses = checkInOutRecordRepository
-                .findTotalCurrentStatuses(beginning);
+                .findTotalCurrentStatuses(beginning, ending);
 
         Map<CheckInOutEnum, Long> collect = totalCurrentStatuses.stream()
                 .collect(Collectors.groupingBy(s -> s, Collectors.counting()));
@@ -39,11 +40,13 @@ public class MetricsService {
         return collect;
     }
 
-    public MetricsData getCombinedStatistics(){
+    public MetricsData getCombinedStatistics(HttpSession session){
         MetricsData metricsData = new MetricsData();
 
-        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
-        List<CheckInOutRecord> totalCurrentRecords = checkInOutRecordRepository.findTotalCurrentRecords(beginning);
+        ZonedDateTime beginning = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
+
+        List<CheckInOutRecord> totalCurrentRecords = checkInOutRecordRepository.findTotalCurrentRecords(beginning, ending);
 
         Map<String, List<CheckInOutRecord>> orgGroup = totalCurrentRecords.stream()
                 .filter(r -> r.getOrganization() != null)

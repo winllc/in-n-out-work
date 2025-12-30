@@ -3,6 +3,7 @@ package com.winllc.innoutwork.service;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -36,15 +37,15 @@ public class DatabaseService {
         return checkinInOutRecordRepository.findFirstBySessionId(sessionId);
     }
 
-    public Page<CheckInOutRecord> findTodaysRecords(Pageable pageable) {
-        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
+    public Page<CheckInOutRecord> findRecords(Pageable pageable, HttpSession session) {
+        ZonedDateTime beginning = getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         return checkinInOutRecordRepository.findByTimestampBetween(beginning, ending, pageable);
     }
 
-    public List<CheckInOutRecord> findTodaysRecordsForUser(String dn) {
-        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
+    public List<CheckInOutRecord> findRecordsForUser(String dn, HttpSession session) {
+        ZonedDateTime beginning = getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         return checkinInOutRecordRepository.findByTimestampBetweenAndDnIgnoreCaseOrderByTimestampDesc(beginning, ending, dn);
@@ -52,10 +53,20 @@ public class DatabaseService {
 
 
 
-    public List<CheckInOutRecord> findTodaysRecords() {
-        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
+    public List<CheckInOutRecord> findRecords(HttpSession session) {
+        ZonedDateTime beginning = getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         return checkinInOutRecordRepository.findByTimestampBetweenOrderByTimestampDesc(beginning, ending);
+    }
+
+    public static ZonedDateTime getDateTimeFromSession(HttpSession session) {
+        ZonedDateTime selectedDateTime =
+                (ZonedDateTime) session.getAttribute("systemTime");
+
+        if (selectedDateTime == null) {
+            selectedDateTime = ZonedDateTime.now();
+        }
+        return selectedDateTime;
     }
 }

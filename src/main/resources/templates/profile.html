@@ -7,6 +7,130 @@
     <title>Tabulator + Spring Boot</title>
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js'></script>
+
+    <script>
+
+        document.addEventListener('DOMContentLoaded', function () {
+            var calendarEl = document.getElementById('calendar');
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,dayGridWeek'
+                },
+                didMount: function () {
+                    addDropdownsToDays();
+                },
+                datesSet: function () {
+                    addDropdownsToDays();
+                }
+            });
+
+            calendar.render();
+
+            function addDropdownsToDays() {
+                const dayCells = document.querySelectorAll('.fc-daygrid-day');
+
+                dayCells.forEach(cell => {
+
+                    if (cell.querySelector('.day-dropdown')) return;
+
+                    const dateStr = cell.getAttribute('data-date');
+                    console.log(dateStr);
+
+                    const response = fetch("/api/event/day", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            date: dateStr
+                        })
+                    })
+                        .then(response => {
+                            // Optional: Handle HTTP errors
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! status: ${response.status}`);
+                            }
+                            // Return the promise from the data extraction method
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log(data);
+                            const dropdownContainer = document.createElement('div');
+                            dropdownContainer.className = 'day-dropdown';
+
+                            const selectStatus = document.createElement('select');
+                            const option1 = document.createElement('option');
+                            option1.innerHTML = "Standard";
+                            option1.value = "STANDARD";
+                            if(data.status === 'STANDARD') option1.selected = true;
+
+                            const option2 = document.createElement('option');
+                            option2.innerHTML = "Out of Office";
+                            option2.value = "OUT_OF_OFFICE";
+                            if(data.status === 'OUT_OF_OFFICE') option2.selected = true;
+
+                            const option3 = document.createElement('option');
+                            option3.innerHTML = "WFH";
+                            option3.value = "WORK_FROM_HOME";
+                            if(data.status === 'WORK_FROM_HOME') option3.selected = true;
+
+                            const option4 = document.createElement('option');
+                            option4.innerHTML = "TDY";
+                            option4.value = "TDY";
+                            if(data.status === 'TDY') option4.selected = true;
+
+                            const option5 = document.createElement('option');
+                            option5.innerHTML = "Scheduled Leave";
+                            option5.value = "SCHEDULED_LEAVE";
+                            if(data.status === 'SCHEDULED_LEAVE') option5.selected = true;
+
+                            selectStatus.add(option1);
+                            selectStatus.add(option2);
+                            selectStatus.add(option3);
+                            selectStatus.add(option4);
+                            selectStatus.add(option5);
+
+                            selectStatus.addEventListener('mousedown', e => e.stopPropagation());
+                            selectStatus.addEventListener('click', e => e.stopPropagation());
+                            selectStatus.addEventListener('change', e => {
+                                e.stopPropagation();
+                                console.log('Selected:', selectStatus.value, cell.date);
+                                //selectStatus.value = '';
+                                fetch("/api/event/update", {
+                                    method: "POST",
+                                    headers: {
+                                        "Content-Type": "application/json"
+                                    },
+                                    body: JSON.stringify({
+                                        date: dateStr,
+                                        status: selectStatus.value,
+                                    })
+                                })
+                            });
+
+                            dropdownContainer.appendChild(selectStatus);
+
+                            cell.appendChild(dropdownContainer);
+                        });
+
+
+                });
+            }
+
+
+            document.addEventListener('click', function () {
+                document.querySelectorAll('.dropdown-menu').forEach(menu => {
+                    menu.classList.remove('show');
+                });
+            });
+
+        });
+
+    </script>
 </head>
 <body>
 <div layout:fragment="content">
@@ -33,22 +157,32 @@
                 <span th:utext="#{profile.warning}"></span>
             </div>
 
-            <form th:action="@{/app/profile}" method="post" th:object="${form}">
-                <div class="mb-3">
-                    <label for="notes" class="form-label">Notes</label>
-                    <input type="text" class="form-control" id="notes" aria-describedby="notesHelp" th:field="*{notes}">
-                    <div id="notesHelp" class="form-text">Add additional information about yourself</div>
-                </div>
-                <div class="mb-3">
-                    <label for="notes" class="form-label">Status</label>
-                    <select class="form-select" id="status" th:field="*{status}">
-                        <option th:each="status : ${statuses}" th:value="${status}" th:text="${status}"></option>
-                    </select>
+            <div class="row">
+                <div class="col-md-6">
+                    <form th:action="@{/app/profile}" method="post" th:object="${form}">
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Notes</label>
+                            <input type="text" class="form-control" id="notes" aria-describedby="notesHelp"
+                                   th:field="*{notes}">
+                            <div id="notesHelp" class="form-text">Add additional information about yourself</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Status</label>
+                            <select class="form-select" id="status" th:field="*{status}">
+                                <option th:each="status : ${statuses}" th:value="${status}"
+                                        th:text="${status}"></option>
+                            </select>
 
-                    <div id="statusHelp" class="form-text">Current Status</div>
+                            <div id="statusHelp" class="form-text">Current Status</div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Submit</button>
+                    </form>
                 </div>
-                <button type="submit" class="btn btn-primary">Submit</button>
-            </form>
+                <div class="col-md-6">
+                    <h3>Calendar</h3>
+                    <div id='calendar'></div>
+                </div>
+            </div>
         </div>
     </div>
 </div>

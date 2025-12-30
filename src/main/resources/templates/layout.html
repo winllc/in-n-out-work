@@ -8,8 +8,12 @@
 
     <link rel="stylesheet"
           th:href="@{/css/treeview/treeview.css}"/>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
     <script th:src="@{/libs/treeview/treeview.js}"></script>
+
+
 </head>
 <body>
 
@@ -87,6 +91,11 @@
                 <div class="navbar-collapse justify-content-end px-0" id="navbarNav">
                     <ul class="navbar-nav flex-row ms-auto align-items-center justify-content-end">
 
+                        <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                            <input class="form-control" id="dt">
+                            <div id="dtHelp" class="form-text">System Date</div>
+                        </li>
+
                         <li class="nav-item dropdown">
                             <a class="nav-link " href="javascript:void(0)" id="drop2" data-bs-toggle="dropdown"
                                aria-expanded="false">
@@ -143,6 +152,55 @@
 <script th:src="@{/js/dashboard.js}"></script>
 <!-- solar icons -->
 <script th:src="@{/libs/iconify/iconify-icon.min.js}"></script>
+
+<script th:inline="javascript">
+
+    const sessionDateTime = /*[[${systemTime}]]*/ null;
+
+    const picker = flatpickr("#dt", {
+        enableTime: false,
+        dateFormat: "Y-m-d",
+        //time_24hr: true,
+        defaultDate: sessionDateTime,
+        onClose: function(selectedDates) {
+            if (!selectedDates.length) return;
+
+            sendSelectedDateTime(selectedDates[0]);
+        }
+    });
+
+    async function sendSelectedDateTime() {
+        const selectedDates = picker.selectedDates;
+
+        if (!selectedDates.length) {
+            alert("Please select a date and time");
+            return;
+        }
+
+        // Convert to ISO-8601 (UTC-safe format for APIs)
+        const isoDateTime = selectedDates[0].toISOString();
+
+        try {
+            const response = await fetch("/api/system/updateSystemTime", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    dateTime: isoDateTime
+                })
+            });
+
+            window.location.reload();
+
+        } catch (error) {
+            console.error("Failed to send date/time:", error);
+            alert("Failed to send date/time");
+        }
+    }
+
+
+</script>
 
 </body>
 </html>

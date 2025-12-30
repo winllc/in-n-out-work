@@ -5,6 +5,7 @@ import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.CheckInOut;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.service.DatabaseService;
+import jakarta.servlet.http.HttpSession;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -105,11 +106,11 @@ public class CheckInOutRestService {
      */
 
     @GetMapping("/records")
-    public Map<String, Object> getRecords(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String sortField,
-            @RequestParam(required = false) String sortDir) {
+    public Map<String, Object> getRecords(HttpSession session,
+                                          @RequestParam(defaultValue = "0") int page,
+                                          @RequestParam(defaultValue = "10") int size,
+                                          @RequestParam(required = false) String sortField,
+                                          @RequestParam(required = false) String sortDir) {
 
         Sort sort = Sort.unsorted();
         if (sortField != null && sortDir != null) {
@@ -119,7 +120,7 @@ public class CheckInOutRestService {
         }
 
         Pageable pageable = PageRequest.of(page, size, sort);
-        Page<CheckInOutRecord> userPage = databaseService.findTodaysRecords(pageable);
+        Page<CheckInOutRecord> userPage = databaseService.findRecords(pageable, session);
 
         Map<String, Object> response = new HashMap<>();
         response.put("data", userPage.getContent());
