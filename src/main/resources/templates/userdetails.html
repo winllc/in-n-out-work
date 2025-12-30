@@ -8,6 +8,7 @@
     <title>Tabulator + Spring Boot</title>
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js'></script>
 </head>
 <body>
 <div layout:fragment="content">
@@ -42,9 +43,6 @@
                     </tbody>
                 </table>
             </div>
-        </div>
-
-        <div class="row">
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
@@ -63,6 +61,9 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <div class="row">
             <div class="col-md-6">
                 <div class="card">
                     <div class="card-header">
@@ -89,6 +90,12 @@
                         </form>
                     </div>
                 </div>
+            </div>
+
+        </div>
+        <div class="row">
+            <div class="col-md-12" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                <div id='calendar'></div>
             </div>
         </div>
     </div>
@@ -120,6 +127,66 @@
             ],
         });
 
+        document.addEventListener('DOMContentLoaded', function () {
+            var calendarEl = document.getElementById('calendar');
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,dayGridWeek'
+                },
+                didMount: function () {
+                    addDropdownsToDays();
+                },
+                datesSet: function () {
+                    addDropdownsToDays();
+                }
+            });
+
+            calendar.render();
+
+            function addDropdownsToDays() {
+                const dayCells = document.querySelectorAll('.fc-daygrid-day');
+
+                dayCells.forEach(cell => {
+
+                    if (cell.querySelector('.wrap-with-underscores')) return;
+
+                    const dateStr = cell.getAttribute('data-date');
+                    console.log(dateStr);
+
+                    const response = fetch("/api/event/day", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            date: dateStr
+                        })
+                    })
+                        .then(response => {
+                            // Optional: Handle HTTP errors
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! status: ${response.status}`);
+                            }
+                            // Return the promise from the data extraction method
+                            return response.json();
+                        })
+                        .then(data => {
+                            console.log(data);
+                            const dropdownContainer = document.createElement('div');
+                            dropdownContainer.className = 'wrap-with-underscores';
+                            dropdownContainer.innerHTML = data.status;
+
+                            cell.appendChild(dropdownContainer);
+                        });
+
+
+                });
+            }
+
+        });
 
     </script>
 </div>

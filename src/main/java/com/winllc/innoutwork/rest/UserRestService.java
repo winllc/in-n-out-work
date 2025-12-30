@@ -11,6 +11,7 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.DatabaseService;
 import com.winllc.innoutwork.service.LdapService;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,14 +44,14 @@ public class UserRestService {
     @GetMapping("/group/{groupName}")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) or @permissionEvaluator.groupCheck(#groupName, #authentication)")
-    public Map<String, Object> getUsers(Authentication authentication,
+    public Map<String, Object> getUsers(HttpSession session, Authentication authentication,
                                         @PathVariable String groupName) {
 
         List<String> dns = ldapService.getGroupMembers(LdapDn.builder().dn(groupName).build());
 
         List<UserStatus> users = new ArrayList<>();
         for(String dn : dns){
-            users.add(getUserStatus(dn));
+            users.add(getUserStatus(dn, session));
         }
 
         Map<String, Object> response = new HashMap<>();
@@ -63,6 +64,7 @@ public class UserRestService {
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public List<UserStatus> searchUsers(
+            HttpSession session,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -84,7 +86,7 @@ public class UserRestService {
         List<UserStatus> users = new ArrayList<>();
 
         for(UserStatus user : pageResult){
-            users.add(getUserStatus(user.getDn()));
+            users.add(getUserStatus(user.getDn(), session));
         }
 
         //PagedModel<UserStatus> response = new PagedModel<>(pageResult);
@@ -106,19 +108,16 @@ public class UserRestService {
         Pageable pageable = PageRequest.of(page, size,
                 dir.equalsIgnoreCase("asc") ? Sort.by(sort).ascending() : Sort.by(sort).descending());
 
-        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(java.time.temporal.ChronoUnit.DAYS);
-        ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
-
         Page<CheckInOutRecord> records = checkInOutRecordRepository.findByDnIgnoreCaseOrderByTimestampDesc(pageable, dn);
 
         return new PagedModel<>(new PageImpl<>(records.getContent(), pageable, records.getTotalElements()));
     }
 
-    public UserStatus getUserStatus(String dn){
+    public UserStatus getUserStatus(String dn, HttpSession session){
         UserStatus status = UserStatus.builder()
                 .dn(dn).build();
 
-        List<CheckInOutRecord> todaysRecordsForUser = databaseService.findTodaysRecordsForUser(dn);
+        List<CheckInOutRecord> todaysRecordsForUser = databaseService.findRecordsForUser(dn, session);
         if(todaysRecordsForUser != null && !todaysRecordsForUser.isEmpty()){
 
             Optional<CheckInOutRecord> mostRecent = todaysRecordsForUser.stream()

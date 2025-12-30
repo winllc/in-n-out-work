@@ -36,3 +36,10 @@ body {
     margin-bottom: 50px; /* Adjust to match footer height */
     padding: 20px;
 }
+
+.wrap-with-underscores {
+    word-break: break-all; /* Allows breaking anywhere, including at underscores */
+    /* OR */
+    overflow-wrap: anywhere; /* Breaks if needed to prevent overflow */
+    width: 100px; /* Example width constraint */
+}

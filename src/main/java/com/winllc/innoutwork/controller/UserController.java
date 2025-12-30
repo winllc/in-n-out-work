@@ -10,6 +10,7 @@ import com.winllc.innoutwork.rest.UserRestService;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.PermissionService;
 import com.winllc.innoutwork.service.UserRecordService;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,7 +44,7 @@ public class UserController {
     @GetMapping("/details/{dn}")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
-    public ModelAndView details(@PathVariable String dn, Authentication auth) {
+    public ModelAndView details(HttpSession session, @PathVariable String dn, Authentication auth) {
         log.debug("%s requested details for: %s".formatted(auth.getName(), dn));
 
         UserDetails userDetails = new UserDetails();
@@ -60,7 +61,7 @@ public class UserController {
         List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(dn);
         userDetails.setMemberOf(groupsForUser);
 
-        UserStatus userStatus = userRestService.getUserStatus(dn);
+        UserStatus userStatus = userRestService.getUserStatus(dn, session);
         userDetails.setDn(dn);
         userDetails.setNotes(userStatus.getNotes());
         userDetails.setStatus(userStatus.getStatus());

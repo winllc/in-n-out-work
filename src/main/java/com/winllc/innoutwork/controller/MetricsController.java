@@ -13,6 +13,7 @@ import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.DatabaseService;
 import com.winllc.innoutwork.service.MetricsService;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
@@ -57,14 +58,14 @@ public class MetricsController {
     @GetMapping
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
-    public ModelAndView get() throws JsonProcessingException {
+    public ModelAndView get(HttpSession session) throws JsonProcessingException {
         ModelAndView mv = new ModelAndView("metrics");
 
-        MetricsData data = metricsService.getCombinedStatistics();
+        MetricsData data = metricsService.getCombinedStatistics(session);
         data.setTotalUsers(cacheService.getLdapCount(properties.getUserBaseDn()));
 
-        TotalLoginChartData totalLoginChartData = getTotalLoginChartData();
-        LoginByTimeChartData loginByTimeChart = getLoginByTimeChart();
+        TotalLoginChartData totalLoginChartData = getTotalLoginChartData(session);
+        LoginByTimeChartData loginByTimeChart = getLoginByTimeChart(session);
 
         ObjectMapper objectMapper = new ObjectMapper();
         String jsonData = objectMapper.writeValueAsString(totalLoginChartData);
@@ -81,12 +82,12 @@ public class MetricsController {
         return mv;
     }
 
-    private TotalLoginChartData getTotalLoginChartData(){
+    private TotalLoginChartData getTotalLoginChartData(HttpSession session){
 
         TotalLoginChartData data = new TotalLoginChartData();
 
         Long totalUsers = cacheService.getLdapCount(properties.getUserBaseDn());
-        Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics();
+        Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics(session);
 
         PieChartDataSet dataSet = new PieChartDataSet();
         dataSet.setLabel("Total Users");
@@ -111,10 +112,10 @@ public class MetricsController {
         return data;
     }
 
-    private LoginByTimeChartData getLoginByTimeChart(){
+    private LoginByTimeChartData getLoginByTimeChart(HttpSession session){
         LoginByTimeChartData data = new LoginByTimeChartData();
 
-        ZonedDateTime beginning = ZonedDateTime.now().truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime beginning = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         List<ZonedDateTime> buckets = generate15MinBuckets(beginning, ending);
@@ -123,7 +124,7 @@ public class MetricsController {
             data.getLabels().add(bucket.toString());
         });
 
-        List<CheckInOutRecord> todaysRecords = databaseService.findTodaysRecords();
+        List<CheckInOutRecord> todaysRecords = databaseService.findRecords(session);
 
         Map<CheckInOutEnum, List<ZonedDateTime>> recordMap = todaysRecords.stream()
                 .sorted()
