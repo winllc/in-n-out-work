@@ -22,12 +22,14 @@ public class AppUserDetails implements UserDetails {
     private String dn;
     private String organization;
     private String employeeType;
+    private  String location;
     private List<GrantedAuthority> grantedAuthorities = new ArrayList<>();
 
     public AppUserDetails(UserRecord record) {
         this.dn = record.getDn();
         this.organization = record.getOrganization();
         this.employeeType = record.getEmployeeType();
+        this.location = record.getLocation();
     }
 
     public void addAuthority(String grantedAuthority) {

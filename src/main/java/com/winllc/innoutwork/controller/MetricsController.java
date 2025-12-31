@@ -6,7 +6,7 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.LoginByTimeChartData;
 import com.winllc.innoutwork.data.MetricsData;
-import com.winllc.innoutwork.data.TotalLoginChartData;
+import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.data.charts.LineChartDataSet;
 import com.winllc.innoutwork.data.charts.PieChartDataSet;
 import com.winllc.innoutwork.model.CheckInOutRecord;
@@ -14,7 +14,6 @@ import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.DatabaseService;
 import com.winllc.innoutwork.service.MetricsService;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -27,7 +26,6 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Controller
 @RequestMapping("/app/metrics")
@@ -64,7 +62,7 @@ public class MetricsController {
         MetricsData data = metricsService.getCombinedStatistics(session);
         data.setTotalUsers(cacheService.getLdapCount(properties.getUserBaseDn()));
 
-        TotalLoginChartData totalLoginChartData = getTotalLoginChartData(session);
+        PieChartData<CheckInOutEnum> totalLoginChartData = getTotalLoginChartData(session);
         LoginByTimeChartData loginByTimeChart = getLoginByTimeChart(session);
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -82,15 +80,15 @@ public class MetricsController {
         return mv;
     }
 
-    private TotalLoginChartData getTotalLoginChartData(HttpSession session){
+    private PieChartData<CheckInOutEnum> getTotalLoginChartData(HttpSession session){
 
-        TotalLoginChartData data = new TotalLoginChartData();
+        PieChartData<CheckInOutEnum> data = new PieChartData<>();
 
         Long totalUsers = cacheService.getLdapCount(properties.getUserBaseDn());
         Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics(session);
 
-        PieChartDataSet dataSet = new PieChartDataSet();
-        dataSet.setLabel("Total Users");
+        /*
+        PieChartDataSet dataSet = new PieChartDataSet("Total Users");
 
         AtomicInteger totalWithAction = new AtomicInteger();
         todaysStatistics.forEach((key, value) -> {
@@ -107,9 +105,13 @@ public class MetricsController {
         dataSet.getData().add((int) noActivity);
         dataSet.getBackgroundColor().add("grey");
 
-        data.getDatasets().add(dataSet);
+        data.addDataSet(dataSet);
 
-        return data;
+ */
+
+        PieChartData<CheckInOutEnum> chartData = PieChartData.build("Total Users", totalUsers, todaysStatistics);
+
+        return chartData;
     }
 
     private LoginByTimeChartData getLoginByTimeChart(HttpSession session){

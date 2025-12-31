@@ -8,8 +8,10 @@
 
     <link rel="stylesheet"
           th:href="@{/css/treeview/treeview.css}"/>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <link rel="stylesheet"
+          th:href="@{/libs/flatpickr/flatpickr.min.css}"/>
+
+    <script th:src="@{/libs/flatpickr/flatpickr.min.js}"></script>
 
     <script th:src="@{/libs/treeview/treeview.js}"></script>
 
@@ -93,7 +95,7 @@
 
                         <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
                             <input class="form-control" id="dt">
-                            <div id="dtHelp" class="form-text">System Date</div>
+                            <div id="dtHelp" class="form-text row justify-content-center">System Date</div>
                         </li>
 
                         <li class="nav-item dropdown">

@@ -2,12 +2,14 @@ package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.MetricsData;
+import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.time.Period;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -26,18 +28,14 @@ public class MetricsService {
 
 
     public Map<CheckInOutEnum, Long> getTodaysStatistics(HttpSession session){
-        Map<CheckInOutEnum, Long> metrics = new HashMap<>();
-
         ZonedDateTime beginning = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         List<CheckInOutEnum> totalCurrentStatuses = checkInOutRecordRepository
                 .findTotalCurrentStatuses(beginning, ending);
 
-        Map<CheckInOutEnum, Long> collect = totalCurrentStatuses.stream()
+        return totalCurrentStatuses.stream()
                 .collect(Collectors.groupingBy(s -> s, Collectors.counting()));
-
-        return collect;
     }
 
     public MetricsData getCombinedStatistics(HttpSession session){
@@ -60,27 +58,32 @@ public class MetricsService {
                 .filter(r -> r.getLocation() != null)
                 .collect(Collectors.groupingBy(CheckInOutRecord::getLocation));
 
-        Map<String, Map<CheckInOutEnum, Long>> orgGroupStats = new HashMap<>();
-        Map<String, Map<CheckInOutEnum, Long>> employeeTypeGroupStats = new HashMap<>();
-        Map<String, Map<CheckInOutEnum, Long>> locationGroupStats = new HashMap<>();
+        Map<String, PieChartData<CheckInOutEnum>> orgGroupStats = new HashMap<>();
+        Map<String, PieChartData<CheckInOutEnum>> employeeTypeGroupStats = new HashMap<>();
+        Map<String, PieChartData<CheckInOutEnum>> locationGroupStats = new HashMap<>();
 
         orgGroup.forEach((key, value) -> {
             Map<CheckInOutEnum, Long> collect = value.stream()
                     .collect(Collectors.groupingBy(CheckInOutRecord::getAction, Collectors.counting()));
-            orgGroupStats.put(key, collect);
+
+            PieChartData<CheckInOutEnum> orgPieChart = PieChartData.build(key, collect);
+            orgGroupStats.put(key, orgPieChart);
         });
 
         employeeTypeGroup.forEach((key, value) -> {
             Map<CheckInOutEnum, Long> collect = value.stream()
                     .collect(Collectors.groupingBy(CheckInOutRecord::getAction, Collectors.counting()));
-            employeeTypeGroupStats.put(key, collect);
+            PieChartData<CheckInOutEnum> orgPieChart = PieChartData.build(key, collect);
+            employeeTypeGroupStats.put(key, orgPieChart);
         });
 
         locationGroup.forEach((key, value) -> {
             Map<CheckInOutEnum, Long> collect = value.stream()
                     .collect(Collectors.groupingBy(CheckInOutRecord::getAction, Collectors.counting()));
-            locationGroupStats.put(key, collect);
+            PieChartData<CheckInOutEnum> orgPieChart = PieChartData.build(key, collect);
+            locationGroupStats.put(key, orgPieChart);
         });
+
 
         Map<CheckInOutEnum, Long> allStats = totalCurrentRecords.stream()
                 .collect(Collectors.groupingBy(s -> s.getAction(), Collectors.counting()));
