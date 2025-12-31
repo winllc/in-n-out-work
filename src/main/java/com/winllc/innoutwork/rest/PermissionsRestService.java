@@ -20,8 +20,11 @@ public class PermissionsRestService {
 
     private static final Logger log = LoggerFactory.getLogger(PermissionsRestService.class);
 
-    @Autowired
-    private PermissionService permissionService;
+    private final PermissionService permissionService;
+
+    public PermissionsRestService(PermissionService permissionService) {
+        this.permissionService = permissionService;
+    }
 
     @PostMapping("/update")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +

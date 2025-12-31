@@ -31,14 +31,14 @@ public class HomeController {
     private final CacheService cacheService;
     private final ApplicationProperties properties;
     private final UserRecordRepository userRecordRepository;
-    @Autowired
-    private PermissionService permissionService;
+    private final PermissionService permissionService;
 
     public HomeController(CacheService cacheService, ApplicationProperties properties,
-                          UserRecordRepository userRecordRepository) {
+                          UserRecordRepository userRecordRepository, PermissionService permissionService) {
         this.cacheService = cacheService;
         this.properties = properties;
         this.userRecordRepository = userRecordRepository;
+        this.permissionService = permissionService;
     }
 
     @GetMapping
@@ -71,6 +71,7 @@ public class HomeController {
     }
 
     @GetMapping("/app/groups")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER)")
     public String groups(Authentication authentication, Model model) throws JsonProcessingException {
         List<LdapGroup> topLevelGroups = new ArrayList<>();
 

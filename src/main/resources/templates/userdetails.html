@@ -8,7 +8,7 @@
     <title>Tabulator + Spring Boot</title>
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
-    <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.20/index.global.min.js'></script>
+    <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
 </head>
 <body>
 <div layout:fragment="content">
@@ -103,8 +103,10 @@
 
     <script th:inline="javascript">
 
+        const userDn = /*[[${user.dn}]]*/ "test";
+
         const table = new Tabulator("#audit-table", {
-            ajaxURL: "/api/users/checkinoutrecords/"+/*[[${user.dn}]]*/ "test",
+            ajaxURL: "/api/users/checkinoutrecords/"+userDn,
 
             ajaxResponse: function (url, params, response) {
                 // Tabulator expects array of row data
@@ -131,27 +133,30 @@
             var calendarEl = document.getElementById('calendar');
             const calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
+                themeSystem: 'bootstrap5',
                 headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',
                     right: 'dayGridMonth,dayGridWeek'
                 },
-                didMount: function () {
-                    addDropdownsToDays();
-                },
-                datesSet: function () {
-                    addDropdownsToDays();
+                events: function(fetchInfo, successCallback, failureCallback) {
+                    fetch(`/api/event/all?dn=${userDn}&from=${fetchInfo.startStr}&to=${fetchInfo.endStr}`)
+                        .then(res => res.json())
+                        .then(data => successCallback(data))
+                        .catch(err => failureCallback(err));
                 }
             });
 
             calendar.render();
 
+
+
             function addDropdownsToDays() {
                 const dayCells = document.querySelectorAll('.fc-daygrid-day');
 
                 dayCells.forEach(cell => {
-
-                    if (cell.querySelector('.wrap-with-underscores')) return;
+                    console.log(cell);
+                    if (cell.querySelector('.fc-daygrid-event-harness')) return;
 
                     const dateStr = cell.getAttribute('data-date');
                     console.log(dateStr);
@@ -175,13 +180,25 @@
                         })
                         .then(data => {
                             console.log(data);
+                            /*
                             const dropdownContainer = document.createElement('div');
-                            dropdownContainer.className = 'wrap-with-underscores';
+                            dropdownContainer.className = 'fc-note';
                             dropdownContainer.innerHTML = data.status;
 
                             cell.appendChild(dropdownContainer);
-                        });
 
+                             */
+
+                            /*
+                            calendar.addEvent({
+                                id: 'event-'+dateStr,
+                                title: data.status,
+                                start: data.date,
+                            })
+
+                             */
+
+                        });
 
                 });
             }

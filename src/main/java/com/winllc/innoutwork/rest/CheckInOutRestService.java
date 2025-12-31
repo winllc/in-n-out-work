@@ -75,6 +75,7 @@ public class CheckInOutRestService {
             if(auth != null && auth.getPrincipal() != null && auth.getPrincipal() instanceof AppUserDetails details){
                 record.setOrganization(details.getOrganization());
                 record.setEmployeeType(details.getEmployeeType());
+                record.setLocation(details.getLocation());
             }
 
             return databaseService.saveCheckInOutRecord(record);

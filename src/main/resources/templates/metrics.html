@@ -18,92 +18,106 @@
                 <h2>Metrics</h2>
             </div>
 
-            <div class="row pb-10">
-                <div class="col-md-5 mx-auto">
+            <div class="row">
+                <div class="col-md-3">
                     <div class="d-flex justify-content-center">
                         <h3>Current User Statuses</h3>
                     </div>
                     <canvas id="myChart"></canvas>
                 </div>
-            </div>
-            <div class="row">
-                <div class="col-md-12 mx-auto">
+
+                <div class="col-md-9">
                     <div class="d-flex justify-content-center">
                         <h3>Today's Activity</h3>
                     </div>
                     <canvas id="myChart2"></canvas>
                 </div>
             </div>
-            <div class="row">
-                <div class="col-md-6 mx-auto">
-                    <h3>By Organization</h3>
 
-                    <div th:each="org : ${data.getOrgStatusCounts()}">
-                        <h4 th:text="${org.getKey()}"></h4>
-                        <table>
-                            <thead>
-                            <tr>
-                                <th>Status</th>
-                                <th>Count</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <tr th:each="status : ${org.getValue()}">
-                                <td th:text="${status.key}"></td>
-                                <td class="d-flex justify-content-end" th:text="${status.getValue()}"></td>
-                            </tr>
-                            </tbody>
-                        </table>
+            <div id="chartsContainer" class="container">
+                <ul class="nav nav-tabs" id="myTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active"
+                                id="org-tab"
+                                data-bs-toggle="tab"
+                                data-bs-target="#org"
+                                type="button"
+                                role="tab">
+                            By Organization
+                        </button>
+                    </li>
+
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link"
+                                id="empType-tab"
+                                data-bs-toggle="tab"
+                                data-bs-target="#empType"
+                                type="button"
+                                role="tab">
+                            By Employee Type
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link"
+                                id="location-tab"
+                                data-bs-toggle="tab"
+                                data-bs-target="#location"
+                                type="button"
+                                role="tab">
+                            By Location
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content mt-3">
+                    <div class="tab-pane fade show active"
+                         id="org"
+                         role="tabpanel">
+
+                        <div class="row">
+                            <div class="col-md-4" th:each="org, index : ${data.getOrgStatusCounts()}">
+                                <h4 th:text="${org.getKey()}"></h4>
+
+                                <canvas th:id="${'orgChart'+org.getKey()}"></canvas>
+                            </div>
+                        </div>
+
                     </div>
-                </div>
 
-                <div class="col-md-6 mx-auto">
-                    <h3>By Employee Type</h3>
+                    <div class="tab-pane fade"
+                         id="empType"
+                         role="tabpanel">
 
-                    <div th:each="org : ${data.getEmployeeTypeStatusCounts()}">
-                        <h4 th:text="${org.getKey()}"></h4>
-                        <table>
-                            <thead>
-                            <tr>
-                                <th>Status</th>
-                                <th>Count</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <tr th:each="status : ${org.getValue()}">
-                                <td th:text="${status.key}"></td>
-                                <td class="d-flex justify-content-end" th:text="${status.getValue()}"></td>
-                            </tr>
-                            </tbody>
-                        </table>
+                        <div class="row">
+                            <div class="col-md-4" th:each="org, index : ${data.getEmployeeTypeStatusCounts()}">
+                                <h4 th:text="${org.getKey()}"></h4>
+
+                                <canvas th:id="${'empTypeChart'+org.getKey()}"></canvas>
+                            </div>
+                        </div>
+
                     </div>
-                </div>
 
-                <div class="col-md-6 mx-auto">
-                    <h3>By Location</h3>
+                    <div class="tab-pane fade"
+                         id="location"
+                         role="tabpanel">
 
-                    <div th:each="org : ${data.getLocationStatusCounts()}">
-                        <h4 th:text="${org.getKey()}"></h4>
-                        <table>
-                            <thead>
-                            <tr>
-                                <th>Status</th>
-                                <th>Count</th>
-                            </tr>
-                            </thead>
-                            <tbody>
-                            <tr th:each="status : ${org.getValue()}">
-                                <td th:text="${status.key}"></td>
-                                <td class="d-flex justify-content-end" th:text="${status.getValue()}"></td>
-                            </tr>
-                            </tbody>
-                        </table>
+                        <div class="row">
+                            <div class="col-md-4" th:each="org, index : ${data.getLocationStatusCounts()}">
+                                <h4 th:text="${org.getKey()}"></h4>
+
+                                <canvas th:id="${'locationChart'+org.getKey()}"></canvas>
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>
 
+
+
             <script th:inline="javascript">
-                /*<![CDATA[*/
+
                 var dataString = /*[[${totalLoginChartData}]]*/ {};
                 var dataData = JSON.parse(dataString);
 
@@ -126,7 +140,38 @@
                     data: lineData
                 });
 
-                /*]]>*/
+                var orgMap = /*[[${data.getOrgStatusCounts()}]]*/ {};
+                var empTypeMap = /*[[${data.getEmployeeTypeStatusCounts()}]]*/ {};
+                var locationMap = /*[[${data.getLocationStatusCounts()}]]*/ {};
+
+                Object.keys(orgMap).forEach(key => {
+                    const temp = document.getElementById('orgChart'+key);
+
+                    new Chart(temp, {
+                        type: 'pie',
+                        data: orgMap[key]
+                    });
+                });
+
+                Object.keys(empTypeMap).forEach(key => {
+                    const temp = document.getElementById('empTypeChart'+key);
+
+                    new Chart(temp, {
+                        type: 'pie',
+                        data: empTypeMap[key]
+                    });
+                });
+
+                Object.keys(locationMap).forEach(key => {
+                    const temp = document.getElementById('locationChart'+key);
+
+                    new Chart(temp, {
+                        type: 'pie',
+                        data: locationMap[key]
+                    });
+                });
+
+
             </script>
         </div>
     </div>

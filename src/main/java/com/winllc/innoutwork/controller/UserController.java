@@ -30,15 +30,14 @@ public class UserController {
 
     private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
-
     private final LdapService ldapService;
     private final UserRestService userRestService;
-    @Autowired
-    private UserRecordService userRecordService;
+    private final UserRecordService userRecordService;
 
-    public UserController(LdapService ldapService, UserRestService userRestService) {
+    public UserController(LdapService ldapService, UserRestService userRestService, UserRecordService userRecordService) {
         this.ldapService = ldapService;
         this.userRestService = userRestService;
+        this.userRecordService = userRecordService;
     }
 
     @GetMapping("/details/{dn}")

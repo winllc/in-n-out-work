@@ -16,10 +16,7 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class AppUserDetailsService implements UserDetailsService {
@@ -45,6 +42,9 @@ public class AppUserDetailsService implements UserDetailsService {
         Optional<LdapUser> ldapUserOptional = ldapService.lookupUser(dn);
 
         if (ldapUserOptional.isPresent()) {
+            Set<UserRoleEnum> roles = new HashSet<>();
+            roles.add(UserRoleEnum.USER);
+
             LdapUser user =  ldapUserOptional.get();
             UserRecord record = createUserIfDoesNotExist(dn, user);
 
@@ -52,14 +52,16 @@ public class AppUserDetailsService implements UserDetailsService {
 
             if(properties.getSuperUserDns().stream()
                     .anyMatch(s -> user.getDn().equalsIgnoreCase(s))) {
-                details.addAuthority(UserRoleEnum.ADMIN.name());
+                roles.add(UserRoleEnum.ADMIN);
             }
 
             UserRoleEnum userRole = record.getUserRole();
             if(userRole != null) {
-                details.addAuthority(userRole.name());
-            }else{
-                details.addAuthority(UserRoleEnum.USER.name());
+                roles.add(userRole);
+            }
+
+            for(UserRoleEnum role : roles) {
+                details.addAuthority(role.name());
             }
 
             return details;
@@ -79,6 +81,7 @@ public class AppUserDetailsService implements UserDetailsService {
                     .dn(dn.toString())
                     .employeeType(ldapUser.getEmployeeType())
                     .organization(ldapUser.getOrganization())
+                    .location(ldapUser.getLocation())
                     .userRole(UserRoleEnum.USER)
                     .build();
             return userRecordRepository.save(userRecord);
@@ -91,6 +94,10 @@ public class AppUserDetailsService implements UserDetailsService {
             }
             if(!Objects.equals(ldapUser.getOrganization(), userRecord.getOrganization())){
                 userRecord.setOrganization(ldapUser.getOrganization());
+                updated = true;
+            }
+            if(!Objects.equals(ldapUser.getLocation(), userRecord.getLocation())){
+                userRecord.setLocation(ldapUser.getLocation());
                 updated = true;
             }
 

@@ -33,6 +33,7 @@ public class UserRecord {
     private String favoriteGroups;
     private String organization;
     private String employeeType;
+    private String location;
     @Column(columnDefinition = "text")
     @Enumerated(EnumType.STRING)
     private UserRoleEnum userRole;

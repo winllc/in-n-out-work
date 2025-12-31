@@ -43,3 +43,8 @@ body {
     overflow-wrap: anywhere; /* Breaks if needed to prevent overflow */
     width: 100px; /* Example width constraint */
 }
+
+.fc-note {
+    font-size: 0.75rem;
+    color: #0d6efd;
+}

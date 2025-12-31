@@ -12,7 +12,6 @@ import java.util.List;
 @Service
 public class PermissionEvaluator {
 
-
     private final PermissionService permissionService;
 
     public PermissionEvaluator(PermissionService permissionService) {

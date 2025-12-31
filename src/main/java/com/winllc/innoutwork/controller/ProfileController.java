@@ -28,7 +28,6 @@ public class ProfileController {
 
     private static final Logger log = LoggerFactory.getLogger(ProfileController.class);
 
-
     private final UserRecordRepository recordRepository;
     private final UserRecordService userRecordService;
 
@@ -38,6 +37,7 @@ public class ProfileController {
     }
 
     @GetMapping
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER)")
     public String profile(Authentication authentication, Model model) {
         ProfileForm form = new ProfileForm();
 
@@ -58,6 +58,7 @@ public class ProfileController {
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER)")
     public String profileSubmit(Authentication authentication,
                                 RedirectAttributes redirectAttributes,
                                 Model model, @ModelAttribute ProfileForm form) {

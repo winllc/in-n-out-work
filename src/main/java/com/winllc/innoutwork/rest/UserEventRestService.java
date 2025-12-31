@@ -1,22 +1,25 @@
 package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.constant.UserStatusEnum;
+import com.winllc.innoutwork.data.CalendarEvent;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.SystemDateTimeForm;
 import com.winllc.innoutwork.data.UserEventData;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import io.micrometer.common.util.StringUtils;
+import org.checkerframework.checker.units.qual.C;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -26,10 +29,11 @@ public class UserEventRestService {
 
     private final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    @Autowired
-    private UserEventRecordRepository userEventRecordRepository;
+    private final UserEventRecordRepository userEventRecordRepository;
 
-    Map<LocalDate, UserEventData> userEventRecordMap = new HashMap<>();
+    public UserEventRestService(UserEventRecordRepository userEventRecordRepository) {
+        this.userEventRecordRepository = userEventRecordRepository;
+    }
 
     @PostMapping("/day")
     public UserEventData getEventForDay(Authentication authentication,
@@ -72,14 +76,38 @@ public class UserEventRestService {
          */
     }
 
+    @GetMapping("/all")
+    public List<CalendarEvent> getEventForDay(Authentication authentication,
+                                        @RequestParam String dn,
+                                        @RequestParam Instant from,
+                                        @RequestParam Instant to){
+
+        LdapDn ldapDn = LdapDn.builder().dn(dn).build();
+
+        LocalDate fromDate = LocalDate.ofInstant(from, ZoneId.systemDefault());
+        LocalDate toDate = LocalDate.ofInstant(to, ZoneId.systemDefault());
+
+        List<UserEventRecord> byDnAndDateBetween = userEventRecordRepository.findByDnIgnoreCaseAndDateBetween(ldapDn.dn(), fromDate, toDate);
+
+        List<CalendarEvent> events = byDnAndDateBetween.stream()
+                .map(r -> {
+                    CalendarEvent event = new CalendarEvent();
+                    event.setId(r.getDate().format(DateTimeFormatter.ISO_LOCAL_DATE));
+                    event.setTitle(r.getStatus().getFriendlyName());
+                    event.setStart(r.getDate().format(DateTimeFormatter.ISO_LOCAL_DATE));
+                    return event;
+                })
+                .toList();
+
+        return events;
+    }
+
     @PostMapping("/update")
     public UserEventData updateEventForDay(Authentication authentication,
                                              @RequestBody UserEventData data){
 
         String userDn = authentication.getName();
         LocalDate localDate = LocalDate.parse(data.getDate(), dtf);
-
-        userEventRecordMap.put(localDate, data);
 
         UserEventRecord record = new UserEventRecord();
         record.setDn(userDn);
