@@ -109,6 +109,20 @@ public class LdapService {
         return results.size();
     }
 
+    public Optional<LdapGroup> lookupGroup(LdapDn dn) {
+        LdapGroup group = null;
+        try {
+            group = ldapTemplate.lookup(dn.toString(), (ContextMapper<LdapGroup>) ctx -> {
+                DirContextAdapter context = (DirContextAdapter) ctx;
+
+                return mapGroup(context.getDn().toString(), context.getAttributes());
+            });
+        } catch (Exception e) {
+            log.error("Not found: %s".formatted(dn), e);
+        }
+
+        return Optional.ofNullable(group);
+    }
 
     public List<LdapGroup> getGroups(TopLevelGroupProperties topProps) {
         return ldapTemplate.search(
@@ -150,6 +164,7 @@ public class LdapService {
                 .map(LdapDn::toString)
                 .toList();
     }
+
 
     private LdapGroup buildGroupHierarchyFromAttribute(String dn, List<String> visited) {
         if (visited.contains(dn)) {

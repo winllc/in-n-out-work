@@ -1,0 +1,121 @@
+package com.winllc.innoutwork.service;
+
+import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.data.LdapGroup;
+import com.winllc.innoutwork.data.LdapUser;
+import com.winllc.innoutwork.data.reports.DayReport;
+import com.winllc.innoutwork.data.reports.UserDayReport;
+import com.winllc.innoutwork.data.reports.GroupReport;
+import com.winllc.innoutwork.data.reports.UserReport;
+import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.model.UserEventRecord;
+import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import com.winllc.innoutwork.repository.UserEventRecordRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
+import java.time.ZonedDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+public class ReportService {
+
+    @Autowired
+    private LdapService ldapService;
+    @Autowired
+    private CheckInOutRecordRepository checkInOutRecordRepository;
+    @Autowired
+    private UserEventRecordRepository userEventRecordRepository;
+
+    public GroupReport generateGroupReport(LdapDn groupDn, ZonedDateTime from, ZonedDateTime to){
+        Optional<LdapGroup> groupOptional = ldapService.lookupGroup(groupDn);
+
+        if(groupOptional.isPresent()){
+            LdapGroup group = groupOptional.get();
+
+            GroupReport groupReport = GroupReport.build(group, from.toLocalDate(), to.toLocalDate());
+            List<String> groupMembers = ldapService.getGroupMembers(groupDn);
+
+            List<UserReport> userReports = new ArrayList<>();
+
+            for(String groupMember : groupMembers){
+                Optional<LdapUser> userOptional = ldapService.lookupUser(LdapDn.builder().dn(groupMember).build());
+
+                if(userOptional.isPresent()) {
+                    LdapUser user = userOptional.get();
+
+                    List<CheckInOutRecord> byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc = checkInOutRecordRepository.findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(groupMember, from, to);
+
+                    Map<LocalDate, List<CheckInOutRecord>> dateMap = createDateMap(byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc, from, to);
+
+                    List<UserDayReport> dayReports = new ArrayList<>();
+
+                    dateMap.forEach((date, checkInOutRecords) -> {
+
+                        Optional<UserEventRecord> eventRecordOptional = userEventRecordRepository.findByDnAndDate(groupMember, date);
+
+                        UserDayReport dayReport = UserDayReport.build(date, eventRecordOptional.orElse(null), checkInOutRecords);
+
+                        dayReports.add(dayReport);
+                    });
+
+                    UserReport userReport = UserReport.createUserReport(user, dayReports);
+                    userReports.add(userReport);
+                }
+            }
+
+            groupReport.getUserReports().addAll(userReports);
+
+            groupReport.getDayReports().addAll(createDayReportMap(userReports, from, to).values());
+
+            Collections.sort(groupReport.getDayReports());
+
+            return groupReport;
+        }else{
+            return null;
+        }
+    }
+
+    private Map<LocalDate, DayReport> createDayReportMap(List<UserReport> userReports, ZonedDateTime from, ZonedDateTime to){
+        Map<LocalDate, DayReport> reportMap = new HashMap<>();
+
+        ZonedDateTime current = from;
+        while(current.isBefore(to) || current.isEqual(to)) {
+            LocalDate localDate = current.toLocalDate();
+            reportMap.putIfAbsent(localDate, new DayReport(localDate));
+            current = current.plusDays(1);
+        }
+
+        for(UserReport userReport : userReports) {
+            for(UserDayReport userDayReport : userReport.getDayReports()) {
+                LocalDate date = userDayReport.getDay();
+
+                DayReport dayReport = reportMap.get(date);
+                if(dayReport == null) {
+                    dayReport = new DayReport();
+                    dayReport.setDate(date);
+                }
+
+                dayReport.addUserReport(userReport);
+                reportMap.put(date, dayReport);
+            }
+        }
+
+        return reportMap;
+    }
+
+    private Map<LocalDate, List<CheckInOutRecord>> createDateMap(List<CheckInOutRecord> records, ZonedDateTime from, ZonedDateTime to){
+        Map<LocalDate, List<CheckInOutRecord>> collect = records.stream()
+                .collect(Collectors.groupingBy(r -> r.getTimestamp().toLocalDate()));
+
+        ZonedDateTime current = from;
+        while(current.isBefore(to) || current.isEqual(to)) {
+            LocalDate localDate = current.toLocalDate();
+            collect.putIfAbsent(localDate, List.of());
+            current = current.plusDays(1);
+        }
+        return collect;
+    }
+}

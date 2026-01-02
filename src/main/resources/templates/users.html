@@ -6,6 +6,10 @@
     <meta charset="UTF-8">
     <title>Tabulator + Spring Boot</title>
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
+    <link rel="stylesheet"
+          th:href="@{/libs/flatpickr/flatpickr.min.css}"/>
+
+    <script th:src="@{/libs/flatpickr/flatpickr.min.js}"></script>
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
 </head>
 <body>
@@ -17,6 +21,17 @@
             <div class="form-check form-switch">
                 <input class="form-check-input" type="checkbox" role="switch" th:checked="${isFavorite}" id="favorite-btn">
                 <label class="form-check-label" for="advanced-btn">Favorite</label>
+            </div>
+            <div>
+                <form th:action="@{/app/group/report}" method="post">
+                    <input type="hidden" name="groupDn" th:value="${groupDn}">
+                    <input class="form-control" id="reportRange" type="text" placeholder="Select Report Range">
+                    <input type="hidden" name="fromDate" id="fromDate">
+                    <input type="hidden" name="toDate" id="toDate">
+                    <button type="submit" class="btn btn-primary">Generate Report</button>
+                </form>
+
+                <a th:href="@{'/app/group/report/'+ ${groupDn}}">Generate Report</a>
             </div>
         </div>
     </div>
@@ -107,7 +122,21 @@
                 },
                 body: JSON.stringify(data),
             });
+        });
 
+        const picker = flatpickr("#reportRange", {
+            enableTime: false,
+            dateFormat: "Y-m-d",
+            mode: "range",
+            //time_24hr: true,
+            //defaultDate: sessionDateTime,
+            onClose: function(selectedDates) {
+                if (!selectedDates.length) return;
+
+                document.getElementById("fromDate").value = selectedDates[0].toISOString();
+                document.getElementById("toDate").value = selectedDates[1].toISOString();
+                //sendSelectedDateTime(selectedDates[0]);
+            }
         });
 
     </script>
