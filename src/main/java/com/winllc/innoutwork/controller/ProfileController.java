@@ -44,16 +44,14 @@ public class ProfileController {
         Optional<UserRecord> optionalRecord = recordRepository.findByDnIgnoreCase(authentication.getName());
         if(optionalRecord.isPresent()) {
             UserRecord userRecord = optionalRecord.get();
-            form.setNotes(userRecord.getNotes());
-            if(userRecord.getStatus() != null) {
-                form.setStatus(userRecord.getStatus().name());
-            }
+            form = ProfileForm.buildFromRecord(userRecord);
 
             model.addAttribute("user", userRecord);
         }
 
         model.addAttribute("statuses", Stream.of(UserStatusEnum.values()).toList());
         model.addAttribute("form", form);
+        model.addAttribute("userDn", authentication.getName());
         return "profile"; // resolves to src/main/resources/templates/index.html
     }
 

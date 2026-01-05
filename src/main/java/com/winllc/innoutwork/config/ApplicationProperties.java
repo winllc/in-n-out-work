@@ -4,7 +4,9 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Data
 @ConfigurationProperties(prefix = "application")
@@ -20,4 +22,5 @@ public class ApplicationProperties {
     private int cacheDurationExpirationMinutes = 120;
     private List<String> superUserDns = new ArrayList<>();
     private List<TopLevelGroupProperties> groups = new ArrayList<>();
+    private Map<String, String> attributeUpdateRequestUrlMappings = new HashMap<>();
 }

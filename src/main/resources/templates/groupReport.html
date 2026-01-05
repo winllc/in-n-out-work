@@ -8,18 +8,20 @@
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
     <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js" integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"
+            integrity="sha512-GsLlZN/3F2ErC5ifS5QtgpiJtWd43JWSuIgh7mbzZ8zBps+dvLusV+eNQATqgA/HdeKFVgA5v3S/cIrLF7QnIg=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
 
     <script>
         function generatePDF() {
             const element = document.getElementById('fullReport');
             const opt = {
-                margin:       0.5,
-                filename:     'group_report.pdf',
-                image:        { type: 'jpeg', quality: 0.98 },
-                html2canvas:  { scale: 2 },
-                jsPDF:        { unit: 'in', format: 'letter', orientation: 'portrait' },
+                margin: 0.5,
+                filename: 'group_report.pdf',
+                image: {type: 'jpeg', quality: 0.98},
+                html2canvas: {scale: 2},
+                jsPDF: {unit: 'in', format: 'letter', orientation: 'portrait'},
                 pagebreak: {
                     mode: ['avoid-all', 'css', 'legacy']
                 }
@@ -37,11 +39,11 @@
 
     <div class="card" id="fullReport">
         <div class="card-body">
-            <div class="d-flex justify-content-center">
-                <div>
+            <div class="row">
+                <div class="col-md-3 offset-md-4">
                     <h3>Group Report</h3>
                 </div>
-                <div>
+                <div class="col-md-3 offset-md-2">
                     <button class="btn btn-primary" onclick="generatePDF()">Download PDF</button>
                 </div>
             </div>
@@ -57,7 +59,7 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <table class="table">
+                    <table class="table table-sm table-bordered">
                         <tbody>
                         <tr>
                             <td>Group Name</td>
@@ -80,96 +82,112 @@
                 </div>
             </div>
 
-            <div class="row">
-                <h3>Day Reports</h3>
-                <div class="col-md-4" th:each="dayReport : ${report.getDayReports()}">
-                    <div class="card">
-                        <h5 class="card-header" th:text="${dayReport.getDate()}"></h5>
+            <div class="container">
 
-                        <div class="card-body">
-                            <table class="table table-responsive">
-                                <tbody>
-                                <tr>
-                                    <td>Total Check-Ins</td>
-                                    <td><span th:text="${dayReport.getTotalLoggedIn()}"></span></td>
-                                </tr>
-                                <tr>
-                                    <td>Total Check-Outs</td>
-                                    <td><span th:text="${dayReport.getTotalLoggedOut()}"></span></td>
-                                </tr>
-                                <tr>
-                                    <td>Employee Type Stats</td>
-                                    <td>
-                                        <table class="table table-responsive">
-                                            <tbody>
-                                            <tr th:each="entry : ${dayReport.getEmployeeTypeCounts()}">
-                                                <td th:text="${entry.key}"></td>
-                                                <td th:text="${entry.value}"></td>
-                                            </tr>
-                                            </tbody>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>Location Stats</td>
-                                    <td>
-                                        <table class="table table-responsive">
-                                            <tbody>
-                                            <tr th:each="entry : ${dayReport.getLocationCounts()}">
-                                                <td th:text="${entry.key}"></td>
-                                                <td th:text="${entry.value}"></td>
-                                            </tr>
-                                            </tbody>
-                                        </table>
-                                    </td>
-                                </tr>
-                                <tr>
-                                    <td>Organization Stats</td>
-                                    <td>
-                                        <table class="table table-responsive">
-                                            <tbody>
-                                            <tr th:each="entry : ${dayReport.getOrgCounts()}">
-                                                <td th:text="${entry.key}"></td>
-                                                <td th:text="${entry.value}"></td>
-                                            </tr>
-                                            </tbody>
-                                        </table>
-                                    </td>
-                                </tr>
-                                </tbody>
-                            </table>
+                <div class="row">
+                    <div class="col-md-3 offset-md-4">
+                        <h4>Day Reports</h4>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-4" th:each="dayReport : ${report.getDayReports()}">
+                        <div class="card">
+                            <h5 class="card-header" th:text="${dayReport.getDate()}"></h5>
+
+                            <div class="card-body p-1">
+                                <table class="table table-sm table-bordered">
+                                    <tbody>
+                                    <tr>
+                                        <td>Total Check-Ins</td>
+                                        <td><span th:text="${dayReport.getTotalLoggedIn()}"></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Total Check-Outs</td>
+                                        <td><span th:text="${dayReport.getTotalLoggedOut()}"></span></td>
+                                    </tr>
+                                    <tr>
+                                        <td>Employee Type Stats</td>
+                                        <td>
+                                            <table class="table table-sm table-bordered">
+                                                <tbody>
+                                                <tr th:each="entry : ${dayReport.getEmployeeTypeCounts()}">
+                                                    <td th:text="${entry.key}"></td>
+                                                    <td th:text="${entry.value}"></td>
+                                                </tr>
+                                                </tbody>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Location Stats</td>
+                                        <td>
+                                            <table class="table table-sm table-bordered">
+                                                <tbody>
+                                                <tr th:each="entry : ${dayReport.getLocationCounts()}">
+                                                    <td th:text="${entry.key}"></td>
+                                                    <td th:text="${entry.value}"></td>
+                                                </tr>
+                                                </tbody>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <td>Organization Stats</td>
+                                        <td>
+                                            <table class="table table-sm table-bordered">
+                                                <tbody>
+                                                <tr th:each="entry : ${dayReport.getOrgCounts()}">
+                                                    <td th:text="${entry.key}"></td>
+                                                    <td th:text="${entry.value}"></td>
+                                                </tr>
+                                                </tbody>
+                                            </table>
+                                        </td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 
                 </div>
             </div>
 
-            <div class="row">
-                <h3>User Reports</h3>
-                <div class="col-md-6" th:each="userReport : ${report.getUserReports()}">
-                    <div class="card">
-                        <h5 class="card-header" th:text="${userReport.userDn}"></h5>
-                        <div class="card-body">
-                            <table class="table table-responsive">
-                                <thead>
-                                <tr>
-                                    <th>Day</th>
-                                    <th>Status</th>
-                                    <th>Check-In Time</th>
-                                    <th>Check-Out Time</th>
-                                    <th>Duration</th>
-                                </tr>
-                                </thead>
-                                <tbody>
-                                <tr th:each="dayReport : ${userReport.dayReports}">
-                                    <td><span th:text="${dayReport.getFormatedDay()}"></span></td>
-                                    <td><span th:text="${dayReport.status}"></span></td>
-                                    <td><span th:text="${dayReport.getCheckInTime()}"></span></td>
-                                    <td><span th:text="${dayReport.getCheckOutTime()}"></span></td>
-                                    <td><span th:text="${dayReport.getCheckedInPeriod()}"></span></td>
-                                </tr>
-                                </tbody>
-                            </table>
+            <div class="container">
+
+                <div class="row">
+                    <div class="col-md-3 offset-md-4">
+                        <h4>User Reports</h4>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6" th:each="userReport : ${report.getUserReports()}">
+                        <div class="card">
+                            <h5 class="card-header" th:text="${userReport.userDn}"></h5>
+                            <div class="card-body p-1">
+                                <table class="table table-sm table-bordered">
+                                    <thead>
+                                    <tr>
+                                        <th>Day</th>
+                                        <th>Status</th>
+                                        <th>Check-In Time</th>
+                                        <th>Check-Out Time</th>
+                                        <th>Duration</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    <tr th:each="dayReport : ${userReport.dayReports}">
+                                        <td><span th:text="${dayReport.getFormatedDay()}"></span></td>
+                                        <td><span th:text="${dayReport.status}"></span></td>
+                                        <td><span th:text="${dayReport.getCheckInTime()}"></span></td>
+                                        <td><span th:text="${dayReport.getCheckOutTime()}"></span></td>
+                                        <td><span th:text="${dayReport.getCheckedInPeriod()}"></span></td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
 

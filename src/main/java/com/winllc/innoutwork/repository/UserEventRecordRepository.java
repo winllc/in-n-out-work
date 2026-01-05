@@ -13,5 +13,5 @@ import java.util.Optional;
 @Repository
 public interface UserEventRecordRepository  extends JpaRepository<UserEventRecord, Long>, PagingAndSortingRepository<UserEventRecord, Long> {
     List<UserEventRecord> findByDnIgnoreCaseAndDateBetween(String dn, LocalDate start, LocalDate end);
-    Optional<UserEventRecord> findByDnAndDate(String dn, LocalDate date);
+    Optional<UserEventRecord> findByDnIgnoreCaseAndDate(String dn, LocalDate date);
 }

@@ -48,7 +48,7 @@ public class UserEventRestService {
 
         UserEventRecord record = null;
 
-        Optional<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnAndDate(userDn, localDate);
+        Optional<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(userDn, localDate);
         if(byDnAndDate.isPresent()){
             record = byDnAndDate.get();
         }
@@ -107,13 +107,34 @@ public class UserEventRestService {
                                              @RequestBody UserEventData data){
 
         String userDn = authentication.getName();
-        LocalDate localDate = LocalDate.parse(data.getDate(), dtf);
+        LocalDate fromLocalDate = LocalDate.parse(data.getFromDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
+        LocalDate toLocalDate = LocalDate.parse(data.getToDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
 
+        while(fromLocalDate.isBefore(toLocalDate)){
+            UserEventRecord record = new UserEventRecord();
+            record.setDn(userDn);
+            record.setDate(fromLocalDate);
+
+            Optional<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(userDn, fromLocalDate);
+            if(byDnAndDate.isPresent()){
+                record = byDnAndDate.get();
+            }
+
+            record.setStatus(UserStatusEnum.valueOf(data.getStatus()));
+
+            userEventRecordRepository.save(record);
+
+            fromLocalDate = fromLocalDate.plusDays(1);
+
+        }
+
+        //todo handle range update
+        /*
         UserEventRecord record = new UserEventRecord();
         record.setDn(userDn);
         record.setDate(localDate);
 
-        Optional<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnAndDate(userDn, localDate);
+        Optional<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(userDn, localDate);
         if(byDnAndDate.isPresent()){
             record = byDnAndDate.get();
         }
@@ -121,6 +142,8 @@ public class UserEventRestService {
         record.setStatus(UserStatusEnum.valueOf(data.getStatus()));
 
         userEventRecordRepository.save(record);
+
+         */
 
         return data;
     }

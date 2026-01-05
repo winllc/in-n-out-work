@@ -54,7 +54,7 @@ public class ReportService {
 
                     dateMap.forEach((date, checkInOutRecords) -> {
 
-                        Optional<UserEventRecord> eventRecordOptional = userEventRecordRepository.findByDnAndDate(groupMember, date);
+                        Optional<UserEventRecord> eventRecordOptional = userEventRecordRepository.findByDnIgnoreCaseAndDate(groupMember, date);
 
                         UserDayReport dayReport = UserDayReport.build(date, eventRecordOptional.orElse(null), checkInOutRecords);
 

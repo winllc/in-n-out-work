@@ -9,10 +9,105 @@
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
     <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
 
-    <script>
+
+</head>
+<body>
+<div layout:fragment="content">
+
+    <div id="selectionModal" class="modal fade" tabindex="-1" style="display:none">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Update Status</h5>
+                </div>
+                <div class="modal-body">
+                    <p id="dateRangeText"></p>
+                    <select id="statusSelect" class="form-control">
+                        <option value="STANDARD">Standard</option>
+                        <option value="OUT_OF_OFFICE">Out of Office</option>
+                        <option value="WORK_FROM_HOME">WFH</option>
+                        <option value="TDY">TDY</option>
+                        <option value="SCHEDULED_LEAVE">Scheduled Leave</option>
+                    </select>
+
+                    <input type="hidden" id="statusUpdateDateFrom">
+                    <input type="hidden" id="statusUpdateDateTo">
+
+                </div>
+                <div class="modal-footer">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <button id="submitStatusUpdateButton" class="btn btn-primary">Submit</button>
+                        </div>
+                        <div class="col-md-6">
+                            <button type="button" class="btn btn-secondary" onclick="document.getElementById('selectionModal').style.display='none'">Close</button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+
+        </div>
+
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-center">
+                <div>
+                    <h3>Profile for <span th:text="${#authentication.name}"></span></h3>
+                </div>
+            </div>
+        </div>
+        <div class="card-body">
+            <div th:if="${message}" class="alert alert-success">
+                <span th:text="${message}"></span>
+            </div>
+
+            <!-- Display error message if present -->
+            <div th:if="${error}" class="alert alert-danger">
+                <span th:text="${error}"></span>
+            </div>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <form th:action="@{/app/profile}" method="post" th:object="${form}">
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Notes</label>
+                            <div class="alert alert-danger" role="alert">
+                                <span th:utext="#{profile.warning}"></span>
+                            </div>
+                            <input type="text" class="form-control" id="notes" aria-describedby="notesHelp"
+                                   th:field="*{notes}">
+                            <div id="notesHelp" class="form-text">Add additional information about yourself</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="notes" class="form-label">Status</label>
+                            <select class="form-select" id="status" th:field="*{status}">
+                                <option th:each="status : ${statuses}" th:value="${status}"
+                                        th:text="${status}"></option>
+                            </select>
+
+                            <div id="statusHelp" class="form-text">Current Status</div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Submit</button>
+                    </form>
+                </div>
+                <div class="col-md-6">
+                    <h3>Calendar</h3>
+                    <div id='calendar'></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script th:inline="javascript">
 
         document.addEventListener('DOMContentLoaded', function () {
             var calendarEl = document.getElementById('calendar');
+
+            /*
             const calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 headerToolbar: {
@@ -25,6 +120,48 @@
                 },
                 datesSet: function () {
                     addDropdownsToDays();
+                }
+            });
+
+             */
+
+            const userDn = /*[[${userDn}]]*/ '';
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                themeSystem: 'bootstrap5',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,dayGridWeek'
+                },
+                events: function (fetchInfo, successCallback, failureCallback) {
+                    fetch(`/api/event/all?dn=${userDn}&from=${fetchInfo.startStr}&to=${fetchInfo.endStr}`)
+                        .then(res => res.json())
+                        .then(data => successCallback(data))
+                        .catch(err => failureCallback(err));
+                },
+                eventClick: function (info) {
+                    alert('Event: ' + info.event.title);
+                    alert('Coordinates: ' + info.jsEvent.pageX + ',' + info.jsEvent.pageY);
+                    alert('View: ' + info.view.type);
+
+                    // change the border color just for fun
+                    info.el.style.borderColor = 'red';
+                },
+                selectable: true,
+                select: function(info) {
+                    const start = info.start.toISOString();
+                    const end = info.end.toISOString();
+
+                    document.getElementById("statusUpdateDateFrom").value = start;
+                    document.getElementById("statusUpdateDateTo").value = end;
+
+                    //document.getElementById("selectionModal").style.display = "block";
+
+                    const modal = new bootstrap.Modal(
+                        document.getElementById("selectionModal")
+                    );
+                    modal.show();
                 }
             });
 
@@ -128,63 +265,43 @@
                 });
             });
 
+            function closeModal() {
+
+                const fromDate = document.getElementById("statusUpdateDateFrom").value;
+                const toDate = document.getElementById("statusUpdateDateTo").value;
+                const selectedStatus = document.getElementById("statusSelect").value;
+
+                fetch("/api/event/update", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        fromDate: fromDate,
+                        toDate: toDate,
+                        status: selectedStatus,
+                    })
+                }).then(() => {
+                    // Optionally, refresh the calendar to show updated events
+                    bootstrap.Modal.getInstance(
+                        document.getElementById("selectionModal")
+                    ).hide();
+
+                    calendar.unselect();
+                    calendar.refetchEvents();
+                });
+
+                //calendar.unselect();
+            }
+
+            $('#submitStatusUpdateButton').on('click', function (){
+                closeModal();
+            })
+
         });
 
     </script>
-</head>
-<body>
-<div layout:fragment="content">
 
-
-    <div class="card">
-        <div class="card-body">
-            <div class="d-flex justify-content-center">
-                <div>
-                    <h3>Profile for <span th:text="${#authentication.name}"></span></h3>
-                </div>
-            </div>
-
-            <div th:if="${message}" class="alert alert-success">
-                <span th:text="${message}"></span>
-            </div>
-
-            <!-- Display error message if present -->
-            <div th:if="${error}" class="alert alert-danger">
-                <span th:text="${error}"></span>
-            </div>
-
-            <div class="alert alert-danger" role="alert">
-                <span th:utext="#{profile.warning}"></span>
-            </div>
-
-            <div class="row">
-                <div class="col-md-6">
-                    <form th:action="@{/app/profile}" method="post" th:object="${form}">
-                        <div class="mb-3">
-                            <label for="notes" class="form-label">Notes</label>
-                            <input type="text" class="form-control" id="notes" aria-describedby="notesHelp"
-                                   th:field="*{notes}">
-                            <div id="notesHelp" class="form-text">Add additional information about yourself</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="notes" class="form-label">Status</label>
-                            <select class="form-select" id="status" th:field="*{status}">
-                                <option th:each="status : ${statuses}" th:value="${status}"
-                                        th:text="${status}"></option>
-                            </select>
-
-                            <div id="statusHelp" class="form-text">Current Status</div>
-                        </div>
-                        <button type="submit" class="btn btn-primary">Submit</button>
-                    </form>
-                </div>
-                <div class="col-md-6">
-                    <h3>Calendar</h3>
-                    <div id='calendar'></div>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 </body>
 </html>

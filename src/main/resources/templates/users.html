@@ -18,21 +18,36 @@
 
     <div class="row">
         <div class="col-md-6">
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" th:checked="${isFavorite}" id="favorite-btn">
-                <label class="form-check-label" for="advanced-btn">Favorite</label>
+            <div class="card mb-1">
+                <div class="card-body">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" th:checked="${isFavorite}" id="favorite-btn">
+                        <label class="form-check-label" for="advanced-btn">Favorite</label>
+                    </div>
+                </div>
             </div>
         </div>
-        <div class="col-md-3 justify-content-end" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
-            <form th:action="@{/app/group/report}" method="post">
-                <input type="hidden" name="groupDn" th:value="${groupDn}">
-                <input class="form-control" id="reportRange" type="text" placeholder="Select Report Range">
-                <input type="hidden" name="fromDate" id="fromDate">
-                <input type="hidden" name="toDate" id="toDate">
-                <div class="justify-content-end">
-                    <button type="submit" class="btn btn-primary">Generate Report</button>
+        <div class="col-md-4 justify-content-end" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+
+            <div class="card text-center mb-1">
+                <div class="card-body">
+                    <h5 class="card-title">Generate Group Report</h5>
+                    <form th:action="@{/app/group/report}" method="post">
+                        <input type="hidden" name="groupDn" th:value="${groupDn}">
+                        <input type="hidden" name="fromDate" id="fromDate">
+                        <input type="hidden" name="toDate" id="toDate">
+
+                        <div class="input-group mb-3 justify-content-end">
+                            <input class="form-control" id="reportRange" type="text" placeholder="Report Range">
+                            <div class="input-group-append">
+                                <button type="submit" class="btn btn-primary">Generate Report</button>
+                            </div>
+                        </div>
+                    </form>
                 </div>
-            </form>
+            </div>
+
+
         </div>
     </div>
 
