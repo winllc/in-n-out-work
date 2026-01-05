@@ -8,17 +8,21 @@ import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.DatabaseService;
 import com.winllc.innoutwork.service.LdapService;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import javax.xml.crypto.Data;
 import java.time.ZonedDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @RestController
@@ -30,6 +34,8 @@ public class UserRestService {
     private final UserRecordRepository userRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
+    @Autowired
+    private UserEventRecordRepository userEventRecordRepository;
 
     public UserRestService(LdapService ldapService, DatabaseService databaseService,
                            UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
@@ -117,6 +123,8 @@ public class UserRestService {
         UserStatus status = UserStatus.builder()
                 .dn(dn).build();
 
+        ZonedDateTime selectedDate = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
+
         List<CheckInOutRecord> todaysRecordsForUser = databaseService.findRecordsForUser(dn, session);
         if(todaysRecordsForUser != null && !todaysRecordsForUser.isEmpty()){
 
@@ -156,10 +164,12 @@ public class UserRestService {
             status.setNotes(record.getNotes());
             status.setOrganization(record.getOrganization());
             status.setEmployeeType(record.getEmployeeType());
-            if(status.getStatus().equals("NONE") && record.getStatus() != null && record.getStatus() != UserStatusEnum.STANDARD){
-                status.setStatus(record.getStatus().toString());
-            }
         }
+
+        userEventRecordRepository.findByDnIgnoreCaseAndDate(dn, selectedDate.toLocalDate())
+                .ifPresent(userEventRecord -> {
+                    status.setStatus(userEventRecord.getStatus().name());
+                });
 
         return status;
     }
