@@ -1,14 +1,15 @@
 package com.winllc.innoutwork.controller;
 
 import com.winllc.innoutwork.constant.UserStatusEnum;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.ProfileForm;
+import com.winllc.innoutwork.data.UserDetails;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
-import com.winllc.innoutwork.service.LdapService;
-import com.winllc.innoutwork.service.UserRecordService;
+import com.winllc.innoutwork.service.UserService;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -29,16 +30,17 @@ public class ProfileController {
     private static final Logger log = LoggerFactory.getLogger(ProfileController.class);
 
     private final UserRecordRepository recordRepository;
-    private final UserRecordService userRecordService;
+    private final UserService userRecordService;
 
-    public ProfileController(UserRecordRepository recordRepository, UserRecordService userRecordService) {
+    public ProfileController(UserRecordRepository recordRepository, UserService userRecordService) {
         this.recordRepository = recordRepository;
         this.userRecordService = userRecordService;
     }
 
     @GetMapping
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER)")
-    public String profile(Authentication authentication, Model model) {
+    public String profile(HttpSession session,
+                          Authentication authentication, Model model) {
         ProfileForm form = new ProfileForm();
 
         Optional<UserRecord> optionalRecord = recordRepository.findByDnIgnoreCase(authentication.getName());
@@ -49,9 +51,12 @@ public class ProfileController {
             model.addAttribute("user", userRecord);
         }
 
+        UserDetails userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(authentication.getName()).build(), session);
+
         model.addAttribute("statuses", Stream.of(UserStatusEnum.values()).toList());
         model.addAttribute("form", form);
         model.addAttribute("userDn", authentication.getName());
+        model.addAttribute("user", userDetails);
         return "profile"; // resolves to src/main/resources/templates/index.html
     }
 

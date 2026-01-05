@@ -23,4 +23,5 @@ public class ApplicationProperties {
     private List<String> superUserDns = new ArrayList<>();
     private List<TopLevelGroupProperties> groups = new ArrayList<>();
     private Map<String, String> attributeUpdateRequestUrlMappings = new HashMap<>();
+    private String updateProfileUrl = "https://google.com";
 }

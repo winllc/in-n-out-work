@@ -8,12 +8,10 @@ import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.rest.UserRestService;
 import com.winllc.innoutwork.service.LdapService;
-import com.winllc.innoutwork.service.PermissionService;
-import com.winllc.innoutwork.service.UserRecordService;
+import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -32,9 +30,9 @@ public class UserController {
 
     private final LdapService ldapService;
     private final UserRestService userRestService;
-    private final UserRecordService userRecordService;
+    private final UserService userRecordService;
 
-    public UserController(LdapService ldapService, UserRestService userRestService, UserRecordService userRecordService) {
+    public UserController(LdapService ldapService, UserRestService userRestService, UserService userRecordService) {
         this.ldapService = ldapService;
         this.userRestService = userRestService;
         this.userRecordService = userRecordService;
@@ -46,29 +44,7 @@ public class UserController {
     public ModelAndView details(HttpSession session, @PathVariable String dn, Authentication auth) {
         log.debug("%s requested details for: %s".formatted(auth.getName(), dn));
 
-        UserDetails userDetails = new UserDetails();
-        userDetails.setDn(dn);
-
-        Optional<UserRecord> userByDn = userRecordService.getUserByDn(LdapDn.builder().dn(dn).build());
-        if(userByDn.isPresent()) {
-            UserRecord userRecord = userByDn.get();
-            if(userRecord.getUserRole() != null) {
-                userDetails.setRole(userRecord.getUserRole().name());
-            }
-        }
-
-        List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(dn);
-        userDetails.setMemberOf(groupsForUser);
-
-        UserStatus userStatus = userRestService.getUserStatus(dn, session);
-        userDetails.setDn(dn);
-        userDetails.setNotes(userStatus.getNotes());
-        userDetails.setStatus(userStatus.getStatus());
-        userDetails.setOrganization(userStatus.getOrganization());
-        userDetails.setEmployeeType(userStatus.getEmployeeType());
-        if(userDetails.getRole() == null) {
-            userDetails.setRole(UserRoleEnum.USER.name());
-        }
+        UserDetails userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(dn).build(), session);
 
         ModelAndView mav = new ModelAndView("userdetails");
         mav.addObject("user", userDetails);
