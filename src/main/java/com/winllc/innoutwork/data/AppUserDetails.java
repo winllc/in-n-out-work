@@ -22,7 +22,8 @@ public class AppUserDetails implements UserDetails {
     private String dn;
     private String organization;
     private String employeeType;
-    private  String location;
+    private String location;
+    private boolean isMyHr = false;
     private List<GrantedAuthority> grantedAuthorities = new ArrayList<>();
 
     public AppUserDetails(UserRecord record) {

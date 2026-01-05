@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html
         xmlns:th="http://www.thymeleaf.org"
-      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
-      layout:decorate="~{layout}">
+        xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+        layout:decorate="~{layout}">
 <head>
     <meta charset="UTF-8">
     <title>Tabulator + Spring Boot</title>
@@ -12,91 +12,111 @@
 </head>
 <body>
 <div layout:fragment="content">
-    <div class="container">
-        <div class="d-flex justify-content-center">
-            <div>
-                <h3>Details for <span th:text="${user.dn}"></span></h3>
+    <div class="card">
+        <div class="card-header">
+            <div class="d-flex justify-content-center">
+                <h3 th:text="${user.dn}"></h3>
             </div>
         </div>
+        <div class="card-body">
 
-        <div class="row">
-            <div class="col-md-6">
-                <table class="table">
-                    <tbody>
-                    <tr>
-                        <td>Current Status</td>
-                        <td><span th:text="${user.status}" /></td>
-                    </tr>
-                    <tr>
-                        <td>Organization</td>
-                        <td th:text="${user.organization}"></td>
-                    </tr>
-                    <tr>
-                        <td>Employee Type</td>
-                        <td th:text="${user.employeeType}"></td>
-                    </tr>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4>User Information</h4>
+                        </div>
+                        <div class="card-body">
+                            <table class="table">
+                                <tbody>
+                                <tr>
+                                    <td>Current Status</td>
+                                    <td><span th:text="${user.status}"/></td>
+                                </tr>
+                                <tr>
+                                    <td>Organization</td>
+                                    <td th:text="${user.organization}"></td>
+                                </tr>
+                                <tr>
+                                    <td>Employee Type</td>
+                                    <td th:text="${user.employeeType}"></td>
+                                </tr>
 
-                    <tr>
-                        <td>Notes</td>
-                        <td><span th:text="${user.notes}" /></td>
-                    </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Member Of</h3>
+                                <tr>
+                                    <td>Notes</td>
+                                    <td><span th:text="${user.notes}"/></td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <table class="table">
-                            <tbody>
-                            <tr th:each="group : ${user.memberOf}">
-                                <td>
-                                    <a th:href="@{'/app/users/'+${group.dn}}" th:text="${group.cn}"></a>
-                                </td>
-                            </tr>
-                            </tbody>
-                        </table>
-                    </div>
+
                 </div>
-            </div>
-        </div>
-
-        <div class="row">
-            <div class="col-md-6">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Audit Log</h3>
-                    </div>
-                    <div class="card-body">
-                        <div id="audit-table"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-md-6" sec:authorize="hasAuthority('ADMIN')">
-                <div class="card">
-                    <div class="card-header">
-                        <h3>Role</h3>
-                    </div>
-                    <div class="card-body">
-                        <form th:action="@{/app/user/details}" method="post" th:object="${user}">
-                            <input type="hidden" th:field="*{dn}" />
-                            <select class="form-select" id="role" th:field="*{role}">
-                                <option th:each="role : ${roles}" th:value="${role.name()}" th:text="${role.name()}"></option>
-                            </select>
-
-                            <button type="submit" class="btn btn-primary">Submit</button>
-                        </form>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4>Member Of</h4>
+                        </div>
+                        <div class="card-body">
+                            <table class="table">
+                                <tbody>
+                                <tr th:each="group : ${user.memberOf}">
+                                    <td>
+                                        <a th:href="@{'/app/users/'+${group.dn}}" th:text="${group.cn}"></a>
+                                    </td>
+                                </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </div>
 
-        </div>
-        <div class="row">
-            <div class="col-md-12" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
-                <div id='calendar'></div>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4>Audit Log</h4>
+                        </div>
+                        <div class="card-body">
+                            <div id="audit-table"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6" sec:authorize="hasAuthority('ADMIN')">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4>Role</h4>
+                        </div>
+                        <div class="card-body">
+                            <form th:action="@{/app/user/details}" method="post" th:object="${user}">
+                                <input type="hidden" th:field="*{dn}"/>
+                                <select class="form-select" id="role" th:field="*{role}">
+                                    <option th:each="role : ${roles}" th:value="${role.name()}"
+                                            th:text="${role.name()}"></option>
+                                </select>
+
+                                <button type="submit" class="btn btn-primary">Submit</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+
             </div>
+            <div class="row">
+                <div class="col-md-12" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                    <div class="card">
+                        <div class="card-header">
+                            <h4>Event Calendar</h4>
+                        </div>
+                        <div class="card-body">
+                            <div id='calendar'></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
         </div>
     </div>
 
@@ -106,7 +126,7 @@
         const userDn = /*[[${user.dn}]]*/ "test";
 
         const table = new Tabulator("#audit-table", {
-            ajaxURL: "/api/users/checkinoutrecords/"+userDn,
+            ajaxURL: "/api/users/checkinoutrecords/" + userDn,
 
             ajaxResponse: function (url, params, response) {
                 // Tabulator expects array of row data
@@ -121,7 +141,7 @@
             paginationMode: "remote",
             paginationSize: 10,
             paginationInitialPage: 1,
-            layout:"fitColumns", //fit columns to width of table (optional)
+            layout: "fitColumns", //fit columns to width of table (optional)
             columns: [
                 {title: "Timestamp", field: "timestamp"},
                 {title: "Action", field: "action"}
@@ -139,7 +159,7 @@
                     center: 'title',
                     right: 'dayGridMonth,dayGridWeek'
                 },
-                events: function(fetchInfo, successCallback, failureCallback) {
+                events: function (fetchInfo, successCallback, failureCallback) {
                     fetch(`/api/event/all?dn=${userDn}&from=${fetchInfo.startStr}&to=${fetchInfo.endStr}`)
                         .then(res => res.json())
                         .then(data => successCallback(data))
@@ -148,7 +168,6 @@
             });
 
             calendar.render();
-
 
 
             function addDropdownsToDays() {

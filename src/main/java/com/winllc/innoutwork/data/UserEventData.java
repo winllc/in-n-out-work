@@ -6,5 +6,7 @@ import lombok.Data;
 public class UserEventData {
     private String dn;
     private String date;
+    private String fromDate;
+    private String toDate;
     private String status;
 }
