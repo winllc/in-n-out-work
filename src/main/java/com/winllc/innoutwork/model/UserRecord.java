@@ -34,6 +34,7 @@ public class UserRecord {
     private String organization;
     private String employeeType;
     private String location;
+    private String branch;
     @Column(columnDefinition = "text")
     @Enumerated(EnumType.STRING)
     private UserRoleEnum userRole;

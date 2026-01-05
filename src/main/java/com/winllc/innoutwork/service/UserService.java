@@ -92,31 +92,32 @@ public class UserService {
         return userRecordRepository.save(userRecord);
     }
 
-    public UserDetails getUserDetails(LdapDn dn, HttpSession session) {
+    public UserStatus getUserDetails(LdapDn dn, HttpSession session) {
         String ldapDn = dn.dn();
-        UserDetails userDetails = new UserDetails();
-        userDetails.setDn(ldapDn);
+        UserStatus.UserStatusBuilder builder = UserStatus.builder();
+
+        builder.dn(ldapDn);
 
         Optional<UserRecord> userByDn = getUserByDn(dn);
         if(userByDn.isPresent()) {
             UserRecord userRecord = userByDn.get();
             if(userRecord.getUserRole() != null) {
-                userDetails.setRole(userRecord.getUserRole().name());
+                builder.role(userRecord.getUserRole().name());
+            }else{
+                builder.role(UserRoleEnum.USER.name());
             }
-            userDetails.setNotes(userRecord.getNotes());
+            builder.notes(userRecord.getNotes());
         }
 
         List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(ldapDn);
-        userDetails.setMemberOf(groupsForUser);
+        builder.memberOf(groupsForUser);
 
         UserStatus userStatus = userRestService.getUserStatus(ldapDn, session);
-        userDetails.setStatus(userStatus.getStatus());
-        userDetails.setOrganization(userStatus.getOrganization());
-        userDetails.setEmployeeType(userStatus.getEmployeeType());
-        if(userDetails.getRole() == null) {
-            userDetails.setRole(UserRoleEnum.USER.name());
-        }
+        builder.status(userStatus.getStatus());
+        builder.organization(userStatus.getOrganization());
+        builder.employeeType(userStatus.getEmployeeType());
+        builder.location(userStatus.getLocation());
 
-        return userDetails;
+        return builder.build();
     }
 }

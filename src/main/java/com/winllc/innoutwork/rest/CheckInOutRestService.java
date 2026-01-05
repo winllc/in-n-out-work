@@ -76,6 +76,7 @@ public class CheckInOutRestService {
                 record.setOrganization(details.getOrganization());
                 record.setEmployeeType(details.getEmployeeType());
                 record.setLocation(details.getLocation());
+                record.setBranch(details.getBranch());
             }
 
             return databaseService.saveCheckInOutRecord(record);

@@ -350,6 +350,13 @@ public class LdapService {
                         } catch (NamingException e) {
                             log.error("Could not map location attribute: ", e);
                         }
+                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapBranchAttribute())) {
+                        try {
+                            String type = attr.get().toString();
+                            builder.branch(type);
+                        } catch (NamingException e) {
+                            log.error("Could not map branch attribute: ", e);
+                        }
                     }
                 });
 
