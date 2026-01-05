@@ -49,10 +49,6 @@ public class UserService {
         }
 
         userRecord.setNotes(form.getNotes());
-        if(form.getStatus() != null &&
-                Stream.of(UserStatusEnum.values()).anyMatch(userStatus -> userStatus.name().equals(form.getStatus()))) {
-            userRecord.setStatus(UserStatusEnum.valueOf(form.getStatus()));
-        }
 
         return userRecordRepository.save(userRecord);
     }

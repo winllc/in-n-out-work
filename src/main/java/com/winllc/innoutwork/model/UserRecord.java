@@ -26,9 +26,7 @@ public class UserRecord {
     @Column(nullable = false)
     private String dn;
     private String notes;
-    @Column(columnDefinition = "text")
-    @Enumerated(EnumType.STRING)
-    private UserStatusEnum status;
+
     @Column(length = 2000)
     private String favoriteGroups;
     private String organization;
