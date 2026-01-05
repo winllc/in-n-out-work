@@ -2,27 +2,34 @@ package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
-import com.winllc.innoutwork.data.GroupFavorite;
-import com.winllc.innoutwork.data.LdapDn;
-import com.winllc.innoutwork.data.ProfileForm;
+import com.winllc.innoutwork.data.*;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.rest.UserRestService;
+import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
 
 @Service
-public class UserRecordService {
+public class UserService {
 
-    private static final Logger log = LoggerFactory.getLogger(UserRecordService.class);
+    private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     private final UserRecordRepository userRecordRepository;
 
-    public UserRecordService(UserRecordRepository userRecordRepository) {
+    @Autowired
+    private LdapService ldapService;
+    @Autowired
+    private UserRestService userRestService;
+
+    public UserService(UserRecordRepository userRecordRepository) {
         this.userRecordRepository = userRecordRepository;
     }
 
@@ -83,5 +90,33 @@ public class UserRecordService {
         }
 
         return userRecordRepository.save(userRecord);
+    }
+
+    public UserDetails getUserDetails(LdapDn dn, HttpSession session) {
+        String ldapDn = dn.dn();
+        UserDetails userDetails = new UserDetails();
+        userDetails.setDn(ldapDn);
+
+        Optional<UserRecord> userByDn = getUserByDn(dn);
+        if(userByDn.isPresent()) {
+            UserRecord userRecord = userByDn.get();
+            if(userRecord.getUserRole() != null) {
+                userDetails.setRole(userRecord.getUserRole().name());
+            }
+            userDetails.setNotes(userRecord.getNotes());
+        }
+
+        List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(ldapDn);
+        userDetails.setMemberOf(groupsForUser);
+
+        UserStatus userStatus = userRestService.getUserStatus(ldapDn, session);
+        userDetails.setStatus(userStatus.getStatus());
+        userDetails.setOrganization(userStatus.getOrganization());
+        userDetails.setEmployeeType(userStatus.getEmployeeType());
+        if(userDetails.getRole() == null) {
+            userDetails.setRole(UserRoleEnum.USER.name());
+        }
+
+        return userDetails;
     }
 }

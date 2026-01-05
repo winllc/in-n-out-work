@@ -4,7 +4,7 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.LdapService;
-import com.winllc.innoutwork.service.UserRecordService;
+import com.winllc.innoutwork.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -45,7 +45,7 @@ class ProfileControllerTest {
     UserRecordRepository userRepository;
 
     @MockBean
-    UserRecordService userRecordService;
+    UserService userRecordService;
 
     @MockBean
     LdapService ldapService;

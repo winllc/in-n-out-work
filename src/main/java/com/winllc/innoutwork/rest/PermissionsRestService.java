@@ -2,12 +2,9 @@ package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.PermissionUpdate;
-import com.winllc.innoutwork.model.PermissionRecord;
 import com.winllc.innoutwork.service.PermissionService;
-import com.winllc.innoutwork.service.UserRecordService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;

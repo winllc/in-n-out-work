@@ -46,8 +46,6 @@
                 </div>
 
             </div>
-
-
         </div>
 
     </div>
@@ -72,33 +70,79 @@
 
             <div class="row">
                 <div class="col-md-6">
-                    <form th:action="@{/app/profile}" method="post" th:object="${form}">
-                        <div class="mb-3">
-                            <label for="notes" class="form-label">Notes</label>
-                            <div class="alert alert-danger" role="alert">
-                                <span th:utext="#{profile.warning}"></span>
-                            </div>
-                            <input type="text" class="form-control" id="notes" aria-describedby="notesHelp"
-                                   th:field="*{notes}">
-                            <div id="notesHelp" class="form-text">Add additional information about yourself</div>
-                        </div>
-                        <div class="mb-3">
-                            <label for="notes" class="form-label">Status</label>
-                            <select class="form-select" id="status" th:field="*{status}">
-                                <option th:each="status : ${statuses}" th:value="${status}"
-                                        th:text="${status}"></option>
-                            </select>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h4>Update Profile</h4>
+                                </div>
+                                <div class="card-body">
+                                    <form th:action="@{/app/profile}" method="post" th:object="${form}">
+                                        <div class="mb-3">
+                                            <label for="notes" class="form-label">Notes</label>
+                                            <div class="alert alert-danger" role="alert">
+                                                <span th:utext="#{profile.warning}"></span>
+                                            </div>
+                                            <input type="text" class="form-control" id="notes" aria-describedby="notesHelp"
+                                                   th:field="*{notes}">
+                                            <div id="notesHelp" class="form-text">Add additional information about yourself</div>
+                                        </div>
 
-                            <div id="statusHelp" class="form-text">Current Status</div>
+                                        <button type="submit" class="btn btn-primary">Submit</button>
+                                    </form>
+                                </div>
+                            </div>
+
                         </div>
-                        <button type="submit" class="btn btn-primary">Submit</button>
-                    </form>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h4>My Information</h4>
+                                </div>
+                                <div class="card-body">
+                                    <table class="table">
+                                        <tbody>
+                                        <tr>
+                                            <td>Organization</td>
+                                            <td th:text="${user.organization}"></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Employee Type</td>
+                                            <td th:text="${user.employeeType}"></td>
+                                        </tr>
+                                        <tr>
+                                            <td>Location</td>
+                                            <td th:text="${user.location}"></td>
+                                        </tr>
+
+                                        </tbody>
+                                    </table>
+
+                                    <div class="alert alert-warning" role="alert">
+                                        <p>If any of this information is inaccurate submit a ticket here: </p>
+                                        <a th:href="${profileUpdateUrl}" target="_blank">IT Help Desk</a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 </div>
                 <div class="col-md-6">
-                    <h3>Calendar</h3>
-                    <div id='calendar'></div>
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Calendar</h3>
+                        </div>
+                        <div class="card-body">
+                            <div id='calendar'></div>
+                        </div>
+                    </div>
                 </div>
+
             </div>
+
         </div>
     </div>
 

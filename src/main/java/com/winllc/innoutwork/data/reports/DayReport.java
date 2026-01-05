@@ -31,14 +31,15 @@ public class DayReport implements Comparable<DayReport> {
                 .ifPresent(udr -> {
                     if(udr.getCheckInTime() != null){
                         this.totalLoggedIn++;
+
+                        employeeTypeCounts.compute(StringUtils.isBlank(userReport.getEmployeeType()) ? "N/A" : userReport.getEmployeeType(), (key, value) -> value == null ? 1 : value + 1);
+                        orgCounts.compute(StringUtils.isBlank(userReport.getOrganization()) ? "N/A" : userReport.getOrganization(), (key, value) -> value == null ? 1 : value + 1);
+                        locationCounts.compute(StringUtils.isBlank(userReport.getLocation()) ? "N/A" : userReport.getLocation(), (key, value) -> value == null ? 1 : value + 1);
                     }
                     if(udr.getCheckOutTime() != null){
                         this.totalLoggedOut++;
                     }
-                    employeeTypeCounts.compute(StringUtils.isBlank(userReport.getEmployeeType()) ? "N/A" : userReport.getEmployeeType(), (key, value) -> value == null ? 1 : value + 1);
-                    orgCounts.compute(StringUtils.isBlank(userReport.getOrganization()) ? "N/A" : userReport.getOrganization(), (key, value) -> value == null ? 1 : value + 1);
-                    locationCounts.compute(StringUtils.isBlank(userReport.getLocation()) ? "N/A" : userReport.getLocation(), (key, value) -> value == null ? 1 : value + 1);
-                });
+                   });
     }
 
     @Override

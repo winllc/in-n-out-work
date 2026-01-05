@@ -2,7 +2,7 @@ package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.data.GroupFavorite;
 import com.winllc.innoutwork.data.LdapGroup;
-import com.winllc.innoutwork.service.UserRecordService;
+import com.winllc.innoutwork.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -15,9 +15,9 @@ public class GroupRestService {
 
     private static final Logger log = LoggerFactory.getLogger(GroupRestService.class);
 
-    private final UserRecordService userRecordService;
+    private final UserService userRecordService;
 
-    public GroupRestService(UserRecordService userRecordService) {
+    public GroupRestService(UserService userRecordService) {
         this.userRecordService = userRecordService;
     }
 
