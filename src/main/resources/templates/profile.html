@@ -116,6 +116,10 @@
                                             <td>Location</td>
                                             <td th:text="${user.location}"></td>
                                         </tr>
+                                        <tr th:if="${user.branch != null}">
+                                            <td>Branch</td>
+                                            <td th:text="${user.branch}"></td>
+                                        </tr>
 
                                         </tbody>
                                     </table>

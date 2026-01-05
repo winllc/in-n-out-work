@@ -7,6 +7,8 @@ import lombok.Data;
 import lombok.ToString;
 
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 @ToString
@@ -15,6 +17,8 @@ public class UserStatus {
     private String dn;
     private String cn;
     private String status;
+    private List<LdapGroup> memberOf = new ArrayList<>();
+    private String role;
     //private boolean checkedIn;
     //private boolean locked;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DateTimeConstants.DATE_TIME_FORMAT)
@@ -27,6 +31,7 @@ public class UserStatus {
     private String organization;
     private String employeeType;
     private String location;
+    private String branch;
 
     public String getCn(){
         if(dn != null){

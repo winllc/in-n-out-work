@@ -3,7 +3,7 @@ package com.winllc.innoutwork.controller;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.ProfileForm;
-import com.winllc.innoutwork.data.UserDetails;
+import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.UserService;
@@ -51,7 +51,7 @@ public class ProfileController {
             model.addAttribute("user", userRecord);
         }
 
-        UserDetails userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(authentication.getName()).build(), session);
+        UserStatus userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(authentication.getName()).build(), session);
 
         model.addAttribute("statuses", Stream.of(UserStatusEnum.values()).toList());
         model.addAttribute("form", form);

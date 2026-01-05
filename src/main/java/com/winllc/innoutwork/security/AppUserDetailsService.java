@@ -82,6 +82,7 @@ public class AppUserDetailsService implements UserDetailsService {
                     .employeeType(ldapUser.getEmployeeType())
                     .organization(ldapUser.getOrganization())
                     .location(ldapUser.getLocation())
+                    .branch(ldapUser.getBranch())
                     .userRole(UserRoleEnum.USER)
                     .build();
             return userRecordRepository.save(userRecord);
@@ -98,6 +99,10 @@ public class AppUserDetailsService implements UserDetailsService {
             }
             if(!Objects.equals(ldapUser.getLocation(), userRecord.getLocation())){
                 userRecord.setLocation(ldapUser.getLocation());
+                updated = true;
+            }
+            if(!Objects.equals(ldapUser.getLocation(), userRecord.getBranch())){
+                userRecord.setBranch(ldapUser.getBranch());
                 updated = true;
             }
 

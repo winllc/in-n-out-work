@@ -67,6 +67,16 @@
                             By Location
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link"
+                                id="branch-tab"
+                                data-bs-toggle="tab"
+                                data-bs-target="#branch"
+                                type="button"
+                                role="tab">
+                            By Branch
+                        </button>
+                    </li>
                 </ul>
 
                 <div class="tab-content mt-3">
@@ -111,6 +121,20 @@
                         </div>
 
                     </div>
+
+                    <div class="tab-pane fade"
+                         id="branch"
+                         role="tabpanel">
+
+                        <div class="row">
+                            <div class="col-md-4" th:each="org, index : ${data.getBranchStatusCounts()}">
+                                <h4 th:text="${org.getKey()}"></h4>
+
+                                <canvas th:id="${'branchChart'+org.getKey()}"></canvas>
+                            </div>
+                        </div>
+
+                    </div>
                 </div>
             </div>
 
@@ -143,6 +167,7 @@
                 var orgMap = /*[[${data.getOrgStatusCounts()}]]*/ {};
                 var empTypeMap = /*[[${data.getEmployeeTypeStatusCounts()}]]*/ {};
                 var locationMap = /*[[${data.getLocationStatusCounts()}]]*/ {};
+                var branchMap = /*[[${data.getBranchStatusCounts()}]]*/ {};
 
                 Object.keys(orgMap).forEach(key => {
                     const temp = document.getElementById('orgChart'+key);
@@ -168,6 +193,15 @@
                     new Chart(temp, {
                         type: 'pie',
                         data: locationMap[key]
+                    });
+                });
+
+                Object.keys(branchMap).forEach(key => {
+                    const temp = document.getElementById('branchChart'+key);
+
+                    new Chart(temp, {
+                        type: 'pie',
+                        data: branchMap[key]
                     });
                 });
 

@@ -38,6 +38,7 @@ public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     private String organization;
     private String employeeType;
     private String location;
+    private String branch;
 
     public CheckInOutRecord() {
         this.sessionId = UUID.randomUUID().toString(); // Generate UUID in constructor

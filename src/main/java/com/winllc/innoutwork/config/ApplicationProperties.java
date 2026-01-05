@@ -16,6 +16,7 @@ public class ApplicationProperties {
     private String userLdapOrganizationAttribute = "organization";
     private String userLdapEmployeeTypeAttribute = "employeeType";
     private String userLdapLocationAttribute = "location";
+    private String userLdapBranchAttribute = "branch";
     private boolean lookupOnDnAttribute = false;
     private String userDnAttribute = "";
     private int cacheDurationRefreshMinutes = 60;

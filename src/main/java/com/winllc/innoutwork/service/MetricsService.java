@@ -58,9 +58,14 @@ public class MetricsService {
                 .filter(r -> r.getLocation() != null)
                 .collect(Collectors.groupingBy(CheckInOutRecord::getLocation));
 
+        Map<String, List<CheckInOutRecord>> branchGroup = totalCurrentRecords.stream()
+                .filter(r -> r.getBranch() != null)
+                .collect(Collectors.groupingBy(CheckInOutRecord::getBranch));
+
         Map<String, PieChartData<CheckInOutEnum>> orgGroupStats = new HashMap<>();
         Map<String, PieChartData<CheckInOutEnum>> employeeTypeGroupStats = new HashMap<>();
         Map<String, PieChartData<CheckInOutEnum>> locationGroupStats = new HashMap<>();
+        Map<String, PieChartData<CheckInOutEnum>> branchGroupStats = new HashMap<>();
 
         orgGroup.forEach((key, value) -> {
             Map<CheckInOutEnum, Long> collect = value.stream()
@@ -84,6 +89,13 @@ public class MetricsService {
             locationGroupStats.put(key, orgPieChart);
         });
 
+        branchGroup.forEach((key, value) -> {
+            Map<CheckInOutEnum, Long> collect = value.stream()
+                    .collect(Collectors.groupingBy(CheckInOutRecord::getAction, Collectors.counting()));
+            PieChartData<CheckInOutEnum> orgPieChart = PieChartData.build(key, collect);
+            branchGroupStats.put(key, orgPieChart);
+        });
+
 
         Map<CheckInOutEnum, Long> allStats = totalCurrentRecords.stream()
                 .collect(Collectors.groupingBy(s -> s.getAction(), Collectors.counting()));
@@ -92,6 +104,7 @@ public class MetricsService {
         metricsData.setOrgStatusCounts(orgGroupStats);
         metricsData.setEmployeeTypeStatusCounts(employeeTypeGroupStats);
         metricsData.setLocationStatusCounts(locationGroupStats);
+        metricsData.setBranchStatusCounts(branchGroupStats);
         return metricsData;
     }
 }

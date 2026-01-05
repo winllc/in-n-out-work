@@ -20,4 +20,5 @@ public class MetricsData {
     private Map<String, PieChartData<CheckInOutEnum>> employeeTypeStatusCounts = new HashMap<>();
     private Map<String, PieChartData<CheckInOutEnum>> orgStatusCounts = new HashMap<>();
     private Map<String, PieChartData<CheckInOutEnum>> locationStatusCounts = new HashMap<>();
+    private Map<String, PieChartData<CheckInOutEnum>> branchStatusCounts = new HashMap<>();
 }

@@ -2,10 +2,7 @@ package com.winllc.innoutwork.controller;
 
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.LdapDn;
-import com.winllc.innoutwork.data.LdapGroup;
-import com.winllc.innoutwork.data.UserDetails;
 import com.winllc.innoutwork.data.UserStatus;
-import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.rest.UserRestService;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
@@ -18,8 +15,6 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.ModelAndView;
 
-import java.util.List;
-import java.util.Optional;
 import java.util.stream.Stream;
 
 @Controller
@@ -44,7 +39,7 @@ public class UserController {
     public ModelAndView details(HttpSession session, @PathVariable String dn, Authentication auth) {
         log.debug("%s requested details for: %s".formatted(auth.getName(), dn));
 
-        UserDetails userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(dn).build(), session);
+        UserStatus userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(dn).build(), session);
 
         ModelAndView mav = new ModelAndView("userdetails");
         mav.addObject("user", userDetails);
@@ -55,7 +50,8 @@ public class UserController {
 
     @PostMapping("/details")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN)")
-    public String update(@ModelAttribute("user") UserDetails userDetails, Authentication auth) {
+    public String update(@ModelAttribute("user") UserStatus userDetails, Authentication auth) {
+        log.debug("%s updating details for: %s".formatted(auth.getName(), userDetails));
 
         String role = userDetails.getRole();
         if(role != null && Stream.of(UserRoleEnum.values()).anyMatch(r -> r.name().equals(role))) {
@@ -71,6 +67,6 @@ public class UserController {
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public ModelAndView search(){
 
-        return  new ModelAndView("usersearch");
+        return new ModelAndView("usersearch");
     }
 }
