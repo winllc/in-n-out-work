@@ -24,13 +24,14 @@ public class UserService {
 
     private final UserRecordRepository userRecordRepository;
 
-    @Autowired
-    private LdapService ldapService;
-    @Autowired
-    private UserRestService userRestService;
+    private final LdapService ldapService;
+    private final UserRestService userRestService;
 
-    public UserService(UserRecordRepository userRecordRepository) {
+    public UserService(UserRecordRepository userRecordRepository,
+                       LdapService ldapService, UserRestService userRestService) {
         this.userRecordRepository = userRecordRepository;
+        this.ldapService = ldapService;
+        this.userRestService = userRestService;
     }
 
     public Optional<UserRecord> getUserByDn(LdapDn dn) {
