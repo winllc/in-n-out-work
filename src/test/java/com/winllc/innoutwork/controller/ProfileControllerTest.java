@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.AppConfig;
+import com.winllc.innoutwork.TestAppConfig;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
@@ -7,7 +9,9 @@ import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Import;
@@ -16,10 +20,14 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.web.context.WebApplicationContext;
+import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
 
 import javax.security.auth.x500.X500Principal;
 import java.security.cert.X509Certificate;
+import java.util.Arrays;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -34,15 +42,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
-@WebMvcTest(ProfileController.class)
-@Import(ProfileControllerTest.TestSecurityConfig.class)
+//@WebMvcTest(ProfileController.class)
+//@Import(ProfileControllerTest.TestSecurityConfig.class)
+@SpringBootTest(classes = TestAppConfig.class)
+@AutoConfigureMockMvc
+@ActiveProfiles("test")
 class ProfileControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
     @MockBean
-    UserRecordRepository userRepository;
+    UserRecordRepository recordRepository;
 
     @MockBean
     UserService userRecordService;
@@ -74,11 +85,31 @@ class ProfileControllerTest {
         }
     }
 
+    @Autowired
+    private WebApplicationContext context;
+
+    @Test
+    void printMappings() {
+        RequestMappingHandlerMapping mapping =
+                context.getBean(RequestMappingHandlerMapping.class);
+
+        mapping.getHandlerMethods().forEach((k, v) ->
+                System.out.println(k + " -> " + v)
+        );
+    }
+
+    @Test
+    void mvcExists() {
+        System.out.println(Arrays.toString(
+                context.getBeanNamesForType(RequestMappingHandlerMapping.class)
+        ));
+    }
+
     @Test
     void profile() throws Exception {
         X509Certificate cert = mockCert("CN=alice, OU=Test");
 
-        when(userRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(recordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/app/profile").with(x509(cert)))
                 .andDo(print())
@@ -91,7 +122,7 @@ class ProfileControllerTest {
         X509Certificate cert = mock(X509Certificate.class);
         when(cert.getSubjectX500Principal()).thenReturn(new X500Principal("CN=alice, OU=Test"));
 
-        when(userRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(recordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
         when(userRecordService.updateProfile(any(), any())).thenReturn(new UserRecord());
 
         mockMvc.perform(post("/app/profile")

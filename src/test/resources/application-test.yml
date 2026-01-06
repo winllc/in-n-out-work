@@ -1,0 +1,66 @@
+server:
+  port: 8444
+  ssl:
+    enabled: true
+    key-store: classpath:winhal.p12
+    key-store-password: capassword
+    key-store-type: PKCS12
+    client-auth: want
+    trust-store: classpath:truststore.p12
+    trust-store-password: changeit
+    trust-store-type: PKCS12
+
+logging:
+  level:
+    root: info
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/appdb
+    username: appuser
+    password: secret123
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  ldap:
+    #urls: ldap://fid.winllc-dev.com:2389
+    urls: ldap://localhost:1389
+    username: cn=admin,dc=winllc,dc=com
+    password: adminpassword
+  jackson:
+    time-zone: America/New_York
+  #base: dc=winllc,dc=com
+    #username: cn=directory manager
+    #password: secret1234
+    date-format: yyyy-MM-dd HH:mm a z
+  # thymeleaf:
+ #   prefix: classpath:/templates/
+#    suffix: .html
+ #   cache: false   # disable caching for dev
+#   mode: HTML
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env
+application:
+  user-base-dn: dc=winllc,dc=com
+  user-ldap-filter: (objectclass=inetOrgPerson)
+
+  banner-text: BANNER TEXT
+  timezone: America/New_York
+  user-ldap-employee-type-attribute: employeeType
+  user-ldap-organization-attribute: o
+  user-ldap-location-attribute: l
+  super-user-dns:
+    - CN=user3,OU=Users,DC=winllc,DC=com
+  groups:
+    - groups-base-dn: ou=Groups,dc=winllc,dc=com
+    - groups-base-dn: ou=Companies,dc=winllc,dc=com
+  update-profile-url: https://google.com

@@ -63,4 +63,4 @@ application:
   groups:
     - groups-base-dn: ou=Groups,dc=winllc,dc=com
     - groups-base-dn: ou=Companies,dc=winllc,dc=com
-
+  update-profile-url: https://google.com
