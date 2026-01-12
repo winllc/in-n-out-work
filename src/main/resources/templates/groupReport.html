@@ -67,11 +67,11 @@
                         </tr>
                         <tr>
                             <td>From Date</td>
-                            <td><span th:text="${report.getFromDate()}"></span></td>
+                            <td><span th:text="${report.getFormattedFromDate()}"></span></td>
                         </tr>
                         <tr>
                             <td>To Date</td>
-                            <td><span th:text="${report.getToDate()}"></span></td>
+                            <td><span th:text="${report.getFormattedToDate()}"></span></td>
                         </tr>
                         <tr>
                             <td>Users in Group</td>
@@ -93,7 +93,7 @@
                 <div class="row">
                     <div class="col-md-4" th:each="dayReport : ${report.getDayReports()}">
                         <div class="card">
-                            <h5 class="card-header" th:text="${dayReport.getDate()}"></h5>
+                            <h5 class="card-header" th:text="${dayReport.getFormattedDate()}"></h5>
 
                             <div class="card-body p-1">
                                 <table class="table table-sm table-bordered">
@@ -179,7 +179,7 @@
                                     </thead>
                                     <tbody>
                                     <tr th:each="dayReport : ${userReport.dayReports}">
-                                        <td><span th:text="${dayReport.getFormatedDay()}"></span></td>
+                                        <td><span th:text="${dayReport.getFormattedDay()}"></span></td>
                                         <td><span th:text="${dayReport.status}"></span></td>
                                         <td><span th:text="${dayReport.getCheckInTime()}"></span></td>
                                         <td><span th:text="${dayReport.getCheckOutTime()}"></span></td>

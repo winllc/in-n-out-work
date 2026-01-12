@@ -9,6 +9,8 @@ import java.time.LocalDate;
 import java.util.HashMap;
 import java.util.Map;
 
+import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
+
 @NoArgsConstructor
 @Data
 public class DayReport implements Comparable<DayReport> {
@@ -40,6 +42,10 @@ public class DayReport implements Comparable<DayReport> {
                         this.totalLoggedOut++;
                     }
                    });
+    }
+
+    public String getFormattedDate() {
+        return DATE_FORMATTER.format(date);
     }
 
     @Override

@@ -12,6 +12,8 @@ import java.io.Serializable;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
+import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_TIME_FORMAT;
+
 @Data
 @Builder
 @AllArgsConstructor
@@ -26,7 +28,7 @@ public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     private String dn;
 
     @Column(nullable = false)
-    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm a z")
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DATE_TIME_FORMAT)
     private ZonedDateTime timestamp;
 
     private String sessionId;

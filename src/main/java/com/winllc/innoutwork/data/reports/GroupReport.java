@@ -8,6 +8,8 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
+
 @Getter
 public class GroupReport {
     private String groupDn;
@@ -24,5 +26,13 @@ public class GroupReport {
         report.fromDate = fromDate;
         report.toDate = toDate;
         return report;
+    }
+
+    public String getFormattedFromDate() {
+        return DATE_FORMATTER.format(fromDate);
+    }
+
+    public String getFormattedToDate() {
+        return DATE_FORMATTER.format(toDate);
     }
 }

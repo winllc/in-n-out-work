@@ -23,11 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
+import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
+
 @RequestMapping("/api/event")
 @RestController
 public class UserEventRestService {
-
-    private final DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
     private final UserEventRecordRepository userEventRecordRepository;
 
@@ -39,7 +39,7 @@ public class UserEventRestService {
     public UserEventData getEventForDay(Authentication authentication,
                                         @RequestBody UserEventData data){
 
-        LocalDate localDate = LocalDate.parse(data.getDate(), dtf);
+        LocalDate localDate = LocalDate.parse(data.getDate(), DATE_FORMATTER);
 
         String userDn = authentication.getName();
         if(StringUtils.isNotBlank(data.getDn())){
@@ -55,7 +55,7 @@ public class UserEventRestService {
 
         UserEventData eventData = new UserEventData();
         eventData.setDn(userDn);
-        eventData.setDate(dtf.format(localDate));
+        eventData.setDate(DATE_FORMATTER.format(localDate));
 
         if(record == null){
             eventData.setStatus(UserStatusEnum.STANDARD.name());

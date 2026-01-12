@@ -14,14 +14,17 @@ import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 
+import static com.winllc.innoutwork.constant.DateTimeConstants.ISO_DATE_TIME_FORMATTER;
+
 @Controller
 @RequestMapping("/app/group")
 public class GroupController {
 
-    private final DateTimeFormatter dtf = DateTimeFormatter.ISO_ZONED_DATE_TIME;
+    private final ReportService reportService;
 
-    @Autowired
-    private ReportService reportService;
+    public GroupController(ReportService reportService) {
+        this.reportService = reportService;
+    }
 
     @PostMapping("/report")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
@@ -30,8 +33,8 @@ public class GroupController {
         ModelAndView mav = new ModelAndView("groupReport");
 
         if(form.getFromDate() != null && form.getToDate() != null) {
-            ZonedDateTime fromDate = ZonedDateTime.parse(form.getFromDate(), dtf);
-            ZonedDateTime toDate = ZonedDateTime.parse(form.getToDate(), dtf);
+            ZonedDateTime fromDate = ZonedDateTime.parse(form.getFromDate(), ISO_DATE_TIME_FORMATTER);
+            ZonedDateTime toDate = ZonedDateTime.parse(form.getToDate(), ISO_DATE_TIME_FORMATTER);
 
             GroupReport report = reportService.generateGroupReport(LdapDn.builder().dn(form.getGroupDn()).build(),
                     fromDate,

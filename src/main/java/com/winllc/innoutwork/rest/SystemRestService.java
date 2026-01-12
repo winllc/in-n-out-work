@@ -11,11 +11,9 @@ import java.time.format.DateTimeFormatter;
 @RestController
 public class SystemRestService {
 
-    private final DateTimeFormatter dtf = DateTimeFormatter.ISO_ZONED_DATE_TIME;
-
     @PostMapping("/updateSystemTime")
     public void saveToSession(HttpSession session, @RequestBody SystemDateTimeForm form) {
-        ZonedDateTime systemTime = ZonedDateTime.parse(form.getDateTime(), dtf);
+        ZonedDateTime systemTime = ZonedDateTime.parse(form.getDateTime(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
         session.setAttribute("systemTime", systemTime);
     }
 }

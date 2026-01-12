@@ -22,6 +22,7 @@ public class UserReport {
         report.employeeType = ldapUser.getEmployeeType();
         report.organization = ldapUser.getOrganization();
         report.location = ldapUser.getLocation();
+        report.department = ldapUser.getDepartment();
 
         Collections.sort(report.dayReports);
 

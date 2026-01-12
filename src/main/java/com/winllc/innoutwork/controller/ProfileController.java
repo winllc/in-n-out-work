@@ -56,7 +56,10 @@ public class ProfileController {
         model.addAttribute("statuses", Stream.of(UserStatusEnum.values()).toList());
         model.addAttribute("form", form);
         model.addAttribute("userDn", authentication.getName());
-        model.addAttribute("user", userDetails);
+
+        if(userDetails != null) {
+            model.addAttribute("user", userDetails);
+        }
         return "profile"; // resolves to src/main/resources/templates/index.html
     }
 

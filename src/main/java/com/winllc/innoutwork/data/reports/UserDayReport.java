@@ -17,6 +17,8 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
+import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
+
 @Getter
 public class UserDayReport implements Comparable<UserDayReport> {
     private LocalDate day;
@@ -48,6 +50,10 @@ public class UserDayReport implements Comparable<UserDayReport> {
         }
 
         return dayReport;
+    }
+
+    public String getFormattedDate(){
+        return DATE_FORMATTER.format(this.day);
     }
 
     public boolean isNeverCheckedOut(){
@@ -95,8 +101,8 @@ public class UserDayReport implements Comparable<UserDayReport> {
         }
     }
 
-    public String getFormatedDay(){
-        return java.time.format.DateTimeFormatter.ofPattern("MM/dd/yyyy").format(this.day);
+    public String getFormattedDay(){
+        return DATE_FORMATTER.format(this.day);
     }
 
     @Override
