@@ -24,7 +24,7 @@ $script:ProfileWaitTimeoutSec = 30
 $script:ProfileCheckIntervalSec = 2
 $script:Subfolder = "InOutWorker"
 
-$PostUrl = "https://192.168.1.29:8444/api/check/in"
+$PostUrl = "https://192.168.1.29:8444/api/check/out"
 
 # -------------------------------
 # Ignore SSL/TLS errors

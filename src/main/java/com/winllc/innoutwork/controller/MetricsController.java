@@ -27,6 +27,9 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
+import static com.winllc.innoutwork.constant.ChartColorMap.COLOR_MAP;
+import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_TIME_FORMATTER;
+
 @Controller
 @RequestMapping("/app/metrics")
 public class MetricsController {
@@ -35,15 +38,6 @@ public class MetricsController {
     private final DatabaseService databaseService;
     private final ApplicationProperties properties;
     private final MetricsService metricsService;
-
-    private static final Map<CheckInOutEnum, String> colorMap = new HashMap<>();
-
-    static {
-        colorMap.put(CheckInOutEnum.CHECK_IN, "green");
-        colorMap.put(CheckInOutEnum.CHECK_OUT, "purple");
-        colorMap.put(CheckInOutEnum.LOCK, "yellow");
-        colorMap.put(CheckInOutEnum.UNLOCK, "blue");
-    }
 
     public MetricsController(ApplicationProperties properties,
                              CacheService cacheService, DatabaseService databaseService, MetricsService metricsService) {
@@ -81,8 +75,6 @@ public class MetricsController {
     }
 
     private PieChartData<CheckInOutEnum> getTotalLoginChartData(HttpSession session){
-
-        PieChartData<CheckInOutEnum> data = new PieChartData<>();
 
         Long totalUsers = cacheService.getLdapCount(properties.getUserBaseDn());
         Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics(session);
@@ -123,7 +115,7 @@ public class MetricsController {
         List<ZonedDateTime> buckets = generate15MinBuckets(beginning, ending);
 
         buckets.forEach(bucket -> {
-            data.getLabels().add(bucket.toString());
+            data.getLabels().add(DATE_TIME_FORMATTER.format(bucket));
         });
 
         List<CheckInOutRecord> todaysRecords = databaseService.findRecords(session);
@@ -155,7 +147,7 @@ public class MetricsController {
 
             lineChartDataSet.setLabel(key.toString());
             lineChartDataSet.setData(vals);
-            lineChartDataSet.setBorderColor(colorMap.get(key));
+            lineChartDataSet.setBorderColor(COLOR_MAP.get(key.toString()));
             data.getDatasets().add(lineChartDataSet);
         });
 

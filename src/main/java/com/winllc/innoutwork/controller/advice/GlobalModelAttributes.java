@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.ModelAttribute;
 
 import java.time.ZonedDateTime;
 
+import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
+
 @ControllerAdvice
 public class GlobalModelAttributes {
 
@@ -20,7 +22,7 @@ public class GlobalModelAttributes {
 
         ZonedDateTime selectedDateTime = DatabaseService.getDateTimeFromSession(session);
 
-        model.addAttribute("systemTime", selectedDateTime);
+        model.addAttribute("systemTime", DATE_FORMATTER.format(selectedDateTime));
         model.addAttribute("profileUpdateUrl", defaultUserProfileUpdateUrl);
     }
 }

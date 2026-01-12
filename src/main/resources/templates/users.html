@@ -40,7 +40,7 @@
                         <div class="input-group mb-3 justify-content-end">
                             <input class="form-control" id="reportRange" type="text" placeholder="Report Range">
                             <div class="input-group-append">
-                                <button type="submit" class="btn btn-primary">Generate Report</button>
+                                <button type="submit" id="generateReportButton" class="btn btn-primary" disabled>Generate Report</button>
                             </div>
                         </div>
                     </form>
@@ -103,6 +103,10 @@
         table.on("rowClick", function(e, row){
             const data = row.getData();
             window.location.href = `/app/user/details/${data.dn}`;
+        });
+
+        document.getElementById("reportRange").addEventListener("change", (event) => {
+            document.getElementById('generateReportButton').disabled = document.getElementById('reportRange').value.trim() === "";
         });
 
         document.getElementById("advanced-btn").addEventListener("change", (event) => {

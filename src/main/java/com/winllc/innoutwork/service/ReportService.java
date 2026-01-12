@@ -19,15 +19,21 @@ import java.time.ZonedDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
+
 @Service
 public class ReportService {
 
-    @Autowired
-    private LdapService ldapService;
-    @Autowired
-    private CheckInOutRecordRepository checkInOutRecordRepository;
-    @Autowired
-    private UserEventRecordRepository userEventRecordRepository;
+    private final LdapService ldapService;
+    private final CheckInOutRecordRepository checkInOutRecordRepository;
+    private final UserEventRecordRepository userEventRecordRepository;
+
+    public ReportService(LdapService ldapService, CheckInOutRecordRepository checkInOutRecordRepository,
+                         UserEventRecordRepository userEventRecordRepository) {
+        this.ldapService = ldapService;
+        this.checkInOutRecordRepository = checkInOutRecordRepository;
+        this.userEventRecordRepository = userEventRecordRepository;
+    }
 
     public GroupReport generateGroupReport(LdapDn groupDn, ZonedDateTime from, ZonedDateTime to){
         Optional<LdapGroup> groupOptional = ldapService.lookupGroup(groupDn);
@@ -46,7 +52,8 @@ public class ReportService {
                 if(userOptional.isPresent()) {
                     LdapUser user = userOptional.get();
 
-                    List<CheckInOutRecord> byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc = checkInOutRecordRepository.findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(groupMember, from, to);
+                    List<CheckInOutRecord> byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc =
+                            checkInOutRecordRepository.findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(groupMember, from, to);
 
                     Map<LocalDate, List<CheckInOutRecord>> dateMap = createDateMap(byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc, from, to);
 
@@ -78,13 +85,13 @@ public class ReportService {
         }
     }
 
-    private Map<LocalDate, DayReport> createDayReportMap(List<UserReport> userReports, ZonedDateTime from, ZonedDateTime to){
-        Map<LocalDate, DayReport> reportMap = new HashMap<>();
+    private Map<String, DayReport> createDayReportMap(List<UserReport> userReports, ZonedDateTime from, ZonedDateTime to){
+        Map<String, DayReport> reportMap = new HashMap<>();
 
         ZonedDateTime current = from;
         while(current.isBefore(to) || current.isEqual(to)) {
             LocalDate localDate = current.toLocalDate();
-            reportMap.putIfAbsent(localDate, new DayReport(localDate));
+            reportMap.putIfAbsent(localDate.format(DATE_FORMATTER), new DayReport(localDate));
             current = current.plusDays(1);
         }
 
@@ -99,7 +106,7 @@ public class ReportService {
                 }
 
                 dayReport.addUserReport(userReport);
-                reportMap.put(date, dayReport);
+                reportMap.put(date.format(DATE_FORMATTER), dayReport);
             }
         }
 

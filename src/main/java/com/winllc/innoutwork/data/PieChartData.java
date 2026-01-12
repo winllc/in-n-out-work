@@ -7,19 +7,18 @@ import lombok.Data;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import static com.winllc.innoutwork.constant.ChartColorMap.COLOR_MAP;
+
 @Data
 public class PieChartData<T> {
     private static final List<String> colorList = new LinkedList<>();
 
     static {
-        colorList.add("green");
         colorList.add("red");
-        colorList.add("orange");
         colorList.add("yellow");
-        colorList.add("blue");
-        colorList.add("purple");
         colorList.add("pink");
         colorList.add("brown");
+
     }
 
     private List<String> labels = new LinkedList<>();
@@ -41,7 +40,10 @@ public class PieChartData<T> {
         dataMap.forEach((key, value) -> {
             data.getLabels().add(key.toString());
             dataSet.getData().add(value.intValue());
-            dataSet.getBackgroundColor().add(colorList.get(index.getAndIncrement()));
+
+            String color = COLOR_MAP.getOrDefault(key.toString(), colorList.get(index.getAndIncrement()));
+
+            dataSet.getBackgroundColor().add(color);
 
             totalWithAction.addAndGet(value.intValue());
         });
