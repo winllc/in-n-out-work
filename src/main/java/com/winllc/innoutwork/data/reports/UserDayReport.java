@@ -69,14 +69,16 @@ public class UserDayReport implements Comparable<UserDayReport> {
     }
 
     public String getCheckedInPeriod(){
-        if(this.checkInTime == null || this.checkOutTime == null){
-            return "N/A";
-        }else {
+        if(this.checkInTime != null && this.checkOutTime != null){
             Duration between = Duration.between(this.checkInTime, this.checkOutTime);
             long hours = between.toHours();
             long remainingMinutes = between.minusHours(hours).toMinutes();
-            return String.format("%d hrs, %d mins", hours, remainingMinutes);
+
+            if(hours >= 0 && remainingMinutes >= 0) {
+                return String.format("%d hrs, %d mins", hours, remainingMinutes);
+            }
         }
+        return "N/A";
     }
 
     private static Optional<CheckInOutRecord> getCheckOutTime(List<CheckInOutRecord> records){

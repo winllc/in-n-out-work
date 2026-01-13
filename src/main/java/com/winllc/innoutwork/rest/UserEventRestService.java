@@ -1,14 +1,18 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.CalendarEvent;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.SystemDateTimeForm;
 import com.winllc.innoutwork.data.UserEventData;
+import com.winllc.innoutwork.data.reports.UserDayReport;
+import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
+import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
+import com.winllc.innoutwork.service.ReportService;
 import io.micrometer.common.util.StringUtils;
-import org.checkerframework.checker.units.qual.C;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -18,10 +22,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 
 import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 
@@ -30,9 +31,14 @@ import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 public class UserEventRestService {
 
     private final UserEventRecordRepository userEventRecordRepository;
+    private final CheckInOutRecordRepository checkInOutRecordRepository;
+    private final ApplicationProperties properties;
 
-    public UserEventRestService(UserEventRecordRepository userEventRecordRepository) {
+    public UserEventRestService(UserEventRecordRepository userEventRecordRepository,
+                                CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties) {
         this.userEventRecordRepository = userEventRecordRepository;
+        this.checkInOutRecordRepository = checkInOutRecordRepository;
+        this.properties = properties;
     }
 
     @PostMapping("/day")
@@ -91,15 +97,32 @@ public class UserEventRestService {
 
         List<CalendarEvent> events = byDnAndDateBetween.stream()
                 .map(r -> {
-                    CalendarEvent event = new CalendarEvent();
-                    event.setId(r.getDate().format(DateTimeFormatter.ISO_LOCAL_DATE));
-                    event.setTitle(r.getStatus().getFriendlyName());
-                    event.setStart(r.getDate().format(DateTimeFormatter.ISO_LOCAL_DATE));
+                    CalendarEvent event = new CalendarEvent(r.getDate(), r.getStatus().getFriendlyName());
+                    event.setBackgroundColor(properties.getCalendarStatusEventColor());
                     return event;
                 })
                 .toList();
 
         return events;
+    }
+
+    @GetMapping("/allWithLogins")
+    public List<CalendarEvent> getEventForDayWithLogins(Authentication authentication,
+                                              @RequestParam String dn,
+                                              @RequestParam Instant from,
+                                              @RequestParam Instant to){
+
+        LocalDate fromDate = LocalDate.ofInstant(from, ZoneId.systemDefault());
+        LocalDate toDate = LocalDate.ofInstant(to, ZoneId.systemDefault());
+        List<CalendarEvent> allEvents = new ArrayList<>();
+
+        List<CalendarEvent> events = getEventForDay(authentication, dn, from, to);
+        List<CalendarEvent> calendarEvents = auditRecordsToEvents(dn, fromDate, toDate);
+
+        allEvents.addAll(events);
+        allEvents.addAll(calendarEvents);
+
+        return allEvents;
     }
 
     @PostMapping("/update")
@@ -128,23 +151,30 @@ public class UserEventRestService {
 
         }
 
-        //todo handle range update
-        /*
-        UserEventRecord record = new UserEventRecord();
-        record.setDn(userDn);
-        record.setDate(localDate);
-
-        Optional<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(userDn, localDate);
-        if(byDnAndDate.isPresent()){
-            record = byDnAndDate.get();
-        }
-
-        record.setStatus(UserStatusEnum.valueOf(data.getStatus()));
-
-        userEventRecordRepository.save(record);
-
-         */
-
         return data;
+    }
+
+    private List<CalendarEvent> auditRecordsToEvents(String dn, LocalDate fromDate, LocalDate toDate){
+        List<CalendarEvent> events = new ArrayList<>();
+
+        ZonedDateTime fromDateTime = ZonedDateTime.ofLocal(fromDate.atStartOfDay(), ZoneId.systemDefault(), null);
+        ZonedDateTime toDateTime = ZonedDateTime.ofLocal(toDate.atStartOfDay(), ZoneId.systemDefault(), null).plusDays(1).minusNanos(1);
+
+        List<CheckInOutRecord> checkInOutRecords =
+                checkInOutRecordRepository.findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(dn, fromDateTime, toDateTime);
+
+        Map<LocalDate, List<CheckInOutRecord>> dateMap = ReportService.createDateMap(checkInOutRecords, fromDateTime, toDateTime);
+
+        dateMap.forEach((date, records) -> {
+            UserDayReport dayReport = UserDayReport.build(date, null, records);
+
+            if(!dayReport.getCheckedInPeriod().equalsIgnoreCase("N/A")){
+                CalendarEvent event = new CalendarEvent(date, "Online: " + dayReport.getCheckedInPeriod());
+                event.setBackgroundColor(properties.getCalendarActivityEventColor());
+                events.add(event);
+            }
+        });
+
+        return events;
     }
 }

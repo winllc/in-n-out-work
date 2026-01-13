@@ -113,7 +113,7 @@ public class ReportService {
         return reportMap;
     }
 
-    private Map<LocalDate, List<CheckInOutRecord>> createDateMap(List<CheckInOutRecord> records, ZonedDateTime from, ZonedDateTime to){
+    public static Map<LocalDate, List<CheckInOutRecord>> createDateMap(List<CheckInOutRecord> records, ZonedDateTime from, ZonedDateTime to){
         Map<LocalDate, List<CheckInOutRecord>> collect = records.stream()
                 .collect(Collectors.groupingBy(r -> r.getTimestamp().toLocalDate()));
 

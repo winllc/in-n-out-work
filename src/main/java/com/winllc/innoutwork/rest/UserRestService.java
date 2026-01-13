@@ -168,7 +168,9 @@ public class UserRestService {
 
         userEventRecordRepository.findByDnIgnoreCaseAndDate(dn, selectedDate.toLocalDate())
                 .ifPresent(userEventRecord -> {
-                    status.setStatus(userEventRecord.getStatus().name());
+                    if(userEventRecord.getStatus() != UserStatusEnum.STANDARD) {
+                        status.setStatus(userEventRecord.getStatus().name());
+                    }
                 });
 
         return status;

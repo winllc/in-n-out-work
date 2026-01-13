@@ -25,4 +25,7 @@ public class ApplicationProperties {
     private List<TopLevelGroupProperties> groups = new ArrayList<>();
     private Map<String, String> attributeUpdateRequestUrlMappings = new HashMap<>();
     private String updateProfileUrl = "https://google.com";
+    private int checkOutAfterMinutes = 240;
+    private String calendarStatusEventColor = "blue";
+    private String calendarActivityEventColor = "green";
 }

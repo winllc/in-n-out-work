@@ -176,7 +176,7 @@
                     right: 'dayGridMonth,dayGridWeek'
                 },
                 events: function (fetchInfo, successCallback, failureCallback) {
-                    fetch(`/api/event/all?dn=${userDn}&from=${fetchInfo.startStr}&to=${fetchInfo.endStr}`)
+                    fetch(`/api/event/allWithLogins?dn=${userDn}&from=${fetchInfo.startStr}&to=${fetchInfo.endStr}`)
                         .then(res => res.json())
                         .then(data => successCallback(data))
                         .catch(err => failureCallback(err));
@@ -184,59 +184,6 @@
             });
 
             calendar.render();
-
-
-            function addDropdownsToDays() {
-                const dayCells = document.querySelectorAll('.fc-daygrid-day');
-
-                dayCells.forEach(cell => {
-                    console.log(cell);
-                    if (cell.querySelector('.fc-daygrid-event-harness')) return;
-
-                    const dateStr = cell.getAttribute('data-date');
-                    console.log(dateStr);
-
-                    const response = fetch("/api/event/day", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            date: dateStr
-                        })
-                    })
-                        .then(response => {
-                            // Optional: Handle HTTP errors
-                            if (!response.ok) {
-                                throw new Error(`HTTP error! status: ${response.status}`);
-                            }
-                            // Return the promise from the data extraction method
-                            return response.json();
-                        })
-                        .then(data => {
-                            console.log(data);
-                            /*
-                            const dropdownContainer = document.createElement('div');
-                            dropdownContainer.className = 'fc-note';
-                            dropdownContainer.innerHTML = data.status;
-
-                            cell.appendChild(dropdownContainer);
-
-                             */
-
-                            /*
-                            calendar.addEvent({
-                                id: 'event-'+dateStr,
-                                title: data.status,
-                                start: data.date,
-                            })
-
-                             */
-
-                        });
-
-                });
-            }
 
         });
 
