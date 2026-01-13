@@ -61,4 +61,17 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
       )
 """)
     List<CheckInOutRecord> findTotalCurrentRecords(ZonedDateTime from, ZonedDateTime to);
+
+    @Query("""
+    SELECT r
+    FROM CheckInOutRecord r
+    WHERE r.timestamp = (
+        SELECT MAX(r2.timestamp)
+        FROM CheckInOutRecord r2
+        WHERE r2.dn = r.dn
+    ) AND r.action = :action
+      AND r.timestamp >= :from
+      AND r.timestamp <= :to
+""")
+    List<CheckInOutRecord> findLatestRecordsByDn(CheckInOutEnum action, ZonedDateTime from, ZonedDateTime to);
 }

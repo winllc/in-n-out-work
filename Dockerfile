@@ -1,6 +1,10 @@
 # Use Red Hat Universal Base Image 9 (UBI9) with OpenJDK 17
 FROM registry.access.redhat.com/ubi9/openjdk-21-runtime
 
+USER root
+RUN microdnf update -y \
+    && microdnf clean all
+
 # Set working directory inside container
 WORKDIR /app
 
