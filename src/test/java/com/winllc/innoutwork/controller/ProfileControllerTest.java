@@ -8,10 +8,8 @@ import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -22,6 +20,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.ContextConfiguration;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.context.WebApplicationContext;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping;
@@ -44,23 +43,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
 @WebMvcTest(controllers = ProfileController.class)
-@AutoConfigureMockMvc(addFilters = false)
+//@AutoConfigureMockMvc(addFilters = false)
 @ContextConfiguration(classes = {ProfileController.class})
 class ProfileControllerTest {
 
     @Autowired
     private MockMvc mockMvc;
 
-    @MockBean
+    @MockitoBean
     UserRecordRepository recordRepository;
 
-    @MockBean
+    @MockitoBean
     UserService userRecordService;
 
-    @MockBean
+    @MockitoBean
     LdapService ldapService;
 
-    @MockBean
+    @MockitoBean
     ApplicationProperties properties;
 
     @Configuration
@@ -133,7 +132,7 @@ class ProfileControllerTest {
                 .andExpect(redirectedUrl("/app/profile"));
     }
 
-    private static X509Certificate mockCert(String dn) {
+    static X509Certificate mockCert(String dn) {
         X509Certificate cert = mock(X509Certificate.class);
         X500Principal principal = new X500Principal(dn);
 

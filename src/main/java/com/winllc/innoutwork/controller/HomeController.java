@@ -1,7 +1,5 @@
 package com.winllc.innoutwork.controller;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.config.TopLevelGroupProperties;
 import com.winllc.innoutwork.constant.UserRoleEnum;
@@ -72,7 +70,7 @@ public class HomeController {
 
     @GetMapping("/app/groups")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER)")
-    public String groups(Authentication authentication, Model model) throws JsonProcessingException {
+    public String groups(Authentication authentication, Model model) {
         List<LdapGroup> topLevelGroups = new ArrayList<>();
 
         for(TopLevelGroupProperties topProps: properties.getGroups()) {

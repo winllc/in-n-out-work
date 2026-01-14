@@ -9,7 +9,8 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.WebSecurityCustomizer;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
+import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
+
 
 @Configuration
 @EnableMethodSecurity
@@ -40,10 +41,10 @@ public class SecurityConfig {
     @Bean
     public WebSecurityCustomizer webSecurityCustomizer() {
         return (web) -> web.ignoring().requestMatchers(
-                AntPathRequestMatcher.antMatcher("/libs/**"),
-                AntPathRequestMatcher.antMatcher("/css/**"),
-                AntPathRequestMatcher.antMatcher("/js/**"),
-                AntPathRequestMatcher.antMatcher("/images/**")
+                PathPatternRequestMatcher.pathPattern("/libs/**"),
+                PathPatternRequestMatcher.pathPattern("/css/**"),
+                PathPatternRequestMatcher.pathPattern("/js/**"),
+                PathPatternRequestMatcher.pathPattern("/images/**")
         );
     }
 

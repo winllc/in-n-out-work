@@ -1,7 +1,5 @@
 package com.winllc.innoutwork.controller;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.LoginByTimeChartData;
@@ -19,6 +17,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.ModelAndView;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -50,7 +49,7 @@ public class MetricsController {
     @GetMapping
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
-    public ModelAndView get(HttpSession session) throws JsonProcessingException {
+    public ModelAndView get(HttpSession session) {
         ModelAndView mv = new ModelAndView("metrics");
 
         MetricsData data = metricsService.getCombinedStatistics(session);
