@@ -84,28 +84,7 @@ public class CheckInOutRestService {
 
     }
 
-    /*
-    @PostMapping("/out")
-    public CheckInOutRecord checkOut(@RequestBody CheckInOut checkInOut) {
-        log.info("Check-out request received: {}", checkInOut);
 
-        Optional<CheckInOutRecord> optionalRecord = databaseService.lookupBySessionId(checkInOut.getSessionId());
-
-        CheckInOutRecord record = CheckInOutRecord.builder()
-                //.dn(auth.getName())
-                .timestamp(ZonedDateTime.now())
-                .action(CheckInOutEnum.CHECK_OUT)
-                .sessionId(checkInOut.getSessionId())
-                .build();
-
-        if (optionalRecord.isPresent()) {
-            record.setDn(optionalRecord.get().getDn());
-        }
-
-        return databaseService.saveCheckInOutRecord(record);
-    }
-
-     */
 
     @GetMapping("/records")
     public Map<String, Object> getRecords(HttpSession session,

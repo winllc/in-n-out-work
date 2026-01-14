@@ -30,6 +30,21 @@ public class DatabaseService {
     }
 
     public CheckInOutRecord saveCheckInOutRecord(CheckInOutRecord record) {
+
+        //if first record of day and is unlock, mark is as check_in;
+
+        if(record.getAction() == CheckInOutEnum.UNLOCK){
+            ZonedDateTime beginning = record.getTimestamp().truncatedTo(ChronoUnit.DAYS);
+            ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
+
+            List<CheckInOutRecord> existingRecords = checkinInOutRecordRepository
+                    .findByTimestampBetweenAndDnIgnoreCaseOrderByTimestampDesc(beginning, ending, record.getDn());
+
+            if(existingRecords.isEmpty()){
+                record.setAction(CheckInOutEnum.CHECK_IN);
+            }
+        }
+
         return checkinInOutRecordRepository.save(record);
     }
 
