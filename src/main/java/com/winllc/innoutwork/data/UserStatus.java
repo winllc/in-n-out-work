@@ -32,6 +32,8 @@ public class UserStatus {
     private String employeeType;
     private String location;
     private String branch;
+    private String email;
+    private String phoneNumber;
 
     public String getCn(){
         if(dn != null){

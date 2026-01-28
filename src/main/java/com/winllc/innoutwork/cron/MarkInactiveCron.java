@@ -47,6 +47,7 @@ public class MarkInactiveCron {
                         checkInOutRecord.setEmployeeType(record.getEmployeeType());
                         checkInOutRecord.setOrganization(record.getOrganization());
                         checkInOutRecord.setSessionId(record.getSessionId());
+                        checkInOutRecord.setForced(true);
                         checkInOutRecordRepository.save(checkInOutRecord);
                     }
                 });

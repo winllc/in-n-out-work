@@ -17,6 +17,10 @@ public class ApplicationProperties {
     private String userLdapEmployeeTypeAttribute = "employeeType";
     private String userLdapLocationAttribute = "location";
     private String userLdapBranchAttribute = "branch";
+    private String userLdapManagerIdAttribute = "title";
+    private String userLdapEmailAttribute = "mail";
+    private String userLdapPhoneAttribute = "telephoneNumber";
+    private String managerLdapIdAttribute = "Email";
     private boolean lookupOnDnAttribute = false;
     private String userDnAttribute = "";
     private int cacheDurationRefreshMinutes = 60;
@@ -26,6 +30,9 @@ public class ApplicationProperties {
     private Map<String, String> attributeUpdateRequestUrlMappings = new HashMap<>();
     private String updateProfileUrl = "https://google.com";
     private int checkOutAfterMinutes = 240;
+    private int extraTimeBeforeAbsentNotificationMinutes = 60;
     private String calendarStatusEventColor = "blue";
+    private String calendarAbsentStatusEventColor = "purple";
     private String calendarActivityEventColor = "green";
+    private String notificationSenderEmail = "noreply@test.com";
 }

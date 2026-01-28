@@ -4,6 +4,7 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
@@ -11,11 +12,17 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.DatabaseService;
+import com.winllc.innoutwork.service.LdapGroupLoader;
 import com.winllc.innoutwork.service.LdapService;
 import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
+import org.springframework.ldap.filter.LikeFilter;
+import org.springframework.ldap.query.LdapQuery;
+import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -29,22 +36,24 @@ import java.util.*;
 @RequestMapping("/api/users")
 public class UserRestService {
 
+    private static final Logger log = LoggerFactory.getLogger(UserRestService.class);
+
     private final LdapService ldapService;
     private final DatabaseService databaseService;
     private final UserRecordRepository userRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
-    @Autowired
-    private UserEventRecordRepository userEventRecordRepository;
+    private final UserEventRecordRepository userEventRecordRepository;
 
     public UserRestService(LdapService ldapService, DatabaseService databaseService,
                            UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
-                           ApplicationProperties properties) {
+                           ApplicationProperties properties, UserEventRecordRepository userEventRecordRepository) {
         this.ldapService = ldapService;
         this.databaseService = databaseService;
         this.userRecordRepository = userRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
+        this.userEventRecordRepository = userEventRecordRepository;
     }
 
     @GetMapping("/group/{groupName}")
@@ -88,7 +97,7 @@ public class UserRestService {
             filter = "(&(objectclass=inetOrgPerson)(cn=*%s*))".formatted(search);
         }
 
-        List<UserStatus> pageResult = ldapService.search(properties.getUserBaseDn(), filter, page, size);
+        List<UserStatus> pageResult = ldapService.search(filter, page, size);
         List<UserStatus> users = new ArrayList<>();
 
         for(UserStatus user : pageResult){
@@ -174,6 +183,58 @@ public class UserRestService {
                 });
 
         return status;
+    }
+
+
+    @GetMapping("/managers/{dn}")
+    public List<UserRecord> getManagersForUser(@PathVariable String dn){
+
+        Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(dn);
+
+        if(byDnIgnoreCase.isPresent()){
+            UserRecord record = byDnIgnoreCase.get();
+            return record.getAltManagerList().stream().map(d -> {
+                UserRecord rec = new UserRecord();
+                rec.setDn(d);
+                return rec;
+            }).toList();
+        }else{
+            return Collections.emptyList();
+        }
+    }
+
+    @PostMapping("/managers/update")
+    public void updateManagersForUser(Authentication authentication, @RequestBody List<String> managerDns){
+        //todo implement
+        log.info("updateManagersForUser");
+
+        Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(authentication.getName());
+
+        if(byDnIgnoreCase.isPresent()){
+            UserRecord userRecord = byDnIgnoreCase.get();
+
+            userRecord.setAlternateManagers("");
+            for(String managerDn : managerDns){
+                userRecord.addAltManager(managerDn);
+            }
+
+            userRecordRepository.save(userRecord);
+        }
+    }
+
+
+    @GetMapping("/usersearch")
+    public List<LdapUser> searchUsers(@RequestParam String search) {
+
+        LikeFilter likeFilter = new LikeFilter("cn", "*" + search + "*");
+
+        LdapQuery query = LdapQueryBuilder.query()
+                        .base(properties.getUserBaseDn())
+                                .filter(likeFilter);
+
+        List<LdapUser> ldapUsers = ldapService.searchUsers(query);
+
+        return ldapUsers;
     }
 
 }

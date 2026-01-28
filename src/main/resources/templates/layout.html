@@ -88,7 +88,22 @@
                             <i class="ti ti-menu-2"></i>
                         </a>
                     </li>
-
+                    <li class="nav-item dropdown">
+                        <a class="nav-link " href="javascript:void(0)" id="drop1" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="ti ti-bell"></i>
+                            <div id="notification-indicator" style="display: none" class="notification bg-primary rounded-circle"></div>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-animate-up" aria-labelledby="drop1">
+                            <div class="message-body" id="notification-list">
+                                <a href="javascript:void(0)" class="dropdown-item">
+                                    Item 1
+                                </a>
+                                <a href="javascript:void(0)" class="dropdown-item">
+                                    Item 2
+                                </a>
+                            </div>
+                        </div>
+                    </li>
                 </ul>
                 <div class="navbar-collapse justify-content-end px-0" id="navbarNav">
                     <ul class="navbar-nav flex-row ms-auto align-items-center justify-content-end">
@@ -202,6 +217,41 @@
         }
     }
 
+    document.addEventListener("DOMContentLoaded", loadItems);
+
+    const notificationList = document.getElementById("notification-list");
+
+    /* ---------- LOAD ---------- */
+    async function loadItems() {
+        const response = await fetch("/api/notifications/my");
+        const items = await response.json();
+        notificationList.innerHTML = "";
+
+        if (items.length > 0) {
+            document.getElementById("notification-indicator").style.display = "block";
+
+
+            const clearAll = document.createElement("button");
+            clearAll.className = "btn btn-primary dropdown-item text-center";
+            clearAll.innerHTML = "Mark All Read";
+            notificationList.appendChild(clearAll);
+
+
+            for (const item of items) {
+                const notiItem = document.createElement("a");
+                notiItem.href = "/app/notifications/id/" + item.id;
+                notiItem.className = "dropdown-item";
+                notiItem.textContent = item.summary;
+                notificationList.appendChild(notiItem);
+            }
+        } else{
+            const noItem = document.createElement("span");
+            noItem.className = "dropdown-item";
+            noItem.textContent = "No new notifications";
+            notificationList.appendChild(noItem);
+        }
+
+    }
 
 </script>
 

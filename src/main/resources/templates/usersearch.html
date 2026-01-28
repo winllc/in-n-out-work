@@ -23,10 +23,12 @@
 
                         <div class="row">
                             <div class="col-md-4">
-                                <form>
-                                    <input id="search-input" type="text" placeholder="Search name..." style="padding: 6px;">
-                                    <button type="submit" id="search-btn" class="btn btn-primary">Search</button>
-                                </form>
+                                <div class="input-group mb-3">
+                                    <input id="search-input" class="form-control" type="text" placeholder="Search name...">
+                                    <div class="input-group-append">
+                                        <button type="button" id="search-btn" class="btn btn-primary">Search</button>
+                                    </div>
+                                </div>
                             </div>
                             <div class="col-md-8 d-flex justify-content-end">
                                 <div class="form-check form-switch">
@@ -36,7 +38,11 @@
                             </div>
                         </div>
 
-                        <div id="user-table"></div>
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div id="user-table"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

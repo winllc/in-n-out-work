@@ -38,6 +38,20 @@ spring:
     #username: cn=directory manager
     #password: secret1234
     date-format: yyyy-MM-dd HH:mm a z
+  mail:
+    host: mailcow.winllc-dev.com
+    port: 587
+    username: user1@winllc-dev.com
+    password: password
+    properties:
+        mail:
+            smtp:
+              ssl:
+                trust: "*"
+              auth: true
+              starttls:
+                enable: true
+
   # thymeleaf:
  #   prefix: classpath:/templates/
 #    suffix: .html
@@ -65,7 +79,9 @@ application:
     - groups-base-dn: ou=Companies,dc=winllc,dc=com
   update-profile-url: https://google.com
   checkOutAfterMinutes: 2
-  application:
-    inactive-cron:
-      fixed-rate: 60000
-      initial-delay: 60000
+  inactive-cron:
+    fixed-rate: 60000
+    initial-delay: 60000
+  notification-sender-email: user1@winllc-dev.com
+  user-ldap-manager-id-attribute: title
+  manager-ldap-id-attribute: street

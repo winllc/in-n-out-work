@@ -9,6 +9,7 @@
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
     <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
 
+    <script src="https://cdn.jsdelivr.net/npm/@tarekraafat/autocomplete.js/dist/autoComplete.min.js"></script>
 
 </head>
 <body>
@@ -40,7 +41,10 @@
                             <button id="submitStatusUpdateButton" class="btn btn-primary">Submit</button>
                         </div>
                         <div class="col-md-6">
-                            <button type="button" class="btn btn-secondary" onclick="bootstrap.Modal.getInstance(document.getElementById('selectionModal')).hide();">Close</button>
+                            <button type="button" class="btn btn-secondary"
+                                    onclick="bootstrap.Modal.getInstance(document.getElementById('selectionModal')).hide();">
+                                Close
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -83,9 +87,12 @@
                                             <div class="alert alert-danger" role="alert">
                                                 <span th:utext="#{profile.warning}"></span>
                                             </div>
-                                            <input type="text" class="form-control" id="notes" aria-describedby="notesHelp"
+                                            <input type="text" class="form-control" id="notes"
+                                                   aria-describedby="notesHelp"
                                                    th:field="*{notes}">
-                                            <div id="notesHelp" class="form-text">Add additional information about yourself</div>
+                                            <div id="notesHelp" class="form-text">Add additional information about
+                                                yourself
+                                            </div>
                                         </div>
 
                                         <button type="submit" class="btn btn-primary">Submit</button>
@@ -125,9 +132,49 @@
                                     </table>
 
                                     <div class="alert alert-warning" role="alert">
-                                        <p>If any of this information is inaccurate submit a ticket here: <a th:href="@{${profileUpdateUrl}}" target="_blank">Help Desk</a></p>
+                                        <p>If any of this information is inaccurate submit a ticket here: <a
+                                                th:href="@{${profileUpdateUrl}}" target="_blank">Help Desk</a></p>
 
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12" th:if="${user}">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h4>Additional Managers</h4>
+                                </div>
+                                <div class="card-body">
+
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <input
+                                                    id="search"
+                                                    class="form-control"
+                                                    type="text"
+                                                    placeholder="Search..."
+                                                    autocomplete="off"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <ul id="selectedList" class="list-group">
+                                                <!-- Selected items will appear here -->
+                                            </ul>
+                                        </div>
+                                    </div>
+                                    <div class="row">
+                                        <div class="col-md-12">
+                                            <div class="text-end">
+                                                <button type="button" class="btn btn-primary" id="updateManagers">Update</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
                                 </div>
                             </div>
                         </div>
@@ -152,28 +199,11 @@
 
     <script th:inline="javascript">
 
+        const userDn = /*[[${userDn}]]*/ '';
+
         document.addEventListener('DOMContentLoaded', function () {
             var calendarEl = document.getElementById('calendar');
 
-            /*
-            const calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: 'dayGridMonth',
-                headerToolbar: {
-                    left: 'prev,next today',
-                    center: 'title',
-                    right: 'dayGridMonth,dayGridWeek'
-                },
-                didMount: function () {
-                    addDropdownsToDays();
-                },
-                datesSet: function () {
-                    addDropdownsToDays();
-                }
-            });
-
-             */
-
-            const userDn = /*[[${userDn}]]*/ '';
             const calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 themeSystem: 'bootstrap5',
@@ -192,7 +222,7 @@
 
                 },
                 selectable: true,
-                select: function(info) {
+                select: function (info) {
                     const start = info.start.toISOString();
                     const end = info.end.toISOString();
 
@@ -210,103 +240,6 @@
 
             calendar.render();
 
-            function addDropdownsToDays() {
-                const dayCells = document.querySelectorAll('.fc-daygrid-day');
-
-                dayCells.forEach(cell => {
-
-                    if (cell.querySelector('.day-dropdown')) return;
-
-                    const dateStr = cell.getAttribute('data-date');
-                    console.log(dateStr);
-
-                    const response = fetch("/api/event/day", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({
-                            date: dateStr
-                        })
-                    })
-                        .then(response => {
-                            // Optional: Handle HTTP errors
-                            if (!response.ok) {
-                                throw new Error(`HTTP error! status: ${response.status}`);
-                            }
-                            // Return the promise from the data extraction method
-                            return response.json();
-                        })
-                        .then(data => {
-                            console.log(data);
-                            const dropdownContainer = document.createElement('div');
-                            dropdownContainer.className = 'day-dropdown';
-
-                            const selectStatus = document.createElement('select');
-                            const option1 = document.createElement('option');
-                            option1.innerHTML = "Standard";
-                            option1.value = "STANDARD";
-                            if(data.status === 'STANDARD') option1.selected = true;
-
-                            const option2 = document.createElement('option');
-                            option2.innerHTML = "Out of Office";
-                            option2.value = "OUT_OF_OFFICE";
-                            if(data.status === 'OUT_OF_OFFICE') option2.selected = true;
-
-                            const option3 = document.createElement('option');
-                            option3.innerHTML = "WFH";
-                            option3.value = "WORK_FROM_HOME";
-                            if(data.status === 'WORK_FROM_HOME') option3.selected = true;
-
-                            const option4 = document.createElement('option');
-                            option4.innerHTML = "TDY";
-                            option4.value = "TDY";
-                            if(data.status === 'TDY') option4.selected = true;
-
-                            const option5 = document.createElement('option');
-                            option5.innerHTML = "Scheduled Leave";
-                            option5.value = "SCHEDULED_LEAVE";
-                            if(data.status === 'SCHEDULED_LEAVE') option5.selected = true;
-
-                            selectStatus.add(option1);
-                            selectStatus.add(option2);
-                            selectStatus.add(option3);
-                            selectStatus.add(option4);
-                            selectStatus.add(option5);
-
-                            selectStatus.addEventListener('mousedown', e => e.stopPropagation());
-                            selectStatus.addEventListener('click', e => e.stopPropagation());
-                            selectStatus.addEventListener('change', e => {
-                                e.stopPropagation();
-                                console.log('Selected:', selectStatus.value, cell.date);
-                                //selectStatus.value = '';
-                                fetch("/api/event/update", {
-                                    method: "POST",
-                                    headers: {
-                                        "Content-Type": "application/json"
-                                    },
-                                    body: JSON.stringify({
-                                        date: dateStr,
-                                        status: selectStatus.value,
-                                    })
-                                })
-                            });
-
-                            dropdownContainer.appendChild(selectStatus);
-
-                            cell.appendChild(dropdownContainer);
-                        });
-
-
-                });
-            }
-
-
-            document.addEventListener('click', function () {
-                document.querySelectorAll('.dropdown-menu').forEach(menu => {
-                    menu.classList.remove('show');
-                });
-            });
 
             function closeModal() {
 
@@ -337,11 +270,121 @@
                 //calendar.unselect();
             }
 
-            $('#submitStatusUpdateButton').on('click', function (){
+            $('#submitStatusUpdateButton').on('click', function () {
                 closeModal();
             })
 
         });
+
+        const selectedListEl = document.getElementById("selectedList");
+
+        // Keep track of selected items
+        const selectedItems = new Map();
+
+        new autoComplete({
+            selector: "#search",
+            threshold: 3,
+            debounce: 300,
+            searchEngine: "strict",
+
+            data: {
+                src: async (query) => {
+                    if (!query) return [];
+                    const response = await fetch(`/api/users/usersearch?search=${encodeURIComponent(query)}`);
+                    return await response.json();
+                },
+                keys: ["dn"]
+            },
+
+            resultsList: {
+                maxResults: 10,
+                noResults: true
+            },
+
+            resultItem: {
+                highlight: true
+            },
+
+            events: {
+                input: {
+                    selection: (event) => {
+                        const item = event.detail.selection.value;
+
+                        // prevent duplicates
+                        if (!selectedItems.has(item.dn)) {
+                            addItemToSelectedList(item);
+                        }
+
+                        // clear input for next selection
+                        document.querySelector("#search").value = "";
+                    }
+                }
+            }
+        });
+
+        document.addEventListener("DOMContentLoaded", loadItems);
+
+        /* ---------- LOAD ---------- */
+        async function loadItems() {
+            const response = await fetch("/api/users/managers/" + userDn);
+            const items = await response.json();
+            selectedListEl.innerHTML = "";
+
+            items.forEach(item => addItemToSelectedList(item));
+        }
+
+        function addItemToSelectedList(item) {
+            selectedItems.set(item.dn, item);
+
+            const li = document.createElement("li");
+            li.dataset.dn = item.dn;
+            li.classList.add("list-group-item");
+
+            const table = document.createElement("table");
+            table.style.width = "100%";
+
+            const tbody = document.createElement("tbody");
+
+            const row = document.createElement("tr");
+            const cellDn = document.createElement("td");
+            const cellDelete = document.createElement("td");
+            cellDelete.classList.add("text-end");
+
+            cellDn.innerHTML = item.dn;
+
+            const removeBtn = document.createElement("button");
+            removeBtn.textContent = "✖";
+            removeBtn.className = "btn btn-danger";
+            removeBtn.onclick = () => {
+                selectedItems.delete(item.dn);
+                li.remove();
+            };
+
+            cellDelete.append(removeBtn);
+
+            row.append(cellDn, cellDelete);
+            tbody.append(row);
+            table.appendChild(tbody);
+
+            li.append(table);
+            selectedListEl.appendChild(li);
+        }
+
+        document.getElementById("updateManagers").addEventListener("click", async function () {
+            const managers = Array.from(selectedItems.values()).map(item => item.dn);
+            await fetch("/api/users/managers/update", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(managers)
+            })
+                .then(data => {
+                    console.log("Success:", data);
+                    //todo toast
+                })
+        });
+
 
     </script>
 
