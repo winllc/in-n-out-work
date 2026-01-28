@@ -20,6 +20,8 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
 
     List<CheckInOutRecord> findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(String dn, ZonedDateTime timestamp, ZonedDateTime timestamp2);
 
+    List<CheckInOutRecord> findByDnIgnoreCaseAndTimestampIsBetweenAndActionEqualsOrderByTimestampDesc(String dn, ZonedDateTime timestamp, ZonedDateTime timestamp2, CheckInOutEnum action);
+
     Optional<CheckInOutRecord> findFirstBySessionId(String sessionId);
 
     Page<CheckInOutRecord> findByTimestampBetween(ZonedDateTime start, ZonedDateTime end, Pageable pageable);

@@ -1,15 +1,18 @@
 package com.winllc.innoutwork.security;
 
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.LdapService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -22,15 +25,17 @@ import java.util.*;
 public class AppUserDetailsService implements UserDetailsService {
     private static final Logger log = LoggerFactory.getLogger(AppUserDetailsService.class);
 
-    private final LdapService ldapService;
     private final UserRecordRepository userRecordRepository;
     private final ApplicationProperties properties;
+    private final LoadingCache<String, LdapUser> userCache;
 
-    public AppUserDetailsService(LdapService ldapService, UserRecordRepository userRecordRepository,
-                                 ApplicationProperties properties) {
-        this.ldapService = ldapService;
+    public AppUserDetailsService(UserRecordRepository userRecordRepository,
+                                 ApplicationProperties properties,
+                                 @Qualifier("ldapUserLoadingCache")
+                                 LoadingCache<String, LdapUser> userCache) {
         this.userRecordRepository = userRecordRepository;
         this.properties = properties;
+        this.userCache = userCache;
     }
 
     @Override
@@ -39,19 +44,18 @@ public class AppUserDetailsService implements UserDetailsService {
 
         log.info("Looking up user: {}", dn);
 
-        Optional<LdapUser> ldapUserOptional = ldapService.lookupUser(dn);
+        LdapUser ldapUser = userCache.get(username);
 
-        if (ldapUserOptional.isPresent()) {
+        if (ldapUser != null) {
             Set<UserRoleEnum> roles = new HashSet<>();
             roles.add(UserRoleEnum.USER);
 
-            LdapUser user =  ldapUserOptional.get();
-            UserRecord record = createUserIfDoesNotExist(dn, user);
+            UserRecord record = createUserIfDoesNotExist(dn, ldapUser);
 
             AppUserDetails details = new AppUserDetails(record);
 
             if(properties.getSuperUserDns().stream()
-                    .anyMatch(s -> user.getDn().equalsIgnoreCase(s))) {
+                    .anyMatch(s -> ldapUser.getDn().equalsIgnoreCase(s))) {
                 roles.add(UserRoleEnum.ADMIN);
             }
 

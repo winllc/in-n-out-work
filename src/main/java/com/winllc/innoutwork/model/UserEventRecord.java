@@ -24,7 +24,7 @@ public class UserEventRecord {
     private String dn;
     @Column(nullable = false)
     private LocalDate date;
-    @Column(nullable = false, columnDefinition = "text")
+    @Column(nullable = false, columnDefinition = "varchar(50)")
     @Enumerated(EnumType.STRING)
     private UserStatusEnum status;
 }

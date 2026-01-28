@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.service;
 
+import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.*;
@@ -23,9 +24,10 @@ public class UserService {
     private static final Logger log = LoggerFactory.getLogger(UserService.class);
 
     private final UserRecordRepository userRecordRepository;
-
     private final LdapService ldapService;
     private final UserRestService userRestService;
+    @Autowired
+    private ApplicationProperties properties;
 
     public UserService(UserRecordRepository userRecordRepository,
                        LdapService ldapService, UserRestService userRestService) {
@@ -35,7 +37,21 @@ public class UserService {
     }
 
     public Optional<UserRecord> getUserByDn(LdapDn dn) {
-        return userRecordRepository.findByDnIgnoreCase(dn.dn());
+        Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(dn.dn());
+        if(recordOptional.isPresent()){
+            return recordOptional;
+        }else{
+            Optional<LdapUser> userOptional = ldapService.lookupUser(dn);
+
+            if(userOptional.isPresent()){
+                LdapUser ldapUser = userOptional.get();
+                UserRecord userRecord = new UserRecord(ldapUser);
+
+                return Optional.of(userRecordRepository.save(userRecord));
+            }
+
+        }
+        return Optional.empty();
     }
 
     public UserRecord updateProfile(Authentication authentication, ProfileForm form) {
@@ -116,5 +132,47 @@ public class UserService {
         builder.location(userStatus.getLocation());
 
         return builder.build();
+    }
+
+    public LdapUser getUserManager(LdapDn userDn){
+        Optional<LdapUser> userOptional = ldapService.lookupUser(userDn);
+        if(userOptional.isPresent()) {
+            LdapUser ldapUser = userOptional.get();
+            if(ldapUser.getManagerId() != null){
+                Optional<LdapUser> managerOptional = ldapService.lookupUser(
+                        properties.getManagerLdapIdAttribute(), ldapUser.getManagerId());
+                if(managerOptional.isPresent()){
+                    return managerOptional.get();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    public UserRecord refreshUserRecord(LdapDn dn){
+        Optional<UserRecord> userRecordOptional = userRecordRepository.findByDnIgnoreCase(dn.dn());
+    /*
+        if(userRecordOptional.isPresent()){
+
+            UserRecord userRecord = userRecordOptional.get();
+
+            LdapUser ldapUser = ldapService.lookupUser(dn).orElse(null);
+
+            if(ldapUser != null){
+                userRecord.setBranch(ldapUser.getBranch());
+                userRecord.setEmailAddress(ldapUser.getEmailAddress());
+                userRecord.setTitle(ldapUser.getTitle());
+                userRecord.setDepartment(ldapUser.getDepartment());
+                userRecord.setManagerDn(ldapUser.getManagerDn() != null ? ldapUser.getManagerDn().dn() : null);
+            }
+
+            return userRecordRepository.save(userRecord);
+        }else{
+            return null;
+        }
+
+             */
+        return null;
     }
 }

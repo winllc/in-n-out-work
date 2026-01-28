@@ -70,10 +70,8 @@ public class ProfileController {
                                 Model model, @ModelAttribute ProfileForm form) {
         log.debug("%s updating profile".formatted(authentication.getName()));
 
-        UserRecord updated = userRecordService.updateProfile(authentication, form);
+        userRecordService.updateProfile(authentication, form);
 
-
-        //model.addAttribute("form", ProfileForm.builder().notes(updated.getNotes()).build());
         redirectAttributes.addFlashAttribute("message", "Successfully updated profile");
 
         return "redirect:/app/profile";

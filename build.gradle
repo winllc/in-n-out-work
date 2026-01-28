@@ -39,6 +39,8 @@ dependencies {
     // --- Actuator for monitoring ---
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+
     implementation 'nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect'
     implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
 

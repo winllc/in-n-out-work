@@ -2,12 +2,19 @@ package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import com.winllc.innoutwork.repository.UserRecordRepository;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.weaving.LoadTimeWeaverAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
+import java.time.Instant;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -20,6 +27,10 @@ import java.util.stream.Collectors;
 public class DatabaseService {
 
     private final CheckInOutRecordRepository checkinInOutRecordRepository;
+    @Autowired
+    private UserRecordRepository userRecordRepository;
+    @Autowired
+    private LoadTimeWeaverAware loadTimeWeaverAware;
 
     public DatabaseService(CheckInOutRecordRepository checkinInOutRecordRepository) {
         this.checkinInOutRecordRepository = checkinInOutRecordRepository;
@@ -45,7 +56,51 @@ public class DatabaseService {
             }
         }
 
+        if(record.getAction() == CheckInOutEnum.CHECK_IN){
+            Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(record.getDn());
+            recordOptional.ifPresent(userRecord -> {
+
+                LocalTime averageLogin = calculateAverageLogin(record.getDn());
+                userRecord.setAverageLoginTime(averageLogin);
+
+                userRecordRepository.save(userRecord);
+            });
+        }
+
         return checkinInOutRecordRepository.save(record);
+    }
+
+    private LocalTime calculateAverageLogin(String dn){
+        ZonedDateTime from = ZonedDateTime.now().minusDays(30);
+        ZonedDateTime to =ZonedDateTime.now();
+        List<CheckInOutRecord> allCheckins = checkinInOutRecordRepository
+                .findByDnIgnoreCaseAndTimestampIsBetweenAndActionEqualsOrderByTimestampDesc(dn, from, to, CheckInOutEnum.CHECK_IN);
+
+        List<ZonedDateTime> timestamps = allCheckins.stream()
+                .filter(r -> r.getTimestamp() != null)
+                .map(CheckInOutRecord::getTimestamp)
+                .toList();
+
+        return calculateAverage(timestamps);
+    }
+
+    public static LocalTime calculateAverage(List<ZonedDateTime> timestamps) {
+        if (timestamps == null || timestamps.isEmpty()) {
+            return null;
+        }
+
+        List<LocalTime> localTimes = timestamps.stream()
+                .map(t -> t.toLocalTime())
+                .toList();
+
+
+        long averageSeconds =
+                (long) localTimes.stream()
+                        .mapToLong(LocalTime::toSecondOfDay)
+                        .average()
+                        .orElseThrow();
+
+        return LocalTime.ofSecondOfDay(averageSeconds);
     }
 
     public Optional<CheckInOutRecord> lookupBySessionId(String sessionId) {

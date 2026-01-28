@@ -34,15 +34,11 @@
                             <h3>Favorites</h3>
                         </div>
 
-                        <table class="table mb-0 text-nowrap varient-table align-middle fs-3">
-                            <tbody>
-                                <tr th:each="entry : ${favoriteMap}">
-                                    <td>
-                                        <a th:href="@{'/app/users/'+ ${entry.key}}" th:text="${entry.value}"></a>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        <ul class="list-group list-group-flush">
+                            <li class="list-group-item"  th:each="entry : ${favoriteMap}">
+                                <a th:href="@{'/app/users/'+ ${entry.key}}" th:text="${entry.value}"></a>
+                            </li>
+                        </ul>
 
                     </div>
                 </div>

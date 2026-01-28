@@ -98,7 +98,13 @@ public class UserEventRestService {
         List<CalendarEvent> events = byDnAndDateBetween.stream()
                 .map(r -> {
                     CalendarEvent event = new CalendarEvent(r.getDate(), r.getStatus().getFriendlyName());
-                    event.setBackgroundColor(properties.getCalendarStatusEventColor());
+
+                    if(r.getStatus().isExcusable()){
+                        event.setBackgroundColor(properties.getCalendarStatusEventColor());
+                    }else{
+                        event.setBackgroundColor(properties.getCalendarAbsentStatusEventColor());
+                    }
+
                     return event;
                 })
                 .toList();

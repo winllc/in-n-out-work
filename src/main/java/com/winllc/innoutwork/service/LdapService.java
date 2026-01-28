@@ -54,12 +54,12 @@ public class LdapService {
     }
 
     // Alternative: More efficient approach that doesn't iterate through all previous pages
-    public List<UserStatus> search(String baseDn, String filter, int pageNumber, int pageSize) {
+    public List<UserStatus> search(String filter, int pageNumber, int pageSize) {
         SearchControls controls = new SearchControls();
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
 
         return ldapTemplate.search(
-                baseDn,
+                properties.getUserBaseDn(),
                 filter,
                 controls,
                 (ContextMapper<UserStatus>) ctx -> {
@@ -71,6 +71,14 @@ public class LdapService {
                 }
         );
 
+    }
+
+    public List<LdapUser> searchUsers(LdapQuery query) {
+
+        return ldapTemplate.search(
+                query,
+                new LdapUserContextMapper(properties)
+        );
     }
 
     public Optional<LdapUser> lookupUser(LdapDn dn) {
@@ -98,6 +106,20 @@ public class LdapService {
         }
 
         return Optional.ofNullable(user);
+    }
+
+    public Optional<LdapUser> lookupUser(String attribute, String value) {
+        LdapQuery query = LdapQueryBuilder.query()
+                .base(properties.getUserBaseDn())
+                .countLimit(1)
+                .filter(new EqualsFilter(attribute, value));
+
+        List<LdapUser> users = ldapTemplate.search(query, new LdapUserContextMapper(properties));
+        if (!CollectionUtils.isEmpty(users)) {
+            return Optional.of(users.getFirst());
+        } else {
+            return Optional.empty();
+        }
     }
 
     public long count(String baseDn, String filter) {
@@ -357,7 +379,29 @@ public class LdapService {
                         } catch (NamingException e) {
                             log.error("Could not map branch attribute: ", e);
                         }
+                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapManagerIdAttribute())) {
+                        try {
+                            String type = attr.get().toString();
+                            builder.managerId(type);
+                        } catch (NamingException e) {
+                            log.error("Could not map branch attribute: ", e);
+                        }
+                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmailAttribute())) {
+                        try {
+                            String type = attr.get().toString();
+                            builder.email(type);
+                        } catch (NamingException e) {
+                            log.error("Could not map branch attribute: ", e);
+                        }
+                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapPhoneAttribute())) {
+                        try {
+                            String type = attr.get().toString();
+                            builder.phoneNumber(type);
+                        } catch (NamingException e) {
+                            log.error("Could not map branch attribute: ", e);
+                        }
                     }
+
                 });
 
             }

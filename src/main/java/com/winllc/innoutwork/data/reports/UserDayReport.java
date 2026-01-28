@@ -82,14 +82,33 @@ public class UserDayReport implements Comparable<UserDayReport> {
     }
 
     private static Optional<CheckInOutRecord> getCheckOutTime(List<CheckInOutRecord> records){
-        if(records.isEmpty()){
-            return Optional.empty();
-        }else{
-            return records.stream()
+        if(records.stream().anyMatch(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)){
+
+            //if last action was check out where forced was true, get the previous lock record, else get the check out record
+            Optional<CheckInOutRecord> forcedCheckOut = records.stream()
                     .filter(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)
+                    .filter(r -> r.getForced())
+                    .findFirst();
+
+            if(forcedCheckOut.isPresent()){
+                return records.stream()
+                        .filter(r -> r.getAction() == CheckInOutEnum.LOCK)
+                        .sorted()
+                        .findFirst();
+            }else{
+                return records.stream()
+                        .filter(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)
+                        .sorted()
+                        .findFirst();
+            }
+        }else if(records.stream().anyMatch(r -> r.getAction() == CheckInOutEnum.LOCK)){
+            return records.stream()
+                    .filter(r -> r.getAction() == CheckInOutEnum.LOCK)
                     .sorted()
                     .findFirst();
         }
+
+      return Optional.empty();
     }
 
     private static Optional<CheckInOutRecord> getCheckInTime(List<CheckInOutRecord> records){
