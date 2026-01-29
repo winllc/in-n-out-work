@@ -13,6 +13,16 @@
 
     <div class="row">
         <div class="col-md-11">
+
+            <div th:if="${message}" class="alert alert-success">
+                <span th:text="${message}"></span>
+            </div>
+
+            <!-- Display error message if present -->
+            <div th:if="${error}" class="alert alert-danger">
+                <span th:text="${error}"></span>
+            </div>
+
             <div class="card">
                 <div class="card-header">
                     <div class="d-flex justify-content-center">
@@ -29,8 +39,16 @@
                                 <td>Summary</td>
                                 <td><span th:text="${notification.getSummary()}"/></td>
                             </tr>
+                            <tr th:if="${form.responseTimestamp != null}">
+                                <td>Status Updated On</td>
+                                <td th:text="${form.responseTimestamp}"></td>
+                            </tr>
+                            <tr th:if="${form.responseTimestamp != null}">
+                                <td>Status Updated By</td>
+                                <td th:text="${form.responderDn}"></td>
+                            </tr>
                             <tr>
-                                <td>Action</td>
+                                <td>Status</td>
                                 <td>
                                     <select class="form-control" th:field="*{response}">
                                         <option th:each="status : ${statuses}" th:text="${status}"
@@ -38,6 +56,7 @@
                                     </select>
                                 </td>
                             </tr>
+
                             </tbody>
                         </table>
 

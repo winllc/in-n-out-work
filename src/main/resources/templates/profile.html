@@ -6,10 +6,12 @@
     <meta charset="UTF-8">
     <title>Tabulator + Spring Boot</title>
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
+    <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
+
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
     <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
 
-    <script src="https://cdn.jsdelivr.net/npm/@tarekraafat/autocomplete.js/dist/autoComplete.min.js"></script>
+    <script th:src="@{/libs/autoComplete/autoComplete.min.js}"></script>
 
 </head>
 <body>
@@ -128,13 +130,32 @@
                                             <td th:text="${user.branch}"></td>
                                         </tr>
 
+                                        <tr th:if="${user.email != null}">
+                                            <td>Email</td>
+                                            <td th:text="${user.email}"></td>
+                                        </tr>
+
+                                        <tr th:if="${user.phoneNumber != null}">
+                                            <td>Phone</td>
+                                            <td th:text="${user.phoneNumber}"></td>
+                                        </tr>
+
+                                        <tr th:if="${user.managerDn != null}">
+                                            <td>Manager</td>
+                                            <td th:text="${user.managerDn}"></td>
+                                        </tr>
+
+                                        <tr th:if="${user.averageLoginTime != null}">
+                                            <td>Average Login Time</td>
+                                            <td th:text="${user.averageLoginTime}"></td>
+                                        </tr>
+
                                         </tbody>
                                     </table>
 
                                     <div class="alert alert-warning" role="alert">
-                                        <p>If any of this information is inaccurate submit a ticket here: <a
-                                                th:href="@{${profileUpdateUrl}}" target="_blank">Help Desk</a></p>
-
+                                        <span>If any of this information is inaccurate submit a ticket here: <a
+                                                th:href="@{${profileUpdateUrl}}" target="_blank">Help Desk</a></span>
                                     </div>
                                 </div>
                             </div>
@@ -148,6 +169,10 @@
                                     <h4>Additional Managers</h4>
                                 </div>
                                 <div class="card-body">
+
+                                    <div class="alert alert-warning" role="alert">
+                                        <span>Add additional managers that will be notified if you are not available within your normal login window.</span>
+                                    </div>
 
                                     <div class="row">
                                         <div class="col-md-12">
@@ -381,7 +406,7 @@
             })
                 .then(data => {
                     console.log("Success:", data);
-                    //todo toast
+                    showToast("Managers Updated", { type: "success" });
                 })
         });
 

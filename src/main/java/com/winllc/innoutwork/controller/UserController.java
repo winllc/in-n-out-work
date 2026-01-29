@@ -23,13 +23,9 @@ public class UserController {
 
     private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
-    private final LdapService ldapService;
-    private final UserRestService userRestService;
     private final UserService userRecordService;
 
-    public UserController(LdapService ldapService, UserRestService userRestService, UserService userRecordService) {
-        this.ldapService = ldapService;
-        this.userRestService = userRestService;
+    public UserController(UserService userRecordService) {
         this.userRecordService = userRecordService;
     }
 

@@ -82,6 +82,10 @@ application:
   inactive-cron:
     fixed-rate: 60000
     initial-delay: 60000
+  send-absent-notification-cron:
+    fixed-rate: 300000
+    initial-delay: 1
   notification-sender-email: user1@winllc-dev.com
   user-ldap-manager-id-attribute: title
   manager-ldap-id-attribute: street
+  application-base-url: https://localhost:8444

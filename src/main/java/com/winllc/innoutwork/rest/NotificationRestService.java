@@ -4,6 +4,8 @@ import com.winllc.innoutwork.constant.NotificationTypeEnum;
 import com.winllc.innoutwork.data.NotificationResponse;
 import com.winllc.innoutwork.model.NotificationRecord;
 import com.winllc.innoutwork.repository.NotificationRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -14,35 +16,26 @@ import java.util.List;
 @RequestMapping("/api/notifications")
 public class NotificationRestService {
 
-    @Autowired
-    private NotificationRepository notificationRepository;
+    private static final Logger log = LoggerFactory.getLogger(NotificationRestService.class);
+
+    private final NotificationRepository notificationRepository;
+
+    public NotificationRestService(NotificationRepository notificationRepository) {
+        this.notificationRepository = notificationRepository;
+    }
 
     @GetMapping("/my")
     public List<NotificationRecord> getMyNotifications(Authentication authentication) {
-        // Implementation goes here
-
         List<NotificationRecord> records = notificationRepository.findByForUserDnIgnoreCaseAndStatusResponseDateNull(
                 authentication.getName());
 
         return records;
     }
 
-    @PostMapping("/updateStatus")
-    public void updateStatus(Authentication authentication,
-                             @RequestBody NotificationResponse response) {
-        // Implementation goes here
-        NotificationRecord record = notificationRepository.findById(response.getNotificationId()).orElse(null);
-        if(record != null){
-            if(authentication.getName().equalsIgnoreCase(record.getForUserDn())){
-
-            }else{
-                throw new RuntimeException("Unauthorized");
-            }
-        }
-    }
-
     @PostMapping("/markAllAsRead")
     public void markAllAsRead(Authentication authentication) {
+        log.debug("All notifications marked as read for user: {}", authentication.getName());
+
         List<NotificationRecord> records = notificationRepository.findByForUserDnIgnoreCaseAndStatusResponseDateNull(
                 authentication.getName());
 

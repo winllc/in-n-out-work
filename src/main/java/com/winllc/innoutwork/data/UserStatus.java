@@ -34,6 +34,8 @@ public class UserStatus {
     private String branch;
     private String email;
     private String phoneNumber;
+    private String managerDn;
+    private String averageLoginTime;
 
     public String getCn(){
         if(dn != null){

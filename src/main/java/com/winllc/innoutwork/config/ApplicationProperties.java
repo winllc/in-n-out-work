@@ -11,6 +11,7 @@ import java.util.Map;
 @Data
 @ConfigurationProperties(prefix = "application")
 public class ApplicationProperties {
+    private String timeZone = "ETC";
     private String userBaseDn;
     private String userLdapFilter = "(objectclass=*)";
     private String userLdapOrganizationAttribute = "organization";
@@ -35,4 +36,5 @@ public class ApplicationProperties {
     private String calendarAbsentStatusEventColor = "purple";
     private String calendarActivityEventColor = "green";
     private String notificationSenderEmail = "noreply@test.com";
+    private String applicationBaseUrl = "https://localhost";
 }

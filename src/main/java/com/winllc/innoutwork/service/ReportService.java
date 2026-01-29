@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.service;
 
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
@@ -61,7 +62,10 @@ public class ReportService {
 
                     dateMap.forEach((date, checkInOutRecords) -> {
 
-                        Optional<UserEventRecord> eventRecordOptional = userEventRecordRepository.findByDnIgnoreCaseAndDate(groupMember, date);
+                        Optional<UserEventRecord> eventRecordOptional = userEventRecordRepository.findByDnIgnoreCaseAndDate(groupMember, date)
+                                .stream()
+                                .filter(r -> r.getStatus() != UserStatusEnum.STANDARD)
+                                .findFirst();
 
                         UserDayReport dayReport = UserDayReport.build(date, eventRecordOptional.orElse(null), checkInOutRecords);
 

@@ -78,27 +78,6 @@ public class MetricsController {
         Long totalUsers = cacheService.getLdapCount(properties.getUserBaseDn());
         Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics(session);
 
-        /*
-        PieChartDataSet dataSet = new PieChartDataSet("Total Users");
-
-        AtomicInteger totalWithAction = new AtomicInteger();
-        todaysStatistics.forEach((key, value) -> {
-            data.getLabels().add(key.toString());
-            dataSet.getData().add(value.intValue());
-            dataSet.getBackgroundColor().add(colorMap.get(key));
-
-            totalWithAction.addAndGet(value.intValue());
-        });
-
-        long noActivity = totalUsers - totalWithAction.get();
-
-        data.getLabels().add("No Activity");
-        dataSet.getData().add((int) noActivity);
-        dataSet.getBackgroundColor().add("grey");
-
-        data.addDataSet(dataSet);
-
- */
 
         PieChartData<CheckInOutEnum> chartData = PieChartData.build("Total Users", totalUsers, todaysStatistics);
 

@@ -27,13 +27,11 @@ import java.util.stream.Collectors;
 public class DatabaseService {
 
     private final CheckInOutRecordRepository checkinInOutRecordRepository;
-    @Autowired
-    private UserRecordRepository userRecordRepository;
-    @Autowired
-    private LoadTimeWeaverAware loadTimeWeaverAware;
+    private final UserRecordRepository userRecordRepository;
 
-    public DatabaseService(CheckInOutRecordRepository checkinInOutRecordRepository) {
+    public DatabaseService(CheckInOutRecordRepository checkinInOutRecordRepository, UserRecordRepository userRecordRepository) {
         this.checkinInOutRecordRepository = checkinInOutRecordRepository;
+        this.userRecordRepository = userRecordRepository;
     }
 
     public long getCheckInOutRecordCount() {

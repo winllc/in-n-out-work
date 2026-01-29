@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+<body>
+
+<p th:text="'Hello ' + ${for} + ','"></p>
+
+<p>
+    You have a new accountability notification:
+</p>
+
+<table>
+    <tr>
+        <td><strong>Person:</strong></td>
+        <td th:text="${aboutUser}"></td>
+    </tr>
+    <tr>
+        <td><strong>On:</strong></td>
+        <td th:text="${notificationDate}"></td>
+    </tr>
+    <tr>
+        <td><strong>Expected Check In:</strong></td>
+        <td th:text="${summary}"></td>
+    </tr>
+    <tr>
+        <td><strong>Type:</strong></td>
+        <td th:text="${type}"></td>
+    </tr>
+</table>
+
+<br/>
+
+<p>
+    To confirm the status of this person, click here: <a th:href="${notificationUrl}">Confirm Status</a>
+</p>
+
+</body>
+</html>

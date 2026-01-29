@@ -21,6 +21,7 @@ import org.springframework.data.domain.Sort;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.util.CollectionUtils;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -38,23 +39,23 @@ public class SendAbsentNotificationsCron {
     private final UserRecordRepository userRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final UserEventRecordRepository userEventRecordRepository;
-    private final UserService userService;
-    @Autowired
-    private NotificationService notificationService;
-    @Autowired
-    private ApplicationProperties properties;
+    private final NotificationService notificationService;
+    private final ApplicationProperties properties;
 
     public SendAbsentNotificationsCron(UserRecordRepository userRecordRepository,
                                        CheckInOutRecordRepository checkInOutRecordRepository,
-                                       UserEventRecordRepository userEventRecordRepository, UserService userService) {
+                                       UserEventRecordRepository userEventRecordRepository, NotificationService notificationService,
+                                       ApplicationProperties properties) {
         this.userRecordRepository = userRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.userEventRecordRepository = userEventRecordRepository;
-        this.userService = userService;
+        this.notificationService = notificationService;
+        this.properties = properties;
     }
 
     @Async
-    @Scheduled(fixedDelayString = "#{@inactiveCronProperties.fixedRate}")
+    @Scheduled(fixedDelayString = "#{@sendAbsentNotificationCronProperties.fixedRate}",
+            initialDelayString = "#{@sendAbsentNotificationCronProperties.initialDelay}")
     public void sendNotifications() {
         log.info("Starting SendAbsentNotificationsCron");
 
@@ -104,12 +105,15 @@ public class SendAbsentNotificationsCron {
         if(notCheckedIn) {
 
             if(isPastCheckinWindow(user)) {
-                Optional<UserEventRecord> recordOptional =
+                List<UserEventRecord> records =
                         userEventRecordRepository.findByDnIgnoreCaseAndDate(user.getDn(), LocalDate.now());
 
-                if (recordOptional.isPresent()) {
-                    UserEventRecord record = recordOptional.get();
-                    return !record.getStatus().isExcusable() || record.getStatus() == UserStatusEnum.STANDARD;
+                if (!CollectionUtils.isEmpty(records)) {
+                    boolean excused = records.stream()
+                            .filter(r -> r.getStatus() != UserStatusEnum.STANDARD)
+                            .anyMatch(r -> r.getStatus().isExcusable());
+
+                    return !excused;
                 }
                 return true;
             }

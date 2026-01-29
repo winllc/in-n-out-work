@@ -11,6 +11,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalTime;
 import java.time.ZonedDateTime;
 
 @Data
@@ -25,6 +26,7 @@ public class NotificationRecord implements Comparable<NotificationRecord> {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    private String notificationUuid;
     private String forUserDn;
     private String aboutUserDn;
     private ZonedDateTime notificationDate;
@@ -35,6 +37,9 @@ public class NotificationRecord implements Comparable<NotificationRecord> {
     @Enumerated(EnumType.STRING)
     private UserStatusEnum statusResponse;
     private ZonedDateTime statusResponseDate;
+    private String statusResponseByDn;
+    private boolean ignore = false;
+    private LocalTime expectedCheckInTime;
 
     @Override
     public int compareTo(NotificationRecord o) {

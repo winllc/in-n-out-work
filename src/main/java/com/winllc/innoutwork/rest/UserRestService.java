@@ -176,10 +176,11 @@ public class UserRestService {
         }
 
         userEventRecordRepository.findByDnIgnoreCaseAndDate(dn, selectedDate.toLocalDate())
+                .stream()
+                .filter(r -> r.getStatus() != UserStatusEnum.STANDARD)
+                .findFirst()
                 .ifPresent(userEventRecord -> {
-                    if(userEventRecord.getStatus() != UserStatusEnum.STANDARD) {
-                        status.setStatus(userEventRecord.getStatus().name());
-                    }
+                    status.setStatus(userEventRecord.getStatus().name());
                 });
 
         return status;
@@ -206,7 +207,7 @@ public class UserRestService {
     @PostMapping("/managers/update")
     public void updateManagersForUser(Authentication authentication, @RequestBody List<String> managerDns){
         //todo implement
-        log.info("updateManagersForUser");
+        log.info("Updating managers for user %s to: %s".formatted(authentication.getName(), managerDns));
 
         Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(authentication.getName());
 
