@@ -14,7 +14,7 @@
     <script th:src="@{/libs/flatpickr/flatpickr.min.js}"></script>
 
     <script th:src="@{/libs/treeview/treeview.js}"></script>
-
+    <script th:src="@{/js/custom.js}"></script>
 
 </head>
 <body>
@@ -143,6 +143,11 @@
             </div>
         </div>
 
+        <div
+                id="toastContainer"
+                class="toast-container position-fixed top-0 end-0 p-3"
+        ></div>
+
     </div>
 </div>
 
@@ -230,10 +235,11 @@
         if (items.length > 0) {
             document.getElementById("notification-indicator").style.display = "block";
 
-
             const clearAll = document.createElement("button");
             clearAll.className = "btn btn-primary dropdown-item text-center";
             clearAll.innerHTML = "Mark All Read";
+            clearAll.addEventListener("click", markAllAsRead);
+
             notificationList.appendChild(clearAll);
 
 
@@ -252,6 +258,31 @@
         }
 
     }
+
+    async function markAllAsRead() {
+        //const managers = Array.from(selectedItems.values()).map(item => item.dn);
+        await fetch("/api/notifications/markAllAsRead", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            //body: JSON.stringify(managers)
+        })
+            .then(data => {
+                console.log("Success:", data);
+                showToast("Success", { type: "success" });
+
+                document.getElementById("notification-indicator").style.display = "none";
+                notificationList.innerHTML = "";
+                const noItem = document.createElement("span");
+                noItem.className = "dropdown-item";
+                noItem.textContent = "No new notifications";
+                notificationList.appendChild(noItem);
+            })
+    }
+
+
+
 
 </script>
 

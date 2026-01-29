@@ -13,6 +13,8 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.service.ReportService;
 import io.micrometer.common.util.StringUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -30,6 +32,8 @@ import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 @RestController
 public class UserEventRestService {
 
+    private static final Logger log = LoggerFactory.getLogger(UserEventRestService.class);
+
     private final UserEventRecordRepository userEventRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
@@ -41,46 +45,6 @@ public class UserEventRestService {
         this.properties = properties;
     }
 
-    @PostMapping("/day")
-    public UserEventData getEventForDay(Authentication authentication,
-                                        @RequestBody UserEventData data){
-
-        LocalDate localDate = LocalDate.parse(data.getDate(), DATE_FORMATTER);
-
-        String userDn = authentication.getName();
-        if(StringUtils.isNotBlank(data.getDn())){
-            userDn = data.getDn();
-        }
-
-        UserEventRecord record = null;
-
-        Optional<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(userDn, localDate);
-        if(byDnAndDate.isPresent()){
-            record = byDnAndDate.get();
-        }
-
-        UserEventData eventData = new UserEventData();
-        eventData.setDn(userDn);
-        eventData.setDate(DATE_FORMATTER.format(localDate));
-
-        if(record == null){
-            eventData.setStatus(UserStatusEnum.STANDARD.name());
-        }else{
-            eventData.setStatus(record.getStatus().name());
-        }
-
-        return eventData;
-        /*
-        if(userEventRecordMap.containsKey(localDate)){
-            return userEventRecordMap.get(localDate);
-        }else{
-            record = new UserEventData();
-            record.setStatus(UserStatusEnum.STANDARD.name());
-            return record;
-        }
-
-         */
-    }
 
     @GetMapping("/all")
     public List<CalendarEvent> getEventForDay(Authentication authentication,
@@ -135,21 +99,30 @@ public class UserEventRestService {
     public UserEventData updateEventForDay(Authentication authentication,
                                              @RequestBody UserEventData data){
 
+        log.debug("updateEventForDay called by %s with data: %s".formatted(authentication.getName(), data));
+
         String userDn = authentication.getName();
         LocalDate fromLocalDate = LocalDate.parse(data.getFromDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
         LocalDate toLocalDate = LocalDate.parse(data.getToDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
 
         while(fromLocalDate.isBefore(toLocalDate)){
+            UserStatusEnum status = UserStatusEnum.valueOf(data.getStatus());
             UserEventRecord record = new UserEventRecord();
             record.setDn(userDn);
             record.setDate(fromLocalDate);
 
-            Optional<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(userDn, fromLocalDate);
-            if(byDnAndDate.isPresent()){
-                record = byDnAndDate.get();
+            List<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(
+                    userDn, fromLocalDate);
+
+            Optional<UserEventRecord> userUpdatedRecord = byDnAndDate.stream()
+                    .filter(r -> r.getStatus().isSelectable())
+                    .findFirst();
+
+            if(userUpdatedRecord.isPresent()){
+                record = userUpdatedRecord.get();
             }
 
-            record.setStatus(UserStatusEnum.valueOf(data.getStatus()));
+            record.setStatus(status);
 
             userEventRecordRepository.save(record);
 

@@ -60,6 +60,16 @@
                                     <td th:text="${user.phoneNumber}"></td>
                                 </tr>
 
+                                <tr th:if="${user.managerDn != null}">
+                                    <td>Manager</td>
+                                    <td th:text="${user.managerDn}"></td>
+                                </tr>
+
+                                <tr th:if="${user.averageLoginTime != null}">
+                                    <td>Average Login Time</td>
+                                    <td th:text="${user.averageLoginTime}"></td>
+                                </tr>
+
                                 <tr>
                                     <td>Notes</td>
                                     <td><span th:text="${user.notes}"/></td>

@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.repository;
 
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.model.PermissionRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,5 +14,6 @@ import java.util.Optional;
 @Repository
 public interface UserEventRecordRepository  extends JpaRepository<UserEventRecord, Long>, PagingAndSortingRepository<UserEventRecord, Long> {
     List<UserEventRecord> findByDnIgnoreCaseAndDateBetween(String dn, LocalDate start, LocalDate end);
-    Optional<UserEventRecord> findByDnIgnoreCaseAndDate(String dn, LocalDate date);
+    List<UserEventRecord> findByDnIgnoreCaseAndDate(String dn, LocalDate date);
+    Optional<UserEventRecord> findByDnIgnoreCaseAndDateAndStatusEquals(String dn, LocalDate date, UserStatusEnum status);
 }

@@ -29,8 +29,6 @@ public class PermissionService {
     public List<LdapDn> getUserGroupPermissions(LdapDn userDn){
         List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(userDn.dn());
 
-        List<PermissionRecord> byUserDn = permissionRecordRepository.findByUser_Dn(userDn.dn());
-
         return groupsForUser.stream()
                 .map(r -> new LdapDn(r.getDn()))
                 .toList();

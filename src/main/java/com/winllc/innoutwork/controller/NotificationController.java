@@ -1,11 +1,14 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.NotificationResponse;
 import com.winllc.innoutwork.model.NotificationRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.NotificationRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -22,10 +25,16 @@ import java.util.stream.Stream;
 @RequestMapping("/app/notifications")
 public class NotificationController {
 
-    @Autowired
-    private NotificationRepository notificationRepository;
-    @Autowired
-    private UserEventRecordRepository userEventRecordRepository;
+    private static final Logger log = LoggerFactory.getLogger(NotificationController.class);
+
+    private final NotificationRepository notificationRepository;
+    private final UserEventRecordRepository userEventRecordRepository;
+
+    public NotificationController(NotificationRepository notificationRepository,
+                                  UserEventRecordRepository userEventRecordRepository) {
+        this.notificationRepository = notificationRepository;
+        this.userEventRecordRepository = userEventRecordRepository;
+    }
 
     @GetMapping("/id/{id}")
     public ModelAndView get(Authentication authentication, @PathVariable Long id) {
@@ -37,6 +46,12 @@ public class NotificationController {
 
         NotificationResponse response = new NotificationResponse();
         response.setNotificationId(record.getId());
+
+        if(record.getStatusResponse() != null){
+            response.setResponse(record.getStatusResponse().name());
+            response.setResponseTimestamp(DateTimeConstants.DATE_TIME_FORMATTER.format(record.getStatusResponseDate()));
+            response.setResponderDn(record.getStatusResponseByDn());
+        }
 
         mav.addObject("form", response);
 
@@ -53,31 +68,64 @@ public class NotificationController {
     }
 
     @PostMapping("/update")
-    public String update(@ModelAttribute NotificationResponse notificationResponse,
-                         RedirectAttributes redirectAttributes) {
+    public String update(Authentication authentication,
+                         @ModelAttribute NotificationResponse notificationResponse,
+                         RedirectAttributes redirectAttributes) throws IllegalAccessException {
+        log.info("User {} updating notification response: {}", authentication.getName(), notificationResponse);
 
         Optional<NotificationRecord> optionalNotification =
                 notificationRepository.findById(notificationResponse.getNotificationId());
 
         if(optionalNotification.isPresent()){
             NotificationRecord notificationRecord = optionalNotification.get();
+            if(!notificationRecord.getForUserDn().equalsIgnoreCase(authentication.getName())){
+                throw new IllegalAccessException("User %s is not authorized to update notification %d".formatted(authentication.getName(), notificationResponse.getNotificationId()));
+            }
 
             UserStatusEnum status = UserStatusEnum.valueOf(notificationResponse.getResponse());
 
             notificationRecord.setStatusResponse(status);
             notificationRecord.setStatusResponseDate(ZonedDateTime.now());
-            notificationRepository.save(notificationRecord);
+            notificationRecord.setStatusResponseByDn(authentication.getName());
+            notificationRecord = notificationRepository.save(notificationRecord);
 
-            UserEventRecord userEventRecord = new UserEventRecord();
-            userEventRecord.setDn(notificationRecord.getAboutUserDn());
-            userEventRecord.setStatus(status);
-            userEventRecord.setDate(notificationRecord.getNotificationDate().toLocalDate());
+            removeOtherNotifications(notificationRecord);
 
-            userEventRecordRepository.save(userEventRecord);
+            updateEventRecord(notificationRecord, notificationRecord.getStatusResponse(), status);
         }
 
         redirectAttributes.addFlashAttribute("message", "Successfully updated notification");
 
         return "redirect:/app/notifications/id/" + notificationResponse.getNotificationId();
+    }
+
+    private void updateEventRecord(NotificationRecord notification, UserStatusEnum originalStatus, UserStatusEnum updatedStatus) {
+
+        UserEventRecord userEventRecord = new UserEventRecord();
+        userEventRecord.setDn(notification.getAboutUserDn());
+        userEventRecord.setDate(notification.getNotificationDate().toLocalDate());
+
+        if(originalStatus != null){
+            UserEventRecord existing = userEventRecordRepository.findByDnIgnoreCaseAndDateAndStatusEquals(notification.getAboutUserDn(),
+                            notification.getNotificationDate().toLocalDate(), originalStatus)
+                    .orElse(null);
+            if(existing != null){
+                userEventRecord = existing;
+            }
+        }
+
+        userEventRecord.setStatus(updatedStatus);
+
+        userEventRecordRepository.save(userEventRecord);
+    }
+
+    private void removeOtherNotifications(NotificationRecord notification){
+        notificationRepository.findByNotificationUuid(notification.getNotificationUuid())
+                .forEach(n -> {
+                    n.setStatusResponseByDn(notification.getStatusResponseByDn());
+                    n.setStatusResponseDate(notification.getStatusResponseDate());
+                    n.setStatusResponse(notification.getStatusResponse());
+                    notificationRepository.save(n);
+                });
     }
 }

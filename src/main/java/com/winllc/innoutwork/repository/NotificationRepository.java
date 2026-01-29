@@ -11,10 +11,12 @@ import java.util.List;
 @Repository
 public interface NotificationRepository extends JpaRepository<NotificationRecord, Long>, PagingAndSortingRepository<NotificationRecord, Long> {
 
+    List<NotificationRecord> findByForUserDnIgnoreCaseAndStatusResponseDateNullAndIgnore(String dn, boolean ignored);
     List<NotificationRecord> findByForUserDnIgnoreCaseAndStatusResponseDateNull(String dn);
     List<NotificationRecord> findByForUserDnIgnoreCase(String dn);
     List<NotificationRecord> findByForUserDnIgnoreCaseAndNotificationDateBetween(String dn, ZonedDateTime start, ZonedDateTime end);
     List<NotificationRecord> findByAboutUserDnIgnoreCase(String dn);
+    List<NotificationRecord> findByNotificationUuid(String uuid);
     List<NotificationRecord> findByAboutUserDnIgnoreCaseAndNotificationDateBetween(String dn, ZonedDateTime start, ZonedDateTime end);
 
 }

@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.*;
@@ -14,6 +15,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -26,14 +29,14 @@ public class UserService {
     private final UserRecordRepository userRecordRepository;
     private final LdapService ldapService;
     private final UserRestService userRestService;
-    @Autowired
-    private ApplicationProperties properties;
+    private final ApplicationProperties properties;
 
     public UserService(UserRecordRepository userRecordRepository,
-                       LdapService ldapService, UserRestService userRestService) {
+                       LdapService ldapService, UserRestService userRestService, ApplicationProperties properties) {
         this.userRecordRepository = userRecordRepository;
         this.ldapService = ldapService;
         this.userRestService = userRestService;
+        this.properties = properties;
     }
 
     public Optional<UserRecord> getUserByDn(LdapDn dn) {
@@ -120,6 +123,10 @@ public class UserService {
                 builder.role(UserRoleEnum.USER.name());
             }
             builder.notes(userRecord.getNotes());
+            LocalTime averageLogin = userRecord.getAverageLoginTime();
+            if(averageLogin != null) {
+                builder.averageLoginTime(DateTimeConstants.TIME_FORMATTER.withZone(ZoneId.systemDefault()).format(averageLogin));
+            }
         }
 
         List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(ldapDn);
@@ -130,6 +137,12 @@ public class UserService {
         builder.organization(userStatus.getOrganization());
         builder.employeeType(userStatus.getEmployeeType());
         builder.location(userStatus.getLocation());
+
+        LdapUser userManager = getUserManager(dn);
+
+        if(userManager != null) {
+            builder.managerDn(userManager.getDn());
+        }
 
         return builder.build();
     }
