@@ -100,7 +100,7 @@
                 </div>
             </div>
 
-            <div class="row">
+            <div class="row" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
                 <div class="col-md-6">
                     <div class="card">
                         <div class="card-header">
@@ -139,8 +139,8 @@
                 </div>
 
             </div>
-            <div class="row">
-                <div class="col-md-12" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+            <div class="row" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                <div class="col-md-12" >
                     <div class="card">
                         <div class="card-header">
                             <h4>Event Calendar</h4>

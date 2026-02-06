@@ -1,6 +1,6 @@
 package com.winllc.innoutwork.controller.advice;
 
-import com.winllc.innoutwork.service.DatabaseService;
+import com.winllc.innoutwork.service.CheckInOutService;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.ui.Model;
@@ -20,7 +20,7 @@ public class GlobalModelAttributes {
     @ModelAttribute
     public void addGlobalAttributes(Model model, HttpSession session) {
 
-        ZonedDateTime selectedDateTime = DatabaseService.getDateTimeFromSession(session);
+        ZonedDateTime selectedDateTime = CheckInOutService.getDateTimeFromSession(session);
 
         model.addAttribute("systemTime", DATE_FORMATTER.format(selectedDateTime));
         model.addAttribute("profileUpdateUrl", defaultUserProfileUpdateUrl);

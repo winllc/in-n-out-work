@@ -1,8 +1,8 @@
-package com.winllc.innoutwork.service;
+package com.winllc.innoutwork.service.loader;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.winllc.innoutwork.config.ApplicationProperties;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.winllc.innoutwork.service.LdapService;
 import org.springframework.stereotype.Component;
 
 @Component

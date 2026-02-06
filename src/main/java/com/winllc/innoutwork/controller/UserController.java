@@ -4,6 +4,7 @@ import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.rest.UserRestService;
+import com.winllc.innoutwork.service.GroupService;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
@@ -25,17 +26,24 @@ public class UserController {
 
     private final UserService userRecordService;
 
+    //todo
+    private GroupService groupService;
+
     public UserController(UserService userRecordService) {
         this.userRecordService = userRecordService;
     }
 
     @GetMapping("/details/{dn}")
-    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public ModelAndView details(HttpSession session, @PathVariable String dn, Authentication auth) {
         log.debug("%s requested details for: %s".formatted(auth.getName(), dn));
 
         UserStatus userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(dn).build(), session);
+
+       //todo if manager
+       // groupService.getManagersForGroup()
 
         ModelAndView mav = new ModelAndView("userdetails");
         mav.addObject("user", userDetails);
@@ -59,7 +67,8 @@ public class UserController {
     }
 
     @GetMapping("/search")
-    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public ModelAndView search(){
 

@@ -74,7 +74,7 @@ class HomeControllerTest {
     void homePageLoadsWithX509() throws Exception {
         X509Certificate cert = mockCert("CN=alice");
 
-        mockMvc.perform(get("/app/groups")
+        mockMvc.perform(get("/")
                         .with(x509(cert))) // This triggers the X509AuthenticationFilter
                 .andExpect(status().isOk());
     }

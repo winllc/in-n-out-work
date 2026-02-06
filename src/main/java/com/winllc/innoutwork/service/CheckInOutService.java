@@ -6,30 +6,23 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.weaving.LoadTimeWeaverAware;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
 import java.time.LocalTime;
-import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.stream.Collectors;
 
 @Service
-public class DatabaseService {
+public class CheckInOutService {
 
     private final CheckInOutRecordRepository checkinInOutRecordRepository;
     private final UserRecordRepository userRecordRepository;
 
-    public DatabaseService(CheckInOutRecordRepository checkinInOutRecordRepository, UserRecordRepository userRecordRepository) {
+    public CheckInOutService(CheckInOutRecordRepository checkinInOutRecordRepository, UserRecordRepository userRecordRepository) {
         this.checkinInOutRecordRepository = checkinInOutRecordRepository;
         this.userRecordRepository = userRecordRepository;
     }
@@ -43,7 +36,7 @@ public class DatabaseService {
         //if first record of day and is unlock, mark is as check_in;
 
         if(record.getAction() == CheckInOutEnum.UNLOCK){
-            ZonedDateTime beginning = record.getTimestamp().truncatedTo(ChronoUnit.DAYS);
+            ZonedDateTime beginning = record.getZonedDateTimestamp().truncatedTo(ChronoUnit.DAYS);
             ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
             List<CheckInOutRecord> existingRecords = checkinInOutRecordRepository
@@ -76,7 +69,7 @@ public class DatabaseService {
 
         List<ZonedDateTime> timestamps = allCheckins.stream()
                 .filter(r -> r.getTimestamp() != null)
-                .map(CheckInOutRecord::getTimestamp)
+                .map(CheckInOutRecord::getZonedDateTimestamp)
                 .toList();
 
         return calculateAverage(timestamps);

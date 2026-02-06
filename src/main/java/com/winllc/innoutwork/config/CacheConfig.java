@@ -4,15 +4,13 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
-import com.winllc.innoutwork.service.LdapGroupLoader;
-import com.winllc.innoutwork.service.LdapTotalCountLoader;
-import com.winllc.innoutwork.service.LdapUserLoader;
-import org.springframework.cache.CacheManager;
+import com.winllc.innoutwork.service.loader.LdapGroupLoader;
+import com.winllc.innoutwork.service.loader.LdapTotalCountLoader;
+import com.winllc.innoutwork.service.loader.LdapUserLoader;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
-import java.util.concurrent.TimeUnit;
 
 @Configuration
 public class CacheConfig {

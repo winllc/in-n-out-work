@@ -21,6 +21,7 @@ public class LdapGroup {
     private String dn;
     private String cn;
     private String description;
+    private String manager;
     private List<LdapGroup> children = new ArrayList<>();
 
     public LdapGroup(String dn, String cn) {

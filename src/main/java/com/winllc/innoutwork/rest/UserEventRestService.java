@@ -87,10 +87,15 @@ public class UserEventRestService {
         List<CalendarEvent> allEvents = new ArrayList<>();
 
         List<CalendarEvent> events = getEventForDay(authentication, dn, from, to);
-        List<CalendarEvent> calendarEvents = auditRecordsToEvents(dn, fromDate, toDate);
+        try {
+            List<CalendarEvent> calendarEvents = auditRecordsToEvents(dn, fromDate, toDate);
+            allEvents.addAll(calendarEvents);
+        }catch (Exception e){
+            log.error("Could not load login events for user %s between %s and %s".formatted(dn, fromDate.format(DATE_FORMATTER), toDate.format(DATE_FORMATTER)), e);
+        }
 
         allEvents.addAll(events);
-        allEvents.addAll(calendarEvents);
+
 
         return allEvents;
     }

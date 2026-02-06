@@ -134,11 +134,7 @@ public class LdapService {
     public Optional<LdapGroup> lookupGroup(LdapDn dn) {
         LdapGroup group = null;
         try {
-            group = ldapTemplate.lookup(dn.toString(), (ContextMapper<LdapGroup>) ctx -> {
-                DirContextAdapter context = (DirContextAdapter) ctx;
-
-                return mapGroup(context.getDn().toString(), context.getAttributes());
-            });
+            group = ldapTemplate.lookup(dn.toString(), new LdaGroupContextMapper());
         } catch (Exception e) {
             log.error("Not found: %s".formatted(dn), e);
         }
@@ -150,11 +146,7 @@ public class LdapService {
         return ldapTemplate.search(
                 topProps.getGroupsBaseDn(),
                 "(objectClass=groupOfUniqueNames)",
-                (ContextMapper<LdapGroup>) ctx -> {
-                    DirContextAdapter context = (DirContextAdapter) ctx;
-
-                    return mapGroup(context.getDn().toString(), context.getAttributes());
-                }
+                new LdaGroupContextMapper()
         );
     }
 
@@ -198,11 +190,7 @@ public class LdapService {
         List<LdapGroup> results = ldapTemplate.search(
                 "",
                 "(distinguishedName=" + dn + ")",
-                (ContextMapper<LdapGroup>) ctx -> {
-                    DirContextAdapter context = (DirContextAdapter) ctx;
-
-                    return mapGroup(context.getDn().toString(), context.getAttributes());
-                }
+                new LdaGroupContextMapper()
         );
 
         if (results.isEmpty()) return null;
@@ -230,17 +218,6 @@ public class LdapService {
         return group;
     }
 
-    private LdapGroup mapGroup(String dn, Attributes attrs) throws NamingException {
-        LdapGroup group = new LdapGroup();
-        group.setDn(dn);
-        if (attrs.get("distinguishedName") != null)
-            group.setDn((String) attrs.get("distinguishedName").get());
-        if (attrs.get("cn") != null)
-            group.setCn((String) attrs.get("cn").get());
-        if (attrs.get("description") != null)
-            group.setDescription((String) attrs.get("description").get());
-        return group;
-    }
 
 
     @Cacheable(cacheNames = "ldapGroups", key = "#dn")
@@ -325,11 +302,7 @@ public class LdapService {
         return ldapTemplate.search(
                 groupDn.toString(),  // base DN (empty means use the default search base)
                 filter.encode(),
-                (ContextMapper<LdapGroup>) ctx -> {
-                    DirContextAdapter context = (DirContextAdapter) ctx;
-
-                    return mapGroup(context.getDn().toString(), context.getAttributes());
-                }
+                new LdaGroupContextMapper()
         );
     }
 
@@ -407,6 +380,28 @@ public class LdapService {
             }
 
             return builder.build();
+        }
+    }
+
+    private static final class LdaGroupContextMapper implements ContextMapper<LdapGroup> {
+
+        @Override
+        public LdapGroup mapFromContext(Object ctx) throws NamingException {
+            DirContextAdapter context = (DirContextAdapter) ctx;
+            Attributes attrs = context.getAttributes();
+            String dn = context.getNameInNamespace().replaceAll(", ", ",");
+
+            LdapGroup group = new LdapGroup();
+            group.setDn(dn);
+            if (attrs.get("distinguishedName") != null)
+                group.setDn((String) attrs.get("distinguishedName").get());
+            if (attrs.get("cn") != null)
+                group.setCn((String) attrs.get("cn").get());
+            if (attrs.get("description") != null)
+                group.setDescription((String) attrs.get("description").get());
+            if (attrs.get("owner") != null)
+                group.setManager((String) attrs.get("owner").get());
+            return group;
         }
     }
 }

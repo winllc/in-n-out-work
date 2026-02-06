@@ -4,7 +4,7 @@ import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.CheckInOut;
 import com.winllc.innoutwork.model.CheckInOutRecord;
-import com.winllc.innoutwork.service.DatabaseService;
+import com.winllc.innoutwork.service.CheckInOutService;
 import jakarta.servlet.http.HttpSession;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
@@ -16,6 +16,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -27,10 +29,10 @@ public class CheckInOutRestService {
 
     private static final Logger log = LoggerFactory.getLogger(CheckInOutRestService.class);
 
-    private final DatabaseService databaseService;
+    private final CheckInOutService checkInOutService;
 
-    public CheckInOutRestService(DatabaseService databaseService) {
-        this.databaseService = databaseService;
+    public CheckInOutRestService(CheckInOutService checkInOutService) {
+        this.checkInOutService = checkInOutService;
     }
 
     @PostMapping("/{action}")
@@ -42,7 +44,7 @@ public class CheckInOutRestService {
         if(StringUtils.isEmpty(action)) {
             throw new RuntimeException("action is empty");
         }else{
-            Optional<CheckInOutRecord> optionalRecord = databaseService.lookupBySessionId(checkInOut.getSessionId());
+            Optional<CheckInOutRecord> optionalRecord = checkInOutService.lookupBySessionId(checkInOut.getSessionId());
 
             String dn = auth != null ? auth.getName().replace(", ", ",") : null;
 
@@ -53,7 +55,7 @@ public class CheckInOutRestService {
             CheckInOutRecord.CheckInOutRecordBuilder recordBuilder = CheckInOutRecord.builder()
                     .dn(dn)
                     .windowsUserId(checkInOut.getWindowsUserId())
-                    .timestamp(ZonedDateTime.now());
+                    .timestamp(ZonedDateTime.now(ZoneId.systemDefault()));
 
             CheckInOutRecord record = switch (action) {
                 case "in" -> recordBuilder
@@ -79,7 +81,7 @@ public class CheckInOutRestService {
                 record.setBranch(details.getBranch());
             }
 
-            return databaseService.saveCheckInOutRecord(record);
+            return checkInOutService.saveCheckInOutRecord(record);
         }
 
     }
@@ -101,7 +103,7 @@ public class CheckInOutRestService {
         }
 
         Pageable pageable = PageRequest.of(page, size, sort);
-        Page<CheckInOutRecord> userPage = databaseService.findRecords(pageable, session);
+        Page<CheckInOutRecord> userPage = checkInOutService.findRecords(pageable, session);
 
         Map<String, Object> response = new HashMap<>();
         response.put("data", userPage.getContent());
