@@ -11,13 +11,11 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
-import com.winllc.innoutwork.service.DatabaseService;
-import com.winllc.innoutwork.service.LdapGroupLoader;
+import com.winllc.innoutwork.service.CheckInOutService;
 import com.winllc.innoutwork.service.LdapService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
 import org.springframework.ldap.filter.LikeFilter;
@@ -27,7 +25,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import javax.xml.crypto.Data;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -39,17 +36,17 @@ public class UserRestService {
     private static final Logger log = LoggerFactory.getLogger(UserRestService.class);
 
     private final LdapService ldapService;
-    private final DatabaseService databaseService;
+    private final CheckInOutService checkInOutService;
     private final UserRecordRepository userRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
     private final UserEventRecordRepository userEventRecordRepository;
 
-    public UserRestService(LdapService ldapService, DatabaseService databaseService,
+    public UserRestService(LdapService ldapService, CheckInOutService checkInOutService,
                            UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
                            ApplicationProperties properties, UserEventRecordRepository userEventRecordRepository) {
         this.ldapService = ldapService;
-        this.databaseService = databaseService;
+        this.checkInOutService = checkInOutService;
         this.userRecordRepository = userRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
@@ -76,7 +73,8 @@ public class UserRestService {
     }
 
     @GetMapping("/search")
-    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER," +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public List<UserStatus> searchUsers(
             HttpSession session,
@@ -132,9 +130,9 @@ public class UserRestService {
         UserStatus status = UserStatus.builder()
                 .dn(dn).build();
 
-        ZonedDateTime selectedDate = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime selectedDate = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
 
-        List<CheckInOutRecord> todaysRecordsForUser = databaseService.findRecordsForUser(dn, session);
+        List<CheckInOutRecord> todaysRecordsForUser = checkInOutService.findRecordsForUser(dn, session);
         if(todaysRecordsForUser != null && !todaysRecordsForUser.isEmpty()){
 
             Optional<CheckInOutRecord> mostRecent = todaysRecordsForUser.stream()
@@ -152,9 +150,9 @@ public class UserRestService {
                     .findFirst();
 
             CheckInOutRecord record = mostRecent.get();
-            status.setLastStatusChangeAt(record.getTimestamp());
-            firstLogin.ifPresent(r -> status.setCheckedInAt(r.getTimestamp()));
-            lastLogout.ifPresent(r -> status.setCheckedOutAt(r.getTimestamp()));
+            status.setLastStatusChangeAt(record.getZonedDateTimestamp());
+            firstLogin.ifPresent(r -> status.setCheckedInAt(r.getZonedDateTimestamp()));
+            lastLogout.ifPresent(r -> status.setCheckedOutAt(r.getZonedDateTimestamp()));
 
             if(record.getAction() == CheckInOutEnum.CHECK_IN ||  record.getAction() == CheckInOutEnum.UNLOCK){
                 status.setStatus("IN");

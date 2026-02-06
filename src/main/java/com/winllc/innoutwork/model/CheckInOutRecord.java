@@ -9,6 +9,8 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
@@ -57,5 +59,9 @@ public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     @Override
     public int compareTo(CheckInOutRecord o) {
         return o.timestamp.compareTo(this.timestamp);
+    }
+
+    public ZonedDateTime getZonedDateTimestamp(){
+        return ZonedDateTime.ofInstant(timestamp.toInstant(), ZoneId.systemDefault());
     }
 }

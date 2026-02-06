@@ -35,7 +35,7 @@ public class MarkInactiveCron {
 
         checkInOutRecordRepository.findLatestRecordsByDn(CheckInOutEnum.LOCK, startOfDay, endOfDay)
                 .forEach(record -> {
-                    ZonedDateTime timestampPlus = record.getTimestamp().plusMinutes(properties.getCheckOutAfterMinutes());
+                    ZonedDateTime timestampPlus = record.getZonedDateTimestamp().plusMinutes(properties.getCheckOutAfterMinutes());
 
                     if(timestampPlus.isBefore(now)){
                         CheckInOutRecord checkInOutRecord = new CheckInOutRecord();

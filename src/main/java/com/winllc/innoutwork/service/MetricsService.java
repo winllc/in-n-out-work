@@ -6,10 +6,8 @@ import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import jakarta.servlet.http.HttpSession;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.time.Period;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.HashMap;
@@ -28,7 +26,7 @@ public class MetricsService {
 
 
     public Map<CheckInOutEnum, Long> getTodaysStatistics(HttpSession session){
-        ZonedDateTime beginning = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime beginning = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         List<CheckInOutEnum> totalCurrentStatuses = checkInOutRecordRepository
@@ -41,7 +39,7 @@ public class MetricsService {
     public MetricsData getCombinedStatistics(HttpSession session){
         MetricsData metricsData = new MetricsData();
 
-        ZonedDateTime beginning = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime beginning = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         List<CheckInOutRecord> totalCurrentRecords = checkInOutRecordRepository.findTotalCurrentRecords(beginning, ending);

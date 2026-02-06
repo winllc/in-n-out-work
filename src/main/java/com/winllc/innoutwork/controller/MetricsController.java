@@ -6,10 +6,9 @@ import com.winllc.innoutwork.data.LoginByTimeChartData;
 import com.winllc.innoutwork.data.MetricsData;
 import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.data.charts.LineChartDataSet;
-import com.winllc.innoutwork.data.charts.PieChartDataSet;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.service.CacheService;
-import com.winllc.innoutwork.service.DatabaseService;
+import com.winllc.innoutwork.service.CheckInOutService;
 import com.winllc.innoutwork.service.MetricsService;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,7 +22,6 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static com.winllc.innoutwork.constant.ChartColorMap.COLOR_MAP;
@@ -34,15 +32,15 @@ import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_TIME_FORMATT
 public class MetricsController {
 
     private final CacheService cacheService;
-    private final DatabaseService databaseService;
+    private final CheckInOutService checkInOutService;
     private final ApplicationProperties properties;
     private final MetricsService metricsService;
 
     public MetricsController(ApplicationProperties properties,
-                             CacheService cacheService, DatabaseService databaseService, MetricsService metricsService) {
+                             CacheService cacheService, CheckInOutService checkInOutService, MetricsService metricsService) {
         this.properties = properties;
         this.cacheService = cacheService;
-        this.databaseService = databaseService;
+        this.checkInOutService = checkInOutService;
         this.metricsService = metricsService;
     }
 
@@ -87,7 +85,7 @@ public class MetricsController {
     private LoginByTimeChartData getLoginByTimeChart(HttpSession session){
         LoginByTimeChartData data = new LoginByTimeChartData();
 
-        ZonedDateTime beginning = DatabaseService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime beginning = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         List<ZonedDateTime> buckets = generate15MinBuckets(beginning, ending);
@@ -96,12 +94,12 @@ public class MetricsController {
             data.getLabels().add(DATE_TIME_FORMATTER.format(bucket));
         });
 
-        List<CheckInOutRecord> todaysRecords = databaseService.findRecords(session);
+        List<CheckInOutRecord> todaysRecords = checkInOutService.findRecords(session);
 
         Map<CheckInOutEnum, List<ZonedDateTime>> recordMap = todaysRecords.stream()
                 .sorted()
                 .collect(Collectors.groupingBy(r -> r.getAction(),
-                        Collectors.mapping(r -> r.getTimestamp(), Collectors.toList())));
+                        Collectors.mapping(r -> r.getZonedDateTimestamp(), Collectors.toList())));
 
         recordMap.forEach((key, value) -> {
             LineChartDataSet lineChartDataSet = new LineChartDataSet();

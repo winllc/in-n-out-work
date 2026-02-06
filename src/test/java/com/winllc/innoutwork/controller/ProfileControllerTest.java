@@ -13,7 +13,9 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.test.context.support.WithMockUser;
@@ -42,9 +44,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.view;
 
-@WebMvcTest(controllers = ProfileController.class)
-//@AutoConfigureMockMvc(addFilters = false)
-@ContextConfiguration(classes = {ProfileController.class})
+@WebMvcTest(ProfileController.class)
+@Import(ProfileControllerTest.TestSecurityConfig.class)
 class ProfileControllerTest {
 
     @Autowired
@@ -63,61 +64,45 @@ class ProfileControllerTest {
     ApplicationProperties properties;
 
     @Configuration
+    @EnableWebSecurity
+    @EnableMethodSecurity(prePostEnabled = true)
     static class TestSecurityConfig {
         @Bean
         SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
             http
-                    .csrf(csrf -> csrf.disable())
+                    .csrf(csrf -> csrf.disable()) // Disable CSRF for tests
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
-                    .x509(x509 -> x509.subjectPrincipalRegex("CN=(.*?)(?:,|$)"));
+                    .x509(x509 -> x509.subjectPrincipalRegex("CN=(.*?)(?:,|$)")
+                            .userDetailsService(userDetailsService()));
             return http.build();
         }
 
         @Bean
-        UserDetailsService userDetailsService() {
-            // Accept the CN extracted by subjectPrincipalRegex and mark the user authenticated.
+        public UserDetailsService userDetailsService() {
             return username -> User.withUsername(username)
-                    .password("{noop}n/a")
-                    .roles("USER")
+                    .password("")
+                    .authorities(UserRoleEnum.USER.name())
                     .build();
         }
     }
 
-    @Autowired
-    private WebApplicationContext context;
 
     @Test
-    void printMappings() {
-        RequestMappingHandlerMapping mapping =
-                context.getBean(RequestMappingHandlerMapping.class);
-
-        mapping.getHandlerMethods().forEach((k, v) ->
-                System.out.println(k + " -> " + v)
-        );
-    }
-
-    @Test
-    void mvcExists() {
-        System.out.println(Arrays.toString(
-                context.getBeanNamesForType(RequestMappingHandlerMapping.class)
-        ));
-    }
-
-    @Test
-    @WithMockUser(username = "CN=alice, OU=Test")
+    //@WithMockUser(username = "CN=alice, OU=Test", authorities = {"USER"})
     void profile() throws Exception {
         X509Certificate cert = mockCert("CN=alice, OU=Test");
 
         when(recordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
 
-        mockMvc.perform(get("/app/profile").with(x509(cert)))
+        mockMvc.perform(get("/app/profile")
+                        .with(x509(cert)))
                 .andDo(print())
                 .andExpect(status().isOk())
                 .andExpect(view().name("profile"));
     }
 
     @Test
-    @WithMockUser(username = "CN=alice, OU=Test", authorities = {"T(com.winllc.innoutwork.constant.UserRoleEnum).USER)"})
+    //@WithMockUser(username = "CN=alice, OU=Test", authorities = {"T(com.winllc.innoutwork.constant.UserRoleEnum).USER)"})
     void profileSubmit() throws Exception {
         X509Certificate cert = mock(X509Certificate.class);
         when(cert.getSubjectX500Principal()).thenReturn(new X500Principal("CN=alice, OU=Test"));

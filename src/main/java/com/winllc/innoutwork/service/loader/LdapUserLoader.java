@@ -1,9 +1,9 @@
-package com.winllc.innoutwork.service;
+package com.winllc.innoutwork.service.loader;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.winllc.innoutwork.data.LdapDn;
-import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
+import com.winllc.innoutwork.service.LdapService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;

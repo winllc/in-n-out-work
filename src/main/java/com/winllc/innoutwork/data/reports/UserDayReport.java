@@ -40,12 +40,12 @@ public class UserDayReport implements Comparable<UserDayReport> {
         if(!CollectionUtils.isEmpty(records)){
             Optional<CheckInOutRecord> checkInTime = getCheckInTime(records);
             if(checkInTime.isPresent()){
-                dayReport.checkInTime = checkInTime.get().getTimestamp();
+                dayReport.checkInTime = checkInTime.get().getZonedDateTimestamp();
             }
 
             Optional<CheckInOutRecord> checkOutTime = getCheckOutTime(records);
             if(checkOutTime.isPresent()){
-                dayReport.checkOutTime = checkOutTime.get().getTimestamp();
+                dayReport.checkOutTime = checkOutTime.get().getZonedDateTimestamp();
             }
         }
 
@@ -87,7 +87,7 @@ public class UserDayReport implements Comparable<UserDayReport> {
             //if last action was check out where forced was true, get the previous lock record, else get the check out record
             Optional<CheckInOutRecord> forcedCheckOut = records.stream()
                     .filter(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)
-                    .filter(r -> r.getForced())
+                    .filter(r -> r.getForced() != null ? r.getForced() : false)
                     .findFirst();
 
             if(forcedCheckOut.isPresent()){

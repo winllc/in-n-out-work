@@ -10,7 +10,8 @@ public enum UserStatusEnum {
     SCHEDULED_LEAVE("Scheduled Leave", true, true),
     UNSCHEDULED_LEAVE("Unscheduled Leave", false, false),
     ABSENT_EXCUSED("Absent Excused", false, true),
-    ABSENT_UNEXCUSED("Absent Unexcused", false, false),;
+    ABSENT_UNEXCUSED("Absent Unexcused", false, false),
+    ABSENT("Absent", false, false),;
 
     @Getter
     private final String friendlyName;

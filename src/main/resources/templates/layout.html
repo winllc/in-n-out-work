@@ -55,7 +55,7 @@
                             <span class="hide-menu">Groups</span>
                         </a>
                     </li>
-                    <li class="sidebar-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                    <li class="sidebar-item" sec:authorize="hasAnyAuthority('USER', 'ADMIN', 'MANAGER')">
 
                         <a class="sidebar-link" th:href="@{/app/user/search}" aria-expanded="false">
                             <i class="ti ti-user"></i>
