@@ -23,18 +23,20 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class SendAbsentNotificationsCron {
 
     private static final Logger log = LoggerFactory.getLogger(SendAbsentNotificationsCron.class);
+
+    private static final Set<DayOfWeek> WEEKEND_DAYS = EnumSet.of(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY);
+
 
     private final UserRecordRepository userRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
@@ -96,6 +98,10 @@ public class SendAbsentNotificationsCron {
         ZonedDateTime beginning = LocalDate.now().atStartOfDay(ZoneId.systemDefault());
         ZonedDateTime end = beginning.plusDays(1).minusNanos(1);
 
+        if(isWeekend(LocalDate.now())){
+            return false;
+        }
+
         List<CheckInOutRecord> todaysRecords = checkInOutRecordRepository.findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(user.getDn(),
                 beginning, end);
 
@@ -121,6 +127,11 @@ public class SendAbsentNotificationsCron {
 
         return false;
     }
+    public static boolean isWeekend(LocalDate date) {
+        DayOfWeek dayOfWeek = date.getDayOfWeek();
+        return WEEKEND_DAYS.contains(dayOfWeek);
+    }
+
 
     private boolean isPastCheckinWindow(UserRecord user) {
         int additionalWaitMinutes = properties.getExtraTimeBeforeAbsentNotificationMinutes();

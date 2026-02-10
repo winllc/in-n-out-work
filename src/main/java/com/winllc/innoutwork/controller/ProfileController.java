@@ -56,6 +56,7 @@ public class ProfileController {
         model.addAttribute("statuses", Stream.of(UserStatusEnum.values()).toList());
         model.addAttribute("form", form);
         model.addAttribute("userDn", authentication.getName());
+        model.addAttribute("userCn", LdapDn.builder().dn(authentication.getName()).build().getCn());
 
         if(userDetails != null) {
             model.addAttribute("user", userDetails);
