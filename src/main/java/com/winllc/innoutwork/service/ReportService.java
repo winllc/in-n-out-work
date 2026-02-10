@@ -103,7 +103,7 @@ public class ReportService {
             for(UserDayReport userDayReport : userReport.getDayReports()) {
                 LocalDate date = userDayReport.getDay();
 
-                DayReport dayReport = reportMap.get(date);
+                DayReport dayReport = reportMap.get(date.format(DATE_FORMATTER));
                 if(dayReport == null) {
                     dayReport = new DayReport();
                     dayReport.setDate(date);
