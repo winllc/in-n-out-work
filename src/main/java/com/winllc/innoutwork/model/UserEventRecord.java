@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZonedDateTime;
 
 @Data
@@ -27,4 +28,5 @@ public class UserEventRecord {
     @Column(nullable = false, columnDefinition = "varchar(50)")
     @Enumerated(EnumType.STRING)
     private UserStatusEnum status;
+    private LocalTime loginByTime;
 }

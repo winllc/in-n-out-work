@@ -8,8 +8,10 @@ import com.winllc.innoutwork.data.SystemDateTimeForm;
 import com.winllc.innoutwork.data.UserEventData;
 import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.model.GlobalCalendarRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.service.ReportService;
 import io.micrometer.common.util.StringUtils;
@@ -19,10 +21,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
@@ -36,13 +35,15 @@ public class UserEventRestService {
 
     private final UserEventRecordRepository userEventRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
+    private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
 
     public UserEventRestService(UserEventRecordRepository userEventRecordRepository,
-                                CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties) {
+                                CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties, GlobalCalendarRecordRepository globalCalendarRecordRepository) {
         this.userEventRecordRepository = userEventRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
+        this.globalCalendarRecordRepository = globalCalendarRecordRepository;
     }
 
 
@@ -59,7 +60,7 @@ public class UserEventRestService {
 
         List<UserEventRecord> byDnAndDateBetween = userEventRecordRepository.findByDnIgnoreCaseAndDateBetween(ldapDn.dn(), fromDate, toDate);
 
-        List<CalendarEvent> events = byDnAndDateBetween.stream()
+        return byDnAndDateBetween.stream()
                 .map(r -> {
                     CalendarEvent event = new CalendarEvent(r.getDate(), r.getStatus().getFriendlyName());
 
@@ -69,11 +70,15 @@ public class UserEventRestService {
                         event.setBackgroundColor(properties.getCalendarAbsentStatusEventColor());
                     }
 
+                    if(r.getStatus() == UserStatusEnum.LATE_ARRIVAL){
+                        if(r.getLoginByTime() != null){
+                            event.setTitle(r.getStatus().getFriendlyName()+ ": " + r.getLoginByTime());
+                        }
+                    }
+
                     return event;
                 })
                 .toList();
-
-        return events;
     }
 
     @GetMapping("/allWithLogins")
@@ -87,6 +92,7 @@ public class UserEventRestService {
         List<CalendarEvent> allEvents = new ArrayList<>();
 
         List<CalendarEvent> events = getEventForDay(authentication, dn, from, to);
+        List<CalendarEvent> globalEvents = globalCalendarRecordsToEvents(fromDate, toDate);
         try {
             List<CalendarEvent> calendarEvents = auditRecordsToEvents(dn, fromDate, toDate);
             allEvents.addAll(calendarEvents);
@@ -95,7 +101,7 @@ public class UserEventRestService {
         }
 
         allEvents.addAll(events);
-
+        allEvents.addAll(globalEvents);
 
         return allEvents;
     }
@@ -115,6 +121,7 @@ public class UserEventRestService {
             UserEventRecord record = new UserEventRecord();
             record.setDn(userDn);
             record.setDate(fromLocalDate);
+            record.setLoginByTime(LocalTime.parse(data.getLateArrivalTime(), DateTimeFormatter.ISO_TIME));
 
             List<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(
                     userDn, fromLocalDate);
@@ -136,6 +143,20 @@ public class UserEventRestService {
         }
 
         return data;
+    }
+
+    private List<CalendarEvent> globalCalendarRecordsToEvents(LocalDate fromDate, LocalDate toDate){
+        List<CalendarEvent> events = new ArrayList<>();
+
+        List<GlobalCalendarRecord> records = globalCalendarRecordRepository.findByDateBetween(fromDate, toDate);
+
+        for(GlobalCalendarRecord record : records){
+            CalendarEvent event = new CalendarEvent(record.getDate(), record.getTitle());
+            event.setBackgroundColor(properties.getCalendarGlobalEventColor());
+            events.add(event);
+        }
+
+        return events;
     }
 
     private List<CalendarEvent> auditRecordsToEvents(String dn, LocalDate fromDate, LocalDate toDate){

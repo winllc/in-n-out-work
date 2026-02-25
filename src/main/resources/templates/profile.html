@@ -7,7 +7,10 @@
     <title>Tabulator + Spring Boot</title>
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
     <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
+    <link rel="stylesheet"
+          th:href="@{/libs/flatpickr/flatpickr.min.css}"/>
 
+    <script th:src="@{/libs/flatpickr/flatpickr.min.js}"></script>
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
     <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
 
@@ -31,7 +34,11 @@
                         <option value="WORK_FROM_HOME">WFH</option>
                         <option value="TDY">TDY</option>
                         <option value="SCHEDULED_LEAVE">Scheduled Leave</option>
+                        <option value="EARLY_LEAVE">Early Leave</option>
+                        <option value="LATE_ARRIVAL">Late Arrival</option>
                     </select>
+
+                    <input type="text" id="late-arrival-time-picker" placeholder="Select Time.." class="form-control" style="display: none;">
 
                     <input type="hidden" id="statusUpdateDateFrom">
                     <input type="hidden" id="statusUpdateDateTo">
@@ -109,6 +116,12 @@
                             <div class="card">
                                 <div class="card-header">
                                     <h4>My Information</h4>
+                                    <a th:href="@{'/app/user/details/' + ${userDn}}" class="icon-link">
+                                        View My Details Page
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="bi" viewBox="0 0 16 16" aria-hidden="true">
+                                            <path d="M1 8a.5.5 0 0 1 .5-.5h11.793l-3.147-3.146a.5.5 0 0 1 .708-.708l4 4a.5.5 0 0 1 0 .708l-4 4a.5.5 0 0 1-.708-.708L13.293 8.5H1.5A.5.5 0 0 1 1 8z"/>
+                                        </svg>
+                                    </a>
                                 </div>
                                 <div class="card-body">
                                     <table class="table">
@@ -271,6 +284,7 @@
                 const fromDate = document.getElementById("statusUpdateDateFrom").value;
                 const toDate = document.getElementById("statusUpdateDateTo").value;
                 const selectedStatus = document.getElementById("statusSelect").value;
+                const lateArrivalTime = document.getElementById("late-arrival-time-picker").value;
 
                 fetch("/api/event/update", {
                     method: "POST",
@@ -281,6 +295,8 @@
                         fromDate: fromDate,
                         toDate: toDate,
                         status: selectedStatus,
+                        lateArrivalTime: lateArrivalTime
+
                     })
                 }).then(() => {
                     // Optionally, refresh the calendar to show updated events
@@ -410,6 +426,19 @@
                 })
         });
 
+        document.getElementById("statusSelect").addEventListener("change", function () {
+            if(this.value === "LATE_ARRIVAL") {
+                document.getElementById("late-arrival-time-picker").style.display = "block";
+            }else{
+                document.getElementById("late-arrival-time-picker").style.display = "none";
+            }
+        });
+
+        flatpickr("#late-arrival-time-picker", {
+            enableTime: true,
+            noCalendar: true, // Hides the calendar month view
+            dateFormat: "H:i", // Time format
+        });
 
     </script>
 

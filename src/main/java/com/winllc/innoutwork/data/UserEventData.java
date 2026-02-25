@@ -11,4 +11,5 @@ public class UserEventData {
     private String fromDate;
     private String toDate;
     private String status;
+    private String lateArrivalTime;
 }

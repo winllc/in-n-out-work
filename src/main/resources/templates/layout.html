@@ -70,6 +70,14 @@
                             <span class="hide-menu">Metrics</span>
                         </a>
                     </li>
+
+                    <li class="sidebar-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+
+                        <a class="sidebar-link" th:href="@{/app/settings}" aria-expanded="false">
+                            <i class="ti ti-settings"></i>
+                            <span class="hide-menu">Settings</span>
+                        </a>
+                    </li>
                 </ul>
             </nav>
             <!-- End Sidebar navigation -->
@@ -110,7 +118,9 @@
 
                         <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
                             <input class="form-control" id="dt">
-                            <div id="dtHelp" class="form-text row justify-content-center">System Date</div>
+                            <div id="dtHelp" class="form-text row justify-content-center">
+                                <span th:text="'System Date ('+${systemTimeZone}+')'"/>
+                            </div>
                         </li>
 
                         <li class="nav-item dropdown">
