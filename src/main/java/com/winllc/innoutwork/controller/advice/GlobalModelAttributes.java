@@ -7,6 +7,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ModelAttribute;
 
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 
 import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
@@ -24,5 +25,6 @@ public class GlobalModelAttributes {
 
         model.addAttribute("systemTime", DATE_FORMATTER.format(selectedDateTime));
         model.addAttribute("profileUpdateUrl", defaultUserProfileUpdateUrl);
+        model.addAttribute("systemTimeZone", ZoneId.systemDefault().getId());
     }
 }

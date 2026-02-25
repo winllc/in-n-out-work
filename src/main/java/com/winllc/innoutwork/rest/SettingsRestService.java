@@ -3,8 +3,8 @@ package com.winllc.innoutwork.rest;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.CalendarEvent;
+import com.winllc.innoutwork.data.CalendarEventData;
 import com.winllc.innoutwork.data.LdapDn;
-import com.winllc.innoutwork.data.SystemDateTimeForm;
 import com.winllc.innoutwork.data.UserEventData;
 import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.model.CheckInOutRecord;
@@ -14,32 +14,34 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.service.ReportService;
-import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 
-@RequestMapping("/api/event")
+@RequestMapping("/api/settings/calendar")
 @RestController
-public class UserEventRestService {
+public class SettingsRestService {
 
-    private static final Logger log = LoggerFactory.getLogger(UserEventRestService.class);
+    private static final Logger log = LoggerFactory.getLogger(SettingsRestService.class);
 
     private final UserEventRecordRepository userEventRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
 
-    public UserEventRestService(UserEventRecordRepository userEventRecordRepository,
-                                CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties, GlobalCalendarRecordRepository globalCalendarRecordRepository) {
+    public SettingsRestService(UserEventRecordRepository userEventRecordRepository,
+                               CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties, GlobalCalendarRecordRepository globalCalendarRecordRepository) {
         this.userEventRecordRepository = userEventRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
@@ -48,95 +50,40 @@ public class UserEventRestService {
 
 
     @GetMapping("/all")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public List<CalendarEvent> getEventForDay(Authentication authentication,
-                                        @RequestParam String dn,
                                         @RequestParam Instant from,
                                         @RequestParam Instant to){
 
-        LdapDn ldapDn = LdapDn.builder().dn(dn).build();
-
         LocalDate fromDate = LocalDate.ofInstant(from, ZoneId.systemDefault());
         LocalDate toDate = LocalDate.ofInstant(to, ZoneId.systemDefault());
 
-        List<UserEventRecord> byDnAndDateBetween = userEventRecordRepository.findByDnIgnoreCaseAndDateBetween(ldapDn.dn(), fromDate, toDate);
-
-        return byDnAndDateBetween.stream()
-                .map(r -> {
-                    CalendarEvent event = new CalendarEvent(r.getDate(), r.getStatus().getFriendlyName());
-
-                    if(r.getStatus().isExcusable()){
-                        event.setBackgroundColor(properties.getCalendarStatusEventColor());
-                    }else{
-                        event.setBackgroundColor(properties.getCalendarAbsentStatusEventColor());
-                    }
-
-                    if(r.getStatus() == UserStatusEnum.LATE_ARRIVAL){
-                        if(r.getLoginByTime() != null){
-                            event.setTitle(r.getStatus().getFriendlyName()+ ": " + r.getLoginByTime());
-                        }
-                    }
-
-                    return event;
-                })
-                .toList();
+        return globalCalendarRecordsToEvents(fromDate, toDate);
     }
 
-    @GetMapping("/allWithLogins")
-    public List<CalendarEvent> getEventForDayWithLogins(Authentication authentication,
-                                              @RequestParam String dn,
-                                              @RequestParam Instant from,
-                                              @RequestParam Instant to){
 
-        LocalDate fromDate = LocalDate.ofInstant(from, ZoneId.systemDefault());
-        LocalDate toDate = LocalDate.ofInstant(to, ZoneId.systemDefault());
-        List<CalendarEvent> allEvents = new ArrayList<>();
-
-        List<CalendarEvent> events = getEventForDay(authentication, dn, from, to);
-        List<CalendarEvent> globalEvents = globalCalendarRecordsToEvents(fromDate, toDate);
-        try {
-            List<CalendarEvent> calendarEvents = auditRecordsToEvents(dn, fromDate, toDate);
-            allEvents.addAll(calendarEvents);
-        }catch (Exception e){
-            log.error("Could not load login events for user %s between %s and %s".formatted(dn, fromDate.format(DATE_FORMATTER), toDate.format(DATE_FORMATTER)), e);
-        }
-
-        allEvents.addAll(events);
-        allEvents.addAll(globalEvents);
-
-        return allEvents;
-    }
 
     @PostMapping("/update")
-    public UserEventData updateEventForDay(Authentication authentication,
-                                             @RequestBody UserEventData data){
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+    public CalendarEventData updateCalendar(Authentication authentication,
+                                             @RequestBody CalendarEventData data){
 
-        log.debug("updateEventForDay called by %s with data: %s".formatted(authentication.getName(), data));
+        log.debug("updateCalendar called by %s with data: %s".formatted(authentication.getName(), data));
 
         String userDn = authentication.getName();
         LocalDate fromLocalDate = LocalDate.parse(data.getFromDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
         LocalDate toLocalDate = LocalDate.parse(data.getToDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
 
         while(fromLocalDate.isBefore(toLocalDate)){
-            UserStatusEnum status = UserStatusEnum.valueOf(data.getStatus());
-            UserEventRecord record = new UserEventRecord();
-            record.setDn(userDn);
+
+            GlobalCalendarRecord record = new GlobalCalendarRecord();
             record.setDate(fromLocalDate);
-            record.setLoginByTime(LocalTime.parse(data.getLateArrivalTime(), DateTimeFormatter.ISO_TIME));
+            record.setTitle(data.getTitle());
+            record.setHoliday(Boolean.parseBoolean(data.getHoliday()));
 
-            List<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(
-                    userDn, fromLocalDate);
-
-            Optional<UserEventRecord> userUpdatedRecord = byDnAndDate.stream()
-                    .filter(r -> r.getStatus().isSelectable())
-                    .findFirst();
-
-            if(userUpdatedRecord.isPresent()){
-                record = userUpdatedRecord.get();
-            }
-
-            record.setStatus(status);
-
-            userEventRecordRepository.save(record);
+            globalCalendarRecordRepository.save(record);
 
             fromLocalDate = fromLocalDate.plusDays(1);
 

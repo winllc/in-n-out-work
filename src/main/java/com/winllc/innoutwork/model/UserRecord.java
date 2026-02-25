@@ -44,6 +44,7 @@ public class UserRecord {
     private String alternateManagers;
 
     private LocalTime averageLoginTime;
+    private LocalTime chosenLoginTime;
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<PermissionRecord> permissions = new ArrayList<>();

@@ -4,9 +4,11 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.model.GlobalCalendarRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.NotificationService;
@@ -42,17 +44,20 @@ public class SendAbsentNotificationsCron {
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final UserEventRecordRepository userEventRecordRepository;
     private final NotificationService notificationService;
+    private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
 
     public SendAbsentNotificationsCron(UserRecordRepository userRecordRepository,
                                        CheckInOutRecordRepository checkInOutRecordRepository,
                                        UserEventRecordRepository userEventRecordRepository, NotificationService notificationService,
-                                       ApplicationProperties properties) {
+                                       ApplicationProperties properties,
+                                       GlobalCalendarRecordRepository globalCalendarRecordRepository) {
         this.userRecordRepository = userRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.userEventRecordRepository = userEventRecordRepository;
         this.notificationService = notificationService;
         this.properties = properties;
+        this.globalCalendarRecordRepository = globalCalendarRecordRepository;
     }
 
     @Async
@@ -98,7 +103,9 @@ public class SendAbsentNotificationsCron {
         ZonedDateTime beginning = LocalDate.now().atStartOfDay(ZoneId.systemDefault());
         ZonedDateTime end = beginning.plusDays(1).minusNanos(1);
 
-        if(isWeekend(LocalDate.now())){
+        LocalDate today = LocalDate.now();
+
+        if(isWeekend(today) || isHoliday(today)){
             return false;
         }
 
@@ -110,9 +117,10 @@ public class SendAbsentNotificationsCron {
 
         if(notCheckedIn) {
 
-            if(isPastCheckinWindow(user)) {
-                List<UserEventRecord> records =
-                        userEventRecordRepository.findByDnIgnoreCaseAndDate(user.getDn(), LocalDate.now());
+            List<UserEventRecord> records =
+                    userEventRecordRepository.findByDnIgnoreCaseAndDate(user.getDn(), LocalDate.now());
+
+            if(isPastCheckinWindow(user, records)) {
 
                 if (!CollectionUtils.isEmpty(records)) {
                     boolean excused = records.stream()
@@ -127,18 +135,41 @@ public class SendAbsentNotificationsCron {
 
         return false;
     }
-    public static boolean isWeekend(LocalDate date) {
+
+    private static boolean isWeekend(LocalDate date) {
         DayOfWeek dayOfWeek = date.getDayOfWeek();
         return WEEKEND_DAYS.contains(dayOfWeek);
     }
 
+    private boolean isHoliday(LocalDate date) {
+        List<GlobalCalendarRecord> events = globalCalendarRecordRepository.findByDate(date);
+        if(!CollectionUtils.isEmpty(events)){
+            return events.stream()
+                    .anyMatch(e -> e.isHoliday());
+        }
+        return false;
+    }
 
-    private boolean isPastCheckinWindow(UserRecord user) {
+    private boolean isPastCheckinWindow(UserRecord user, List<UserEventRecord> records) {
         int additionalWaitMinutes = properties.getExtraTimeBeforeAbsentNotificationMinutes();
-        LocalTime averageLoginTime = user.getAverageLoginTime();
 
-        if(averageLoginTime != null) {
-            ZonedDateTime absentIfAfter = averageLoginTime.atDate(LocalDate.now()).atZone(ZoneId.systemDefault())
+        LocalTime lateArrivalTime = records.stream()
+                .filter(record -> record.getStatus() == UserStatusEnum.LATE_ARRIVAL)
+                .map(UserEventRecord::getLoginByTime)
+                .findFirst()
+                .orElse(null);
+
+        LocalTime expectedLoginTime;
+        if(lateArrivalTime != null) {
+            expectedLoginTime = lateArrivalTime;
+        } else if(user.getChosenLoginTime() == null) {
+            expectedLoginTime = user.getAverageLoginTime();
+        }else{
+            expectedLoginTime = user.getChosenLoginTime();
+        }
+
+        if(expectedLoginTime != null) {
+            ZonedDateTime absentIfAfter = expectedLoginTime.atDate(LocalDate.now()).atZone(ZoneId.systemDefault())
                     .plusMinutes(additionalWaitMinutes);
 
             ZonedDateTime now = ZonedDateTime.now();

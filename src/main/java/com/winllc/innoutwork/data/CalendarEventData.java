@@ -5,11 +5,10 @@ import lombok.ToString;
 
 @Data
 @ToString
-public class UserEventData {
-    private String dn;
+public class CalendarEventData {
     private String date;
     private String fromDate;
     private String toDate;
-    private String status;
-    private String lateArrivalTime;
+    private String holiday;
+    private String title;
 }
