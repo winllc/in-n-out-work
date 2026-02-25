@@ -104,6 +104,13 @@
                                             </div>
                                         </div>
 
+                                        <div class="mb-3">
+                                            <label for="notes" class="form-label">Login Time</label>
+                                            <input type="text" id="chosen-login-time-picker" placeholder="Select Time.." th:field="*{loginTime}" class="form-control">
+                                            <div id="chosenTimeHelp" class="form-text">Select your normal login time. This will be used to determine if you are expected to be working and notify your managers if you are not available within your normal login window. If you do not select a time your Average Login time will be used.</div>
+
+                                        </div>
+
                                         <button type="submit" class="btn btn-primary">Submit</button>
                                     </form>
                                 </div>
@@ -439,6 +446,15 @@
             noCalendar: true, // Hides the calendar month view
             dateFormat: "H:i", // Time format
         });
+
+        flatpickr("#chosen-login-time-picker", {
+            enableTime: true,
+            noCalendar: true, // Hides the calendar month view
+            dateFormat: "H:i", // Time format
+
+        });
+
+
 
     </script>
 

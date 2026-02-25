@@ -8,6 +8,7 @@ import com.winllc.innoutwork.data.*;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.rest.UserRestService;
+import io.micrometer.common.util.StringUtils;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -69,6 +71,9 @@ public class UserService {
         }
 
         userRecord.setNotes(form.getNotes());
+        if(StringUtils.isNotBlank(form.getLoginTime())) {
+            userRecord.setChosenLoginTime(LocalTime.parse(form.getLoginTime(), DateTimeFormatter.ISO_TIME));
+        }
 
         return userRecordRepository.save(userRecord);
     }
