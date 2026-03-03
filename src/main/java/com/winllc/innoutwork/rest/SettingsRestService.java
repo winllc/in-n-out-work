@@ -92,6 +92,16 @@ public class SettingsRestService {
         return data;
     }
 
+    @DeleteMapping("/delete/{eventId}")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+    public void deleteEvent(Authentication authentication, @PathVariable String eventId){
+
+        log.info("deleteEvent called by %s with data: %s".formatted(authentication.getName(), eventId));
+
+        globalCalendarRecordRepository.deleteById(Long.parseLong(eventId));
+    }
+
     private List<CalendarEvent> globalCalendarRecordsToEvents(LocalDate fromDate, LocalDate toDate){
         List<CalendarEvent> events = new ArrayList<>();
 
@@ -100,6 +110,7 @@ public class SettingsRestService {
         for(GlobalCalendarRecord record : records){
             CalendarEvent event = new CalendarEvent(record.getDate(), record.getTitle());
             event.setBackgroundColor(properties.getCalendarGlobalEventColor());
+            event.setId(Long.toString(record.getId()));
             events.add(event);
         }
 

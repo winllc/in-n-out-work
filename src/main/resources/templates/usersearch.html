@@ -11,44 +11,44 @@
 <body>
 <div layout:fragment="content">
 
-        <div class="row">
-            <div class="col-md-11">
-                <div class="card">
-                    <div class="card-body">
-                        <div class="d-flex justify-content-center">
-                            <div>
-                                <h3>User Search</h3>
+    <div class="row">
+        <div class="col-md-11">
+            <div class="card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-center">
+                        <div>
+                            <h3>User Search</h3>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-4">
+
+                            <div class="input-group mb-3">
+                                <input id="search-input" type="text" class="form-control" placeholder="Search name..."
+                                       aria-label="Search name..." aria-describedby="search-btn">
+                                <button id="search-btn" class="btn btn-primary" type="button">Search</button>
+                            </div>
+
+                        </div>
+                        <div class="col-md-8 d-flex justify-content-end">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                                <label class="form-check-label" for="advanced-btn">Advanced</label>
                             </div>
                         </div>
+                    </div>
 
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="input-group mb-3">
-                                    <input id="search-input" class="form-control" type="text" placeholder="Search name...">
-                                    <div class="input-group-append">
-                                        <button type="button" id="search-btn" class="btn btn-primary">Search</button>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-8 d-flex justify-content-end">
-                                <div class="form-check form-switch">
-                                    <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
-                                    <label class="form-check-label" for="advanced-btn">Advanced</label>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-12">
-                                <div id="user-table"></div>
-                            </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div id="user-table"></div>
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
 
     </div>
-
 
 
     <script th:inline="javascript">
@@ -64,56 +64,71 @@
             paginationMode: "local",
             paginationSize: 10,
             paginationInitialPage: 1,
-            layout:"fitDataStretch", //fit columns to width of table (optional)
-            layoutColumnsOnNewData:true,
+            layout: "fitDataStretch", //fit columns to width of table (optional)
+            layoutColumnsOnNewData: true,
             columns: [
-                {title: "Name", field: "cn", minWidth: 100, resizable:true},
-                {title: "DN", field: "dn", minWidth: 150, visible: false, resizable:true},
-                {title: "Status", field: "status", formatter: function(cell){
+                {title: "Name", field: "cn", minWidth: 100, resizable: true},
+                {title: "DN", field: "dn", minWidth: 150, visible: false, resizable: true},
+                {
+                    title: "Status", field: "status", formatter: function (cell) {
                         let value = cell.getValue();
 
-                        if(value === "IN"){
+                        if (value === "IN") {
                             cell.getElement().style.color = "green";
-                        }else if(value === "OUT"){
+                        } else if (value === "OUT") {
                             cell.getElement().style.color = "blue";
-                        }else if(value === "AWAY"){
+                        } else if (value === "AWAY") {
                             cell.getElement().style.color = "purple";
-                        }else if(value === "NONE"){
+                        } else if (value === "NONE") {
                             cell.getElement().style.color = "gray";
                         }
                         return value;
-                    }},
-                {title: "Checked In", field: "checkedInAt", visible: false, resizable:true},
-                {title: "Last Status Change", field: "lastStatusChangeAt", resizable:true},
-                {title: "Checked Out", field: "checkedOutAt", visible: false, resizable:true},
+                    }
+                },
+                {title: "Checked In", field: "checkedInAt", visible: false, resizable: true},
+                {title: "Last Status Change", field: "lastStatusChangeAt", resizable: true},
+                {title: "Checked Out", field: "checkedOutAt", visible: false, resizable: true},
                 {title: "Notes", field: "notes", widthGrow: 3}
             ],
         });
 
-        table.on("rowClick", function(e, row){
+        table.on("rowClick", function (e, row) {
             const data = row.getData();
             window.location.href = `/app/user/details/${data.dn}`;
+        });
+
+        document.getElementById("search-input").addEventListener("keydown", function (event) {
+            // Check if the key pressed is "Enter"
+            if (event.key === "Enter") {
+                // Prevent the default form submission behavior (if the input is in a form)
+                event.preventDefault();
+                updateTable();
+            }
         });
 
         document.getElementById("search-btn").addEventListener("click", (event) => {
             event.preventDefault()
 
+            updateTable();
+        });
+
+        function updateTable() {
             searchTerm = document.getElementById("search-input").value;
-            if(searchTerm.length >= 3) {
+            if (searchTerm.length >= 3) {
                 table.setData("/api/users/search"); // reload table with new search
-            }else{
+            } else {
                 alert("Search must be 3 characters or more");
             }
-        });
+        }
 
         document.getElementById("advanced-btn").addEventListener("change", (event) => {
 
-            if((event.target.checked)){
+            if ((event.target.checked)) {
                 table.showColumn("checkedInAt");
                 table.showColumn("checkedOutAt");
                 table.showColumn("dn");
                 table.hideColumn("cn");
-            }else{
+            } else {
                 table.hideColumn("checkedInAt");
                 table.hideColumn("checkedOutAt");
                 table.hideColumn("dn");

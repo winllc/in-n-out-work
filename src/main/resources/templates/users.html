@@ -8,9 +8,11 @@
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
     <link rel="stylesheet"
           th:href="@{/libs/flatpickr/flatpickr.min.css}"/>
+    <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
 
     <script th:src="@{/libs/flatpickr/flatpickr.min.js}"></script>
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+    <script th:src="@{/libs/autoComplete/autoComplete.min.js}"></script>
 </head>
 <body>
 <div layout:fragment="content">
@@ -75,6 +77,49 @@
         </div>
     </div>
 
+    <div class="row mt-4" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h4>Group Managers</h4>
+                </div>
+                <div class="card-body">
+
+                    <div class="alert alert-warning" role="alert">
+                        <span>Add managers that will receive absent notifications and be able to see additional details of users in their group.</span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12">
+                            <input
+                                    id="search"
+                                    class="form-control"
+                                    type="text"
+                                    placeholder="Search..."
+                                    autocomplete="off"
+                            />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <ul id="selectedList" class="list-group">
+                                <!-- Selected items will appear here -->
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="text-end">
+                                <button type="button" class="btn btn-primary" id="updateManagers">Update</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
 
     <script th:inline="javascript">
         const groupName = /*[[${group}]]*/ "test";
@@ -120,9 +165,47 @@
             window.location.href = `/app/user/details/${data.dn}`;
         });
 
+        /*
+        testing data manipulation on page load, not working as expected, only updates the first row of the page and then stops, not sure why
+
+        table.on("dataProcessed", function(e, row){
+
+        })
+
+        table.on("pageLoaded", function(pageno){
+            var currentPageData = getCurrentPageData(table);
+
+            currentPageData.forEach((element, index, originalArray) => {
+                console.log(element);
+                element.notes = "OVERRIDE";
+                table.updateData(new Array(element));
+
+            });
+            //console.log(currentPageData);
+        });
+
+        function getCurrentPageData(table) {
+            // 1. Get visible row components on the current page
+            var pageRowComponents = table.getRows(true);
+
+            // 2. Extract the data objects from each component
+            var pageData = pageRowComponents.map(function(rowComponent) {
+                const rowData = rowComponent.getData();
+                rowData.id = rowComponent.getPosition();
+                console.log(rowComponent.getPosition());
+                console.log(rowData);
+                return rowData;
+            });
+
+            return pageData;
+        }
+
+         */
+
         document.getElementById("reportRange").addEventListener("change", (event) => {
             document.getElementById('generateReportButton').disabled = document.getElementById('reportRange').value.trim() === "";
         });
+
 
         document.getElementById("advanced-btn").addEventListener("change", (event) => {
 
@@ -172,6 +255,115 @@
                 //sendSelectedDateTime(selectedDates[0]);
             }
         });
+
+        const selectedListEl = document.getElementById("selectedList");
+        const selectedItems = new Map();
+
+        new autoComplete({
+            selector: "#search",
+            threshold: 3,
+            debounce: 300,
+            searchEngine: "strict",
+
+            data: {
+                src: async (query) => {
+                    if (!query) return [];
+                    const response = await fetch(`/api/users/usersearch?search=${encodeURIComponent(query)}`);
+                    return await response.json();
+                },
+                keys: ["dn"]
+            },
+
+            resultsList: {
+                maxResults: 10,
+                noResults: true
+            },
+
+            resultItem: {
+                highlight: true
+            },
+
+            events: {
+                input: {
+                    selection: (event) => {
+                        const item = event.detail.selection.value;
+
+                        // prevent duplicates
+                        if (!selectedItems.has(item.dn)) {
+                            addItemToSelectedList(item);
+                        }
+
+                        // clear input for next selection
+                        document.querySelector("#search").value = "";
+                    }
+                }
+            }
+        });
+
+        document.addEventListener("DOMContentLoaded", loadItems);
+
+        /* ---------- LOAD ---------- */
+        async function loadItems() {
+            const response = await fetch("/api/groups/managers/" + groupDn);
+            const items = await response.json();
+            selectedListEl.innerHTML = "";
+
+            items.forEach(item => addItemToSelectedList(item));
+        }
+
+        function addItemToSelectedList(item) {
+            selectedItems.set(item.dn, item);
+
+            const li = document.createElement("li");
+            li.dataset.dn = item.dn;
+            li.classList.add("list-group-item");
+
+            const table = document.createElement("table");
+            table.style.width = "100%";
+
+            const tbody = document.createElement("tbody");
+
+            const row = document.createElement("tr");
+            const cellDn = document.createElement("td");
+            const cellDelete = document.createElement("td");
+            cellDelete.classList.add("text-end");
+
+            cellDn.innerHTML = item.dn;
+
+            const removeBtn = document.createElement("button");
+            removeBtn.textContent = "✖";
+            removeBtn.className = "btn btn-danger";
+            removeBtn.onclick = () => {
+                selectedItems.delete(item.dn);
+                li.remove();
+            };
+
+            cellDelete.append(removeBtn);
+
+            row.append(cellDn, cellDelete);
+            tbody.append(row);
+            table.appendChild(tbody);
+
+            li.append(table);
+            selectedListEl.appendChild(li);
+        }
+
+        document.getElementById("updateManagers").addEventListener("click", async function () {
+            const managers = Array.from(selectedItems.values()).map(item => item.dn);
+            await fetch("/api/groups/managers/update/" + groupDn, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify(managers)
+            })
+                .then(data => {
+                    console.log("Success:", data);
+                    showToast("Managers Updated", { type: "success" });
+                })
+        });
+
+
 
     </script>
 </div>

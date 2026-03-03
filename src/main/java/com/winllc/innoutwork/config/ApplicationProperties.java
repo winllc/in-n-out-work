@@ -38,4 +38,5 @@ public class ApplicationProperties {
     private String calendarGlobalEventColor = "orange";
     private String notificationSenderEmail = "noreply@test.com";
     private String applicationBaseUrl = "https://localhost";
+    private boolean groupsInitiallyExpanded = false;
 }

@@ -103,6 +103,7 @@ public class HomeController {
         }
 
         model.addAttribute("groups", topLevelGroups);
+        model.addAttribute("initiallyExpanded", properties.isGroupsInitiallyExpanded());
         return "groups"; // resolves to src/main/resources/templates/index.html
     }
 
