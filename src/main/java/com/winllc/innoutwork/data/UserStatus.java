@@ -14,6 +14,7 @@ import java.util.List;
 @ToString
 @Builder
 public class UserStatus {
+    private int id;
     private String dn;
     private String cn;
     private String status;

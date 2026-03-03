@@ -117,7 +117,16 @@
                         .catch(err => failureCallback(err));
                 },
                 eventClick: function (info) {
-
+                    let confirmation = confirm('Delete Event: ' + info.event.title);
+                    if(confirmation){
+                        console.log("Delete: "+info.event.title);
+                        fetch(`/api/settings/calendar/delete/${info.event.id}`, {
+                            method: 'DELETE'
+                        }).then(() => {
+                            calendar.unselect();
+                            calendar.refetchEvents();
+                        });
+                    }
                 },
                 selectable: true,
                 select: function (info) {

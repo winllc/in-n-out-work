@@ -45,6 +45,9 @@ public class ReportService {
             GroupReport groupReport = GroupReport.build(group, from.toLocalDate(), to.toLocalDate());
             List<String> groupMembers = ldapService.getGroupMembers(groupDn);
 
+            ZonedDateTime fromAtStartOfDay = from.toLocalDate().atStartOfDay(from.getZone());
+            ZonedDateTime toAtEndOfDay = to.toLocalDate().atTime(23, 59, 59).atZone(from.getZone());
+
             List<UserReport> userReports = new ArrayList<>();
 
             for(String groupMember : groupMembers){
@@ -54,9 +57,10 @@ public class ReportService {
                     LdapUser user = userOptional.get();
 
                     List<CheckInOutRecord> byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc =
-                            checkInOutRecordRepository.findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(groupMember, from, to);
+                            checkInOutRecordRepository
+                                    .findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(groupMember, fromAtStartOfDay, toAtEndOfDay);
 
-                    Map<LocalDate, List<CheckInOutRecord>> dateMap = createDateMap(byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc, from, to);
+                    Map<LocalDate, List<CheckInOutRecord>> dateMap = createDateMap(byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc, fromAtStartOfDay, toAtEndOfDay);
 
                     List<UserDayReport> dayReports = new ArrayList<>();
 

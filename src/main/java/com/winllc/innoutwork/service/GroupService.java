@@ -51,4 +51,18 @@ public class GroupService {
         return managers;
     }
 
+    public GroupRecord getOrCreateGroupRecord(String groupDn) {
+        LdapDn dn = LdapDn.builder().dn(groupDn).build();
+
+        Optional<GroupRecord> recordOptional = groupRecordRepository.findByGroupDnIgnoreCase(dn.dn());
+
+        if(recordOptional.isPresent()){
+            return recordOptional.get();
+        }else{
+            GroupRecord newRecord = new GroupRecord();
+            newRecord.setGroupDn(dn.dn());
+            return groupRecordRepository.save(newRecord);
+        }
+    }
+
 }

@@ -4,12 +4,14 @@ import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.rest.UserRestService;
+import com.winllc.innoutwork.security.PermissionEvaluator;
 import com.winllc.innoutwork.service.GroupService;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -25,9 +27,8 @@ public class UserController {
     private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     private final UserService userRecordService;
-
-    //todo
-    private GroupService groupService;
+    @Autowired
+    private PermissionEvaluator permissionEvaluator;
 
     public UserController(UserService userRecordService) {
         this.userRecordService = userRecordService;
@@ -42,12 +43,21 @@ public class UserController {
 
         UserStatus userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(dn).build(), session);
 
+        boolean isGroupManager = auth.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals(UserRoleEnum.ADMIN.name())
+                        || a.getAuthority().equals(UserRoleEnum.MANAGER.name()));
+
+        if(!isGroupManager) {
+            isGroupManager = permissionEvaluator.userManagerCheck(dn, auth);
+        }
+
        //todo if manager
        // groupService.getManagersForGroup()
 
         ModelAndView mav = new ModelAndView("userdetails");
         mav.addObject("user", userDetails);
         mav.addObject("roles", UserRoleEnum.getVisibleRoles());
+        mav.addObject("isGroupManager", isGroupManager);
 
         return mav;
     }
