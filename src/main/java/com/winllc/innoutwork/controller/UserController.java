@@ -18,6 +18,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.ModelAndView;
 
+import java.util.Objects;
 import java.util.stream.Stream;
 
 @Controller
@@ -44,8 +45,9 @@ public class UserController {
         UserStatus userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(dn).build(), session);
 
         boolean isGroupManager = auth.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equals(UserRoleEnum.ADMIN.name())
-                        || a.getAuthority().equals(UserRoleEnum.MANAGER.name()));
+                .anyMatch(a ->
+                        Objects.requireNonNull(a.getAuthority()).equalsIgnoreCase(UserRoleEnum.ADMIN.name())
+                        || a.getAuthority().equalsIgnoreCase(UserRoleEnum.MANAGER.name()));
 
         if(!isGroupManager) {
             isGroupManager = permissionEvaluator.userManagerCheck(dn, auth);

@@ -76,7 +76,6 @@ public class MetricsController {
         Long totalUsers = cacheService.getLdapCount(properties.getUserBaseDn());
         Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics(session);
 
-
         PieChartData<CheckInOutEnum> chartData = PieChartData.build("Total Users", totalUsers, todaysStatistics);
 
         return chartData;

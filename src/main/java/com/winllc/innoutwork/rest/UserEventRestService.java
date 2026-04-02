@@ -14,7 +14,7 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.service.ReportService;
-import io.micrometer.common.util.StringUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -121,7 +121,9 @@ public class UserEventRestService {
             UserEventRecord record = new UserEventRecord();
             record.setDn(userDn);
             record.setDate(fromLocalDate);
-            record.setLoginByTime(LocalTime.parse(data.getLateArrivalTime(), DateTimeFormatter.ISO_TIME));
+            if(StringUtils.isNotBlank(data.getLateArrivalTime()) && status == UserStatusEnum.LATE_ARRIVAL) {
+                record.setLoginByTime(LocalTime.parse(data.getLateArrivalTime(), DateTimeFormatter.ISO_TIME));
+            }
 
             List<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(
                     userDn, fromLocalDate);
