@@ -11,6 +11,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -126,7 +127,7 @@ public class CheckInOutService {
                 (ZonedDateTime) session.getAttribute("systemTime");
 
         if (selectedDateTime == null) {
-            selectedDateTime = ZonedDateTime.now();
+            selectedDateTime = ZonedDateTime.now().withZoneSameInstant(ZoneId.systemDefault());
         }
         return selectedDateTime;
     }
