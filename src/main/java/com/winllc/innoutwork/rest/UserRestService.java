@@ -19,6 +19,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
 import org.springframework.ldap.filter.LikeFilter;
+import org.springframework.ldap.filter.Filter;
 import org.springframework.ldap.query.LdapQuery;
 import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -135,7 +136,7 @@ public class UserRestService {
         List<CheckInOutRecord> todaysRecordsForUser = checkInOutService.findRecordsForUser(dn, session);
         if(todaysRecordsForUser != null && !todaysRecordsForUser.isEmpty()){
 
-            Optional<CheckInOutRecord> mostRecent = todaysRecordsForUser.stream()
+             Optional<CheckInOutRecord> mostRecent = todaysRecordsForUser.stream()
                     .sorted()
                     .findFirst();
 
@@ -149,17 +150,21 @@ public class UserRestService {
                     .filter(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)
                     .findFirst();
 
-            CheckInOutRecord record = mostRecent.get();
-            status.setLastStatusChangeAt(record.getZonedDateTimestamp());
-            firstLogin.ifPresent(r -> status.setCheckedInAt(r.getZonedDateTimestamp()));
-            lastLogout.ifPresent(r -> status.setCheckedOutAt(r.getZonedDateTimestamp()));
+            if (mostRecent.isPresent()) {
+                CheckInOutRecord record = mostRecent.get();
+                status.setLastStatusChangeAt(record.getZonedDateTimestamp());
+                firstLogin.ifPresent(r -> status.setCheckedInAt(r.getZonedDateTimestamp()));
+                lastLogout.ifPresent(r -> status.setCheckedOutAt(r.getZonedDateTimestamp()));
 
-            if(record.getAction() == CheckInOutEnum.CHECK_IN ||  record.getAction() == CheckInOutEnum.UNLOCK){
-                status.setStatus("IN");
-            }else if(record.getAction() == CheckInOutEnum.CHECK_OUT){
-                status.setStatus("OUT");
-            }else if(record.getAction() == CheckInOutEnum.LOCK){
-                status.setStatus("AWAY");
+                if(record.getAction() == CheckInOutEnum.CHECK_IN ||  record.getAction() == CheckInOutEnum.UNLOCK){
+                    status.setStatus("IN");
+                }else if(record.getAction() == CheckInOutEnum.CHECK_OUT){
+                    status.setStatus("OUT");
+                }else if(record.getAction() == CheckInOutEnum.LOCK){
+                    status.setStatus("AWAY");
+                }
+            } else {
+                status.setStatus("NONE");
             }
         } else {
             status.setStatus("NONE");
@@ -192,14 +197,16 @@ public class UserRestService {
 
         if(byDnIgnoreCase.isPresent()){
             UserRecord record = byDnIgnoreCase.get();
-            return record.getAltManagerList().stream().map(d -> {
-                UserRecord rec = new UserRecord();
-                rec.setDn(d);
-                return rec;
-            }).toList();
-        }else{
-            return Collections.emptyList();
+            List<String> altManagerList = record.getAltManagerList();
+            if (altManagerList != null) {
+                return altManagerList.stream().map(d -> {
+                    UserRecord rec = new UserRecord();
+                    rec.setDn(d);
+                    return rec;
+                }).toList();
+            }
         }
+        return Collections.emptyList();
     }
 
     @PostMapping("/managers/update")
@@ -224,8 +231,9 @@ public class UserRestService {
 
     @GetMapping("/usersearch")
     public List<LdapUser> searchUsers(@RequestParam String search) {
-
-        LikeFilter likeFilter = new LikeFilter("cn", "*" + search + "*");
+        // Escape LDAP special characters to prevent LDAP injection
+        String escapedSearch = escapeLdapFilter(search);
+        LikeFilter likeFilter = new LikeFilter("cn", "*" + escapedSearch + "*");
 
         LdapQuery query = LdapQueryBuilder.query()
                         .base(properties.getUserBaseDn())
@@ -234,6 +242,21 @@ public class UserRestService {
         List<LdapUser> ldapUsers = ldapService.searchUsers(query);
 
         return ldapUsers;
+    }
+
+    /**
+     * Escapes LDAP filter special characters to prevent LDAP injection attacks.
+     * Characters: * ( ) \ NUL
+     */
+    private String escapeLdapFilter(String input) {
+        if (input == null) {
+            return "";
+        }
+        return input.replace("\\", "\\5c")
+                .replace("*", "\\2a")
+                .replace("(", "\\28")
+                .replace(")", "\\29")
+                .replace("\0", "\\00");
     }
 
 }
