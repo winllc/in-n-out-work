@@ -53,9 +53,11 @@ public class CheckInOutService {
             recordOptional.ifPresent(userRecord -> {
 
                 LocalTime averageLogin = calculateAverageLogin(record.getDn());
-                userRecord.setAverageLoginTime(averageLogin);
+                if (averageLogin != null) {
+                    userRecord.setAverageLoginTime(averageLogin);
 
-                userRecordRepository.save(userRecord);
+                    userRecordRepository.save(userRecord);
+                }
             });
         }
 
@@ -90,7 +92,7 @@ public class CheckInOutService {
                 (long) localTimes.stream()
                         .mapToLong(LocalTime::toSecondOfDay)
                         .average()
-                        .orElseThrow();
+                        .orElseThrow(() -> new IllegalStateException("Failed to calculate average of timestamps"));
 
         return LocalTime.ofSecondOfDay(averageSeconds);
     }

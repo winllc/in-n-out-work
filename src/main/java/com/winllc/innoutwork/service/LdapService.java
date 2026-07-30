@@ -23,6 +23,7 @@ import javax.naming.NamingEnumeration;
 import javax.naming.NamingException;
 import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
+import javax.naming.directory.DirContext;
 import javax.naming.directory.SearchControls;
 import java.util.ArrayList;
 import java.util.List;
@@ -160,7 +161,12 @@ public class LdapService {
                     if (a.equalsIgnoreCase("uniqueMember")) {
                         Attribute attribute = attrs.get(a);
                         try {
-                            attribute.getAll().asIterator().forEachRemaining(m -> members1.add(new LdapDn(m.toString())));
+                            NamingEnumeration<?> enumeration = attribute.getAll();
+                            try {
+                                enumeration.asIterator().forEachRemaining(m -> members1.add(new LdapDn(m.toString())));
+                            } finally {
+                                enumeration.close();
+                            }
                         } catch (NamingException e) {
                             throw new RuntimeException(e);
                         }
@@ -188,8 +194,9 @@ public class LdapService {
         visited.add(dn);
 
         List<LdapGroup> results = ldapTemplate.search(
-                "",
-                "(distinguishedName=" + dn + ")",
+                LdapQueryBuilder.query()
+                        .base("")
+                        .where("distinguishedName").is(dn),
                 new LdaGroupContextMapper()
         );
 
@@ -203,12 +210,16 @@ public class LdapService {
                     attributes -> attributes.get("seeAlso"));
             if (seeAlsoAttr != null) {
                 NamingEnumeration<?> enumeration = seeAlsoAttr.getAll();
-                while (enumeration.hasMore()) {
-                    String childDn = (String) enumeration.next();
-                    LdapGroup childGroup = buildGroupHierarchyFromAttribute(childDn, visited);
-                    if (childGroup != null) {
-                        group.addChild(childGroup);
+                try {
+                    while (enumeration.hasMore()) {
+                        String childDn = (String) enumeration.next();
+                        LdapGroup childGroup = buildGroupHierarchyFromAttribute(childDn, visited);
+                        if (childGroup != null) {
+                            group.addChild(childGroup);
+                        }
                     }
+                } finally {
+                    enumeration.close();
                 }
             }
         } catch (Exception e) {
@@ -220,7 +231,7 @@ public class LdapService {
 
 
 
-    @Cacheable(cacheNames = "ldapGroups", key = "#dn")
+    @Cacheable(cacheNames = "ldapGroups", key = "#dn", unless = "#result == null")
     public LdapGroup buildGroupRecursiveInternal(String dn) {
 
         // Lookup LDAP entry for this DN
@@ -317,65 +328,83 @@ public class LdapService {
         @Override
         public LdapUser mapFromContext(Object o) throws NamingException {
             LdapUser.LdapUserBuilder builder = LdapUser.builder();
-            DirContextAdapter context = (DirContextAdapter) o;
 
-            builder.dn(context.getNameInNamespace().replaceAll(", ", ","));
+            Attributes attributes;
+            String dn;
 
-            if (context.getAttributes() != null) {
+            if(o instanceof DirContextAdapter c) {
+                attributes = c.getAttributes();
+                dn = c.getNameInNamespace();
+            } else if (o instanceof DirContext c) {
+                attributes = c.getAttributes("");
+                dn = c.getNameInNamespace();
+            }else{
+                throw new IllegalArgumentException("Unsupported: "+o.getClass());
+            }
 
-                context.getAttributes().getAll().asIterator().forEachRemaining(attr -> {
-                    if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapOrganizationAttribute())) {
-                        try {
-                            String org = attr.get().toString();
-                            builder.organization(org);
-                        } catch (NamingException e) {
-                            log.error("Could not map org attribute: ", e);
-                        }
-                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmployeeTypeAttribute())) {
-                        try {
-                            String type = attr.get().toString();
-                            builder.employeeType(type);
-                        } catch (NamingException e) {
-                            log.error("Could not map empType attribute: ", e);
-                        }
-                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapLocationAttribute())) {
-                        try {
-                            String type = attr.get().toString();
-                            builder.location(type);
-                        } catch (NamingException e) {
-                            log.error("Could not map location attribute: ", e);
-                        }
-                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapBranchAttribute())) {
-                        try {
-                            String type = attr.get().toString();
-                            builder.branch(type);
-                        } catch (NamingException e) {
-                            log.error("Could not map branch attribute: ", e);
-                        }
-                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapManagerIdAttribute())) {
-                        try {
-                            String type = attr.get().toString();
-                            builder.managerId(type);
-                        } catch (NamingException e) {
-                            log.error("Could not map branch attribute: ", e);
-                        }
-                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmailAttribute())) {
-                        try {
-                            String type = attr.get().toString();
-                            builder.email(type);
-                        } catch (NamingException e) {
-                            log.error("Could not map branch attribute: ", e);
-                        }
-                    } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapPhoneAttribute())) {
-                        try {
-                            String type = attr.get().toString();
-                            builder.phoneNumber(type);
-                        } catch (NamingException e) {
-                            log.error("Could not map branch attribute: ", e);
-                        }
-                    }
+            builder.dn(dn.replace(", ", ","));
 
-                });
+            if (attributes != null) {
+
+                NamingEnumeration<?> allAttributes = attributes.getAll();
+                try {
+                    allAttributes.asIterator().forEachRemaining(obj -> {
+                        Attribute attr = (Attribute) obj;
+                        if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapOrganizationAttribute())) {
+                            try {
+                                String org = attr.get().toString();
+                                builder.organization(org);
+                            } catch (NamingException e) {
+                                log.error("Could not map org attribute: ", e);
+                            }
+                        } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmployeeTypeAttribute())) {
+                            try {
+                                String type = attr.get().toString();
+                                builder.employeeType(type);
+                            } catch (NamingException e) {
+                                log.error("Could not map empType attribute: ", e);
+                            }
+                        } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapLocationAttribute())) {
+                            try {
+                                String type = attr.get().toString();
+                                builder.location(type);
+                            } catch (NamingException e) {
+                                log.error("Could not map location attribute: ", e);
+                            }
+                        } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapBranchAttribute())) {
+                            try {
+                                String type = attr.get().toString();
+                                builder.branch(type);
+                            } catch (NamingException e) {
+                                log.error("Could not map branch attribute: ", e);
+                            }
+                        } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapManagerIdAttribute())) {
+                            try {
+                                String type = attr.get().toString();
+                                builder.managerId(type);
+                            } catch (NamingException e) {
+                                log.error("Could not map branch attribute: ", e);
+                            }
+                        } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmailAttribute())) {
+                            try {
+                                String type = attr.get().toString();
+                                builder.email(type);
+                            } catch (NamingException e) {
+                                log.error("Could not map branch attribute: ", e);
+                            }
+                        } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapPhoneAttribute())) {
+                            try {
+                                String type = attr.get().toString();
+                                builder.phoneNumber(type);
+                            } catch (NamingException e) {
+                                log.error("Could not map branch attribute: ", e);
+                            }
+                        }
+
+                    });
+                } finally {
+                    allAttributes.close();
+                }
 
             }
 
@@ -386,10 +415,21 @@ public class LdapService {
     private static final class LdaGroupContextMapper implements ContextMapper<LdapGroup> {
 
         @Override
-        public LdapGroup mapFromContext(Object ctx) throws NamingException {
-            DirContextAdapter context = (DirContextAdapter) ctx;
-            Attributes attrs = context.getAttributes();
-            String dn = context.getNameInNamespace().replaceAll(", ", ",");
+        public LdapGroup mapFromContext(Object o) throws NamingException {
+            Attributes attrs;
+            String dn;
+
+            if(o instanceof DirContextAdapter c) {
+                attrs = c.getAttributes();
+                dn = c.getNameInNamespace();
+            } else if (o instanceof DirContext c) {
+                attrs = c.getAttributes("");
+                dn = c.getNameInNamespace();
+            }else{
+                throw new IllegalArgumentException("Unsupported: "+o.getClass());
+            }
+
+            dn = dn.replace(", ", ",");
 
             LdapGroup group = new LdapGroup();
             group.setDn(dn);

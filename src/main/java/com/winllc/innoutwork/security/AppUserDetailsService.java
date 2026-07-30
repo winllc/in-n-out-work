@@ -105,7 +105,7 @@ public class AppUserDetailsService implements UserDetailsService {
                 userRecord.setLocation(ldapUser.getLocation());
                 updated = true;
             }
-            if(!Objects.equals(ldapUser.getLocation(), userRecord.getBranch())){
+            if(!Objects.equals(ldapUser.getBranch(), userRecord.getBranch())){
                 userRecord.setBranch(ldapUser.getBranch());
                 updated = true;
             }
