@@ -21,6 +21,7 @@ public class ApplicationProperties {
     private String userLdapManagerIdAttribute = "title";
     private String userLdapEmailAttribute = "mail";
     private String userLdapPhoneAttribute = "telephoneNumber";
+    private String userLdapDutySubOrganizationAttribute = "dutySubOrganization";
     private String managerLdapIdAttribute = "Email";
     private boolean lookupOnDnAttribute = false;
     private String userDnAttribute = "";
@@ -39,4 +40,5 @@ public class ApplicationProperties {
     private String notificationSenderEmail = "noreply@test.com";
     private String applicationBaseUrl = "https://localhost";
     private boolean groupsInitiallyExpanded = false;
+    private String dutySubOrgGroupsBaseDn = "";
 }

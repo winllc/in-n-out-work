@@ -36,6 +36,7 @@ public class UserRecord {
     private String employeeType;
     private String location;
     private String branch;
+    private String dutySubOrganization;
     private String phoneNumber;
     private String email;
     @Column(columnDefinition = "text")

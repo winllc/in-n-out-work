@@ -93,7 +93,8 @@ public class UserRestService {
         String filter = "objectClass=inetOrgPerson";
 
         if (!search.isEmpty()) {
-            filter = "(&(objectclass=inetOrgPerson)(cn=*%s*))".formatted(search);
+            // Escape LDAP special characters to prevent LDAP injection
+            filter = "(&(objectclass=inetOrgPerson)(cn=*%s*))".formatted(escapeLdapFilter(search));
         }
 
         List<UserStatus> pageResult = ldapService.search(filter, page, size);

@@ -24,6 +24,7 @@ public class AppUserDetails implements UserDetails {
     private String employeeType;
     private String location;
     private String branch;
+    private String dutySubOrganization;
     private boolean isMyHr = false;
     private List<GrantedAuthority> grantedAuthorities = new ArrayList<>();
 
@@ -33,6 +34,7 @@ public class AppUserDetails implements UserDetails {
         this.employeeType = record.getEmployeeType();
         this.location = record.getLocation();
         this.branch = record.getBranch();
+        this.dutySubOrganization = record.getDutySubOrganization();
     }
 
     public void addAuthority(String grantedAuthority) {

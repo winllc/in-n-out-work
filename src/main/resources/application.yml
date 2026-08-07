@@ -89,3 +89,5 @@ application:
   user-ldap-manager-id-attribute: title
   manager-ldap-id-attribute: street
   application-base-url: https://localhost:8444
+  duty-sub-org-groups-base-dn: ou=Groups,dc=winllc,dc=com
+  user-ldap-duty-sub-organization-attribute: departmentNumber
