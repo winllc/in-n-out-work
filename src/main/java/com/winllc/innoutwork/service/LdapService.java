@@ -6,6 +6,7 @@ import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
+import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
@@ -25,9 +26,7 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.DirContext;
 import javax.naming.directory.SearchControls;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class LdapService {
@@ -52,6 +51,32 @@ public class LdapService {
      */
     public LdapGroup getGroupHierarchyFromAttribute(String dn) {
         return buildGroupHierarchyFromAttribute(dn, new ArrayList<>());
+    }
+
+    /**
+     * Counts LDAP entries under a top-level group's base DN that carry a given attribute value,
+     * e.g. how many users have {@code branch=NORTH}.
+     *
+     * @param attribute the attribute name to match on (e.g. "branch")
+     * @param value     the attribute value to match (matched exactly; encoded to prevent injection)
+     * @return the number of matching entries, or {@code 0} if inputs are missing or the search fails
+     */
+    public Map<String, Integer> getTotalEntriesWithAttributeValueSplitOnAttribute(String baseDn, String attribute, String value,
+                                                                 String splitByAttribute) {
+        if (baseDn == null || baseDn.isBlank() || attribute == null || attribute.isBlank() || value == null) {
+            return Collections.emptyMap();
+        }
+
+        // EqualsFilter encodes the value, guarding against LDAP injection via the value parameter.
+        EqualsFilter filter = new EqualsFilter(attribute, value);
+
+        try {
+            return countWithSplit(baseDn, filter.encode(), splitByAttribute);
+        } catch (Exception e) {
+            log.error("Failed to count entries under {} where {}={}",
+                    baseDn, attribute, value, e);
+            return Collections.emptyMap();
+        }
     }
 
     // Alternative: More efficient approach that doesn't iterate through all previous pages
@@ -132,10 +157,36 @@ public class LdapService {
         return results.size();
     }
 
+    public Map<String, Integer> countWithSplit(String baseDn, String filter, String splitByAttribute) {
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+        if(StringUtils.isBlank(baseDn)) {
+            controls.setReturningAttributes(new String[0]); // don’t fetch attributes, just DNs
+        }else{
+            controls.setReturningAttributes(new String[]{splitByAttribute});
+        }
+
+
+        List<String> results = ldapTemplate.search(baseDn, filter, controls, (ContextMapper<String>) ctx -> {
+            DirContextAdapter context = (DirContextAdapter) ctx;
+            if (context.getAttributes() != null && context.getAttributes().get(splitByAttribute) != null) {
+                return context.getAttributes().get(splitByAttribute).get().toString();
+            }else{
+                return "EMPTY";
+            }
+        });
+
+        Map<String, Integer> counts = new HashMap<>();
+        for (String result : results) {
+            counts.put(result, counts.getOrDefault(result, 0) + 1);
+        }
+        return counts;
+    }
+
     public Optional<LdapGroup> lookupGroup(LdapDn dn) {
         LdapGroup group = null;
         try {
-            group = ldapTemplate.lookup(dn.toString(), new LdaGroupContextMapper());
+            group = ldapTemplate.lookup(dn.toString(), new LdapGroupContextMapper());
         } catch (Exception e) {
             log.error("Not found: %s".formatted(dn), e);
         }
@@ -147,8 +198,24 @@ public class LdapService {
         return ldapTemplate.search(
                 topProps.getGroupsBaseDn(),
                 "(objectClass=groupOfUniqueNames)",
-                new LdaGroupContextMapper()
+                new LdapGroupContextMapper()
         );
+    }
+
+    public List<String> getAllUniqueValuesForAttributes(String attribute) {
+        List<String> allValues = ldapTemplate.search(
+                properties.getUserBaseDn(),
+                "(&(objectClass=*)(" + attribute + "=*))",
+                (ContextMapper<String>) ctx -> {
+                    DirContextAdapter context = (DirContextAdapter) ctx;
+                    if (context.getAttributes() != null && context.getAttributes().get(attribute) != null) {
+                        return context.getAttributes().get(attribute).get().toString();
+                    } else {
+                        return null;
+                    }
+                }
+        );
+        return new ArrayList<>(new HashSet<>(allValues));
     }
 
     public List<String> getGroupMembers(LdapDn dn) {
@@ -197,7 +264,7 @@ public class LdapService {
                 LdapQueryBuilder.query()
                         .base("")
                         .where("distinguishedName").is(dn),
-                new LdaGroupContextMapper()
+                new LdapGroupContextMapper()
         );
 
         if (results.isEmpty()) return null;
@@ -313,7 +380,7 @@ public class LdapService {
         return ldapTemplate.search(
                 groupDn.toString(),  // base DN (empty means use the default search base)
                 filter.encode(),
-                new LdaGroupContextMapper()
+                new LdapGroupContextMapper()
         );
     }
 
@@ -399,6 +466,13 @@ public class LdapService {
                             } catch (NamingException e) {
                                 log.error("Could not map branch attribute: ", e);
                             }
+                        }else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapDutySubOrganizationAttribute())) {
+                            try {
+                                String type = attr.get().toString();
+                                builder.dutySubOrganization(type);
+                            } catch (NamingException e) {
+                                log.error("Could not map dutySubOrganization attribute: ", e);
+                            }
                         }
 
                     });
@@ -412,7 +486,7 @@ public class LdapService {
         }
     }
 
-    private static final class LdaGroupContextMapper implements ContextMapper<LdapGroup> {
+    private static final class LdapGroupContextMapper implements ContextMapper<LdapGroup> {
 
         @Override
         public LdapGroup mapFromContext(Object o) throws NamingException {

@@ -34,6 +34,8 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
 
     Long countCheckInOutRecordByActionAndTimestampIsBetween(CheckInOutEnum action, ZonedDateTime timestamp, ZonedDateTime timestamp2);
 
+    List<CheckInOutRecord> findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(String dutySubOrganization, ZonedDateTime start, ZonedDateTime end);
+
     @Query("""
     SELECT r.action
     FROM CheckInOutRecord r

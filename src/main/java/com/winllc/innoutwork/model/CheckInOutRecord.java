@@ -43,6 +43,7 @@ public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     private String employeeType;
     private String location;
     private String branch;
+    private String dutySubOrganization;
     private Boolean forced = false;
 
     public CheckInOutRecord() {

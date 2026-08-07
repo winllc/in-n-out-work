@@ -92,8 +92,92 @@
 
             </div>
 
+            <div class="row">
+
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3>Organization Parse Rules</h3>
+                        </div>
+                        <div class="card-body">
+
+                            <p class="text-muted">
+                                Rules control how an organization value is split into an org-chart
+                                hierarchy. The first rule whose name is a prefix of the org value is
+                                applied; each capturing group of the regex becomes a level in the tree.
+                            </p>
+
+                            <form th:action="@{/app/settings/orgparserules}" method="post"
+                                  th:object="${orgParseRuleForm}" class="mb-4">
+                                <input type="hidden" th:field="*{id}">
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-4">
+                                        <label for="orgName" class="form-label">Organization Name</label>
+                                        <input type="text" id="orgName" th:field="*{orgName}"
+                                               class="form-control" placeholder="e.g. RYS" required>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="orgParseRegex" class="form-label">Parse Regex</label>
+                                        <input type="text" id="orgParseRegex" th:field="*{orgParseRegex}"
+                                               class="form-control"
+                                               placeholder="e.g. ([a-zA-Z]+\d)(\d+)([a-zA-Z]+)$" required>
+                                    </div>
+                                    <div class="col-md-2">
+                                        <button type="submit" class="btn btn-primary w-100">Save Rule</button>
+                                    </div>
+                                </div>
+                            </form>
+
+                            <table class="table table-striped align-middle">
+                                <thead>
+                                <tr>
+                                    <th>Organization Name</th>
+                                    <th>Parse Regex</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                                </thead>
+                                <tbody>
+                                <tr th:if="${#lists.isEmpty(orgParseRules)}">
+                                    <td colspan="3" class="text-center text-muted">No parse rules defined.</td>
+                                </tr>
+                                <tr th:each="rule : ${orgParseRules}">
+                                    <td th:text="${rule.orgName}"></td>
+                                    <td><code th:text="${rule.orgParseRegex}"></code></td>
+                                    <td class="text-end">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary"
+                                                th:attr="data-id=${rule.id},data-name=${rule.orgName},data-regex=${rule.orgParseRegex}"
+                                                onclick="editOrgParseRule(this)">
+                                            Edit
+                                        </button>
+                                        <form th:action="@{'/app/settings/orgparserules/delete/' + ${rule.id}}"
+                                              method="post" class="d-inline"
+                                              onsubmit="return confirm('Delete parse rule for ' + this.dataset.name + '?');"
+                                              th:attr="data-name=${rule.orgName}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                </tbody>
+                            </table>
+
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
         </div>
     </div>
+
+    <script>
+        // Populate the add/edit form from a table row so the same form updates the record.
+        function editOrgParseRule(btn) {
+            document.getElementById('id').value = btn.dataset.id;
+            document.getElementById('orgName').value = btn.dataset.name;
+            document.getElementById('orgParseRegex').value = btn.dataset.regex;
+            document.getElementById('orgName').scrollIntoView({behavior: 'smooth', block: 'center'});
+        }
+    </script>
 
     <script th:inline="javascript">
 

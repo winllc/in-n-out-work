@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.service;
 
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.UserRoleEnum;
@@ -13,6 +14,7 @@ import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +22,7 @@ import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -32,13 +35,16 @@ public class UserService {
     private final LdapService ldapService;
     private final UserRestService userRestService;
     private final ApplicationProperties properties;
+    private final LoadingCache<String, LdapUser> userCache;
 
     public UserService(UserRecordRepository userRecordRepository,
-                       LdapService ldapService, UserRestService userRestService, ApplicationProperties properties) {
+                       LdapService ldapService, UserRestService userRestService, ApplicationProperties properties,
+                       @Qualifier("ldapUserLoadingCache") LoadingCache<String, LdapUser> userCache) {
         this.userRecordRepository = userRecordRepository;
         this.ldapService = ldapService;
         this.userRestService = userRestService;
         this.properties = properties;
+        this.userCache = userCache;
     }
 
     public Optional<UserRecord> getUserByDn(LdapDn dn) {
@@ -168,29 +174,50 @@ public class UserService {
         return null;
     }
 
-    public UserRecord refreshUserRecord(LdapDn dn){
-        Optional<UserRecord> userRecordOptional = userRecordRepository.findByDnIgnoreCase(dn.dn());
-    /*
-        if(userRecordOptional.isPresent()){
+    public UserRecord createUserIfDoesNotExist(LdapDn dn) {
+        LdapUser ldapUser = userCache.get(dn.dn());
 
-            UserRecord userRecord = userRecordOptional.get();
-
-            LdapUser ldapUser = ldapService.lookupUser(dn).orElse(null);
-
-            if(ldapUser != null){
-                userRecord.setBranch(ldapUser.getBranch());
-                userRecord.setEmailAddress(ldapUser.getEmailAddress());
-                userRecord.setTitle(ldapUser.getTitle());
-                userRecord.setDepartment(ldapUser.getDepartment());
-                userRecord.setManagerDn(ldapUser.getManagerDn() != null ? ldapUser.getManagerDn().dn() : null);
-            }
-
+        Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(dn.toString());
+        if(byDnIgnoreCase.isEmpty()){
+            UserRecord userRecord = UserRecord.builder()
+                    .dn(dn.toString())
+                    .employeeType(ldapUser.getEmployeeType())
+                    .organization(ldapUser.getOrganization())
+                    .location(ldapUser.getLocation())
+                    .branch(ldapUser.getBranch())
+                    .dutySubOrganization(ldapUser.getDutySubOrganization())
+                    .userRole(UserRoleEnum.USER)
+                    .build();
             return userRecordRepository.save(userRecord);
         }else{
-            return null;
-        }
+            UserRecord userRecord = byDnIgnoreCase.get();
+            boolean updated = false;
+            if(!Objects.equals(ldapUser.getEmployeeType(), userRecord.getEmployeeType())){
+                userRecord.setEmployeeType(ldapUser.getEmployeeType());
+                updated = true;
+            }
+            if(!Objects.equals(ldapUser.getOrganization(), userRecord.getOrganization())){
+                userRecord.setOrganization(ldapUser.getOrganization());
+                updated = true;
+            }
+            if(!Objects.equals(ldapUser.getLocation(), userRecord.getLocation())){
+                userRecord.setLocation(ldapUser.getLocation());
+                updated = true;
+            }
+            if(!Objects.equals(ldapUser.getBranch(), userRecord.getBranch())){
+                userRecord.setBranch(ldapUser.getBranch());
+                updated = true;
+            }
+            if(!Objects.equals(ldapUser.getDutySubOrganization(), userRecord.getDutySubOrganization())){
+                userRecord.setDutySubOrganization(ldapUser.getDutySubOrganization());
+                updated = true;
+            }
 
-             */
-        return null;
+            if(updated){
+                userRecord = userRecordRepository.save(userRecord);
+            }
+
+            return userRecord;
+        }
     }
 }
