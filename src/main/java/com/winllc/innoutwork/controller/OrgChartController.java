@@ -9,6 +9,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.ModelAndView;
 
@@ -22,9 +23,6 @@ public class OrgChartController {
     private OrgChartService orgChartService;
 
     @GetMapping
-    @PreAuthorize("hasAnyAuthority(" +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public ModelAndView details(HttpSession session, Authentication auth) {
 
         // The chart data (including stats) is fetched client-side from /api/orgnodes/hierarchy,
@@ -34,5 +32,15 @@ public class OrgChartController {
         return mav;
     }
 
+    @GetMapping("/details/{orgName}")
+    public ModelAndView orgdetails(HttpSession session, Authentication auth,
+                                   @PathVariable(name = "orgName") String orgName) {
+        ModelAndView mav = new ModelAndView();
+
+        mav.setViewName("orgdetails");
+        mav.addObject("orgName", orgName);
+
+        return mav;
+    }
 
 }
