@@ -76,14 +76,11 @@ services:
       openldap:
         condition: service_healthy
     environment:
-      # Override application.yml so the app reaches the services on the compose
-      # network (Spring relaxed binding maps these to spring.datasource.* / spring.ldap.*).
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/appdb
-      SPRING_DATASOURCE_USERNAME: appuser
-      SPRING_DATASOURCE_PASSWORD: secret123
-      SPRING_LDAP_URLS: ldap://openldap:389
-      SPRING_LDAP_USERNAME: cn=admin,dc=winllc,dc=com
-      SPRING_LDAP_PASSWORD: adminpassword
+      # Use the mounted test/application.yml as the config source. Additional-location
+      # takes precedence over the application.yml packaged in the jar.
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/application.yml
+    volumes:
+      - ./application.yml:/app/config/application.yml:ro
     ports:
       - "8444:8444"
     networks:
