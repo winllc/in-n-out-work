@@ -104,6 +104,10 @@ dn: ${GROUPS_OU}
 objectClass: organizationalUnit
 ou: Groups
 
+dn: ou=Companies,${LDAP_BASE_DN}
+objectClass: organizationalUnit
+ou: Companies
+
 LDIF
 
   # Users
