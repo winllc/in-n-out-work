@@ -80,7 +80,7 @@ public class LdapService {
     }
 
     // Alternative: More efficient approach that doesn't iterate through all previous pages
-    public List<UserStatus> search(String filter, int pageNumber, int pageSize) {
+    public List<UserStatus> search(String filter) {
         SearchControls controls = new SearchControls();
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
 
@@ -517,5 +517,20 @@ public class LdapService {
                 group.setManager((String) attrs.get("owner").get());
             return group;
         }
+    }
+
+    /**
+     * Escapes LDAP filter special characters to prevent LDAP injection attacks.
+     * Characters: * ( ) \ NUL
+     */
+    public static String escapeLdapFilter(String input) {
+        if (input == null) {
+            return "";
+        }
+        return input.replace("\\", "\\5c")
+                .replace("*", "\\2a")
+                .replace("(", "\\28")
+                .replace(")", "\\29")
+                .replace("\0", "\\00");
     }
 }

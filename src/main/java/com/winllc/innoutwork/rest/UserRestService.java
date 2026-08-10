@@ -13,9 +13,11 @@ import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.CheckInOutService;
 import com.winllc.innoutwork.service.LdapService;
+import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
 import org.springframework.ldap.filter.LikeFilter;
@@ -30,6 +32,8 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+import static com.winllc.innoutwork.service.LdapService.escapeLdapFilter;
+
 @RestController
 @RequestMapping("/api/users")
 public class UserRestService {
@@ -37,21 +41,19 @@ public class UserRestService {
     private static final Logger log = LoggerFactory.getLogger(UserRestService.class);
 
     private final LdapService ldapService;
-    private final CheckInOutService checkInOutService;
     private final UserRecordRepository userRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
-    private final UserEventRecordRepository userEventRecordRepository;
+    @Autowired
+    private UserService userService;
 
-    public UserRestService(LdapService ldapService, CheckInOutService checkInOutService,
+    public UserRestService(LdapService ldapService,
                            UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
-                           ApplicationProperties properties, UserEventRecordRepository userEventRecordRepository) {
+                           ApplicationProperties properties) {
         this.ldapService = ldapService;
-        this.checkInOutService = checkInOutService;
         this.userRecordRepository = userRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
-        this.userEventRecordRepository = userEventRecordRepository;
     }
 
     @GetMapping("/group/{groupName}")
@@ -64,7 +66,7 @@ public class UserRestService {
 
         List<UserStatus> users = new ArrayList<>();
         for(String dn : dns){
-            users.add(getUserStatus(dn, session));
+            users.add(userService.getUserStatus(dn, session));
         }
 
         Map<String, Object> response = new HashMap<>();
@@ -97,11 +99,11 @@ public class UserRestService {
             filter = "(&(objectclass=inetOrgPerson)(cn=*%s*))".formatted(escapeLdapFilter(search));
         }
 
-        List<UserStatus> pageResult = ldapService.search(filter, page, size);
+        List<UserStatus> pageResult = ldapService.search(filter);
         List<UserStatus> users = new ArrayList<>();
 
         for(UserStatus user : pageResult){
-            users.add(getUserStatus(user.getDn(), session));
+            users.add(userService.getUserStatus(user.getDn(), session));
         }
 
         //PagedModel<UserStatus> response = new PagedModel<>(pageResult);
@@ -128,67 +130,7 @@ public class UserRestService {
         return new PagedModel<>(new PageImpl<>(records.getContent(), pageable, records.getTotalElements()));
     }
 
-    public UserStatus getUserStatus(String dn, HttpSession session){
-        UserStatus status = UserStatus.builder()
-                .dn(dn).build();
 
-        ZonedDateTime selectedDate = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
-
-        List<CheckInOutRecord> todaysRecordsForUser = checkInOutService.findRecordsForUser(dn, session);
-        if(todaysRecordsForUser != null && !todaysRecordsForUser.isEmpty()){
-
-             Optional<CheckInOutRecord> mostRecent = todaysRecordsForUser.stream()
-                    .sorted()
-                    .findFirst();
-
-            Optional<CheckInOutRecord> firstLogin = todaysRecordsForUser.stream()
-                    .sorted(Comparator.reverseOrder())
-                    .filter(r -> r.getAction() == CheckInOutEnum.CHECK_IN)
-                    .findFirst();
-
-            Optional<CheckInOutRecord> lastLogout = todaysRecordsForUser.stream()
-                    .sorted()
-                    .filter(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)
-                    .findFirst();
-
-            if (mostRecent.isPresent()) {
-                CheckInOutRecord record = mostRecent.get();
-                status.setLastStatusChangeAt(record.getZonedDateTimestamp());
-                firstLogin.ifPresent(r -> status.setCheckedInAt(r.getZonedDateTimestamp()));
-                lastLogout.ifPresent(r -> status.setCheckedOutAt(r.getZonedDateTimestamp()));
-
-                if(record.getAction() == CheckInOutEnum.CHECK_IN ||  record.getAction() == CheckInOutEnum.UNLOCK){
-                    status.setStatus("IN");
-                }else if(record.getAction() == CheckInOutEnum.CHECK_OUT){
-                    status.setStatus("OUT");
-                }else if(record.getAction() == CheckInOutEnum.LOCK){
-                    status.setStatus("AWAY");
-                }
-            } else {
-                status.setStatus("NONE");
-            }
-        } else {
-            status.setStatus("NONE");
-        }
-
-        Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(status.getDn());
-        if(recordOptional.isPresent()){
-            UserRecord record = recordOptional.get();
-            status.setNotes(record.getNotes());
-            status.setOrganization(record.getOrganization());
-            status.setEmployeeType(record.getEmployeeType());
-        }
-
-        userEventRecordRepository.findByDnIgnoreCaseAndDate(dn, selectedDate.toLocalDate())
-                .stream()
-                .filter(r -> r.getStatus() != UserStatusEnum.STANDARD)
-                .findFirst()
-                .ifPresent(userEventRecord -> {
-                    status.setStatus(userEventRecord.getStatus().name());
-                });
-
-        return status;
-    }
 
 
     @GetMapping("/managers/{dn}")
@@ -245,19 +187,6 @@ public class UserRestService {
         return ldapUsers;
     }
 
-    /**
-     * Escapes LDAP filter special characters to prevent LDAP injection attacks.
-     * Characters: * ( ) \ NUL
-     */
-    private String escapeLdapFilter(String input) {
-        if (input == null) {
-            return "";
-        }
-        return input.replace("\\", "\\5c")
-                .replace("*", "\\2a")
-                .replace("(", "\\28")
-                .replace(")", "\\29")
-                .replace("\0", "\\00");
-    }
+
 
 }

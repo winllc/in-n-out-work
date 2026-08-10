@@ -63,6 +63,14 @@
                         </a>
                     </li>
 
+                    <li class="sidebar-item">
+
+                        <a class="sidebar-link" th:href="@{/app/orgchart}" aria-expanded="false">
+                            <i class="ti ti-hierarchy-3"></i>
+                            <span class="hide-menu">Org Chart</span>
+                        </a>
+                    </li>
+
                     <li class="sidebar-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
 
                         <a class="sidebar-link" th:href="@{/app/metrics}" aria-expanded="false">

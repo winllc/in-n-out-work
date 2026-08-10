@@ -1,9 +1,7 @@
 package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
-import com.winllc.innoutwork.config.TopLevelGroupProperties;
 import com.winllc.innoutwork.data.CheckInOutRecordGroup;
-import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.OrgParseRuleRecord;
@@ -62,28 +60,33 @@ public class OrgChartService {
     private void loadOrgStats(OrgNode orgNode){
         if(orgNode == null || StringUtils.isBlank(orgNode.getFullName())) return;
 
-        List<CheckInOutRecord> currentRecords =
-                checkInOutRecordRepository.findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(orgNode.getFullName(),
-                DateTimeUtil.getStartOfToday(), DateTimeUtil.getEndOfToday());
+        // Isolate each node so a single node's failure doesn't skip the rest of the subtree.
+        try {
+            List<CheckInOutRecord> currentRecords =
+                    checkInOutRecordRepository.findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(orgNode.getFullName(),
+                    DateTimeUtil.getStartOfToday(), DateTimeUtil.getEndOfToday());
 
-        Map<String, CheckInOutRecordGroup> groups = currentRecords.stream()
-                .collect(Collectors.groupingBy(CheckInOutRecord::getDn))
-                .entrySet().stream()
-                .filter(entry -> !entry.getValue().isEmpty())
-                .map(entry ->
-                        new CheckInOutRecordGroup(entry.getKey(),
-                                entry.getValue().get(0).getEmployeeType(), entry.getValue()))
-                .collect(Collectors.toMap(CheckInOutRecordGroup::getEmployeeType, group -> group));
+            // One group per user (DN); count, per employee type, how many are currently checked in.
+            Map<String, Integer> currentEntriesByEmployeeType = currentRecords.stream()
+                    .collect(Collectors.groupingBy(CheckInOutRecord::getDn))
+                    .entrySet().stream()
+                    .filter(entry -> !entry.getValue().isEmpty())
+                    .map(entry ->
+                            new CheckInOutRecordGroup(entry.getKey(),
+                                    entry.getValue().get(0).getEmployeeType(), entry.getValue()))
+                    .filter(CheckInOutRecordGroup::isCheckedIn)
+                    .collect(Collectors.groupingBy(
+                            group -> group.getEmployeeType() != null ? group.getEmployeeType() : "N/A",
+                            Collectors.summingInt(group -> 1)));
 
-        Map<String, Integer> currentEntriesByEmployeeType = groups.values().stream()
-                .collect(Collectors.groupingBy(CheckInOutRecordGroup::getEmployeeType,
-                        Collectors.summingInt(group -> group.isCheckedIn() ? 1 : 0)));
+            Map<String, Integer> totalEntriesByEmployeeType = ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(props.getUserBaseDn(), props.getUserLdapDutySubOrganizationAttribute(),
+                        orgNode.getFullName(), props.getUserLdapEmployeeTypeAttribute());
 
-        Map<String, Integer> totalEntriesByEmployeeType = ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(props.getUserBaseDn(), props.getUserLdapDutySubOrganizationAttribute(),
-                    orgNode.getFullName(), props.getUserLdapEmployeeTypeAttribute());
-
-        orgNode.getData().setNodeMembersByEmployeeType(currentEntriesByEmployeeType);
-        orgNode.getData().setTotalMembersByEmployeeType(totalEntriesByEmployeeType);
+            orgNode.getData().setNodeMembersByEmployeeType(currentEntriesByEmployeeType);
+            orgNode.getData().setTotalMembersByEmployeeType(totalEntriesByEmployeeType);
+        } catch (Exception e) {
+            log.error("Failed to load stats for node {}", orgNode.getFullName(), e);
+        }
 
         if(orgNode.getChildren() != null && !orgNode.getChildren().isEmpty()){
             for(OrgNode child : orgNode.getChildren()){
@@ -93,9 +96,14 @@ public class OrgChartService {
     }
 
     public List<OrgNode> generateOrgChart(List<String> allSubOrgNames){
+        // Load parse rules once rather than re-querying for every org value.
+        List<OrgParseRuleRecord> parseRules = orgParseRuleRecordRepository.findAll();
+
         List<OrgNode> list = allSubOrgNames.stream()
+                .filter(Objects::nonNull)
                 .filter(s -> !s.isEmpty())
-                .map(s -> buildOrgNodeFromAttribute(s))
+                .map(s -> buildOrgNodeFromAttribute(s, parseRules))
+                .filter(Objects::nonNull) // a parse rule whose regex doesn't match returns null
                 .toList();
 
         return mergeOrgNodes(list);
@@ -107,27 +115,37 @@ public class OrgChartService {
             return new ArrayList<>();
         }
 
-        TopLevelGroupProperties groupProperties = new TopLevelGroupProperties();
-        groupProperties.setGroupsBaseDn(props.getDutySubOrgGroupsBaseDn());
-
         List<String> orgs = ldapService.getAllUniqueValuesForAttributes(props.getUserLdapDutySubOrganizationAttribute());
 
         return generateOrgChart(orgs);
     }
 
     public List<OrgNode> mergeOrgNodes(List<OrgNode> orgNodes){
+        // Group roots by fullName, merging each subsequent same-root tree into the first.
+        Map<String, OrgNode> byRoot = new LinkedHashMap<>();
 
-        orgNodes.forEach(orgNode -> {
-            orgNode.mergeAll(orgNodes);
-        });
+        for (OrgNode node : orgNodes) {
+            if (node == null) {
+                continue;
+            }
+            OrgNode root = byRoot.get(node.getFullName());
+            if (root == null) {
+                byRoot.put(node.getFullName(), node);
+            } else {
+                root.merge(node);
+            }
+        }
 
-        Set<OrgNode> orgNodeSet = new HashSet<>(orgNodes);
-        return new ArrayList<>(orgNodeSet);
+        return new ArrayList<>(byRoot.values());
     }
 
     public OrgNode buildOrgNodeFromAttribute(String orgValue){
+        return buildOrgNodeFromAttribute(orgValue, orgParseRuleRecordRepository.findAll());
+    }
 
-        Optional<OrgParseRuleRecord> parseRule = orgParseRuleRecordRepository.findAll().stream()
+    public OrgNode buildOrgNodeFromAttribute(String orgValue, List<OrgParseRuleRecord> parseRules){
+
+        Optional<OrgParseRuleRecord> parseRule = parseRules.stream()
                 .filter(rule -> orgValue.toLowerCase().startsWith(rule.getOrgName().toLowerCase()))
                 .findFirst();
 
@@ -172,10 +190,8 @@ public class OrgChartService {
             if(groups.size() > 1){
                 for (int i = 1; i < groups.size(); i++) {
                     OrgNode childOrgNode = new OrgNode(groups.get(i));
-                    childOrgNode.setName(groups.get(i));
-
-                    childOrgNode.setParent(new OrgNode(groups.get(i - 1)));
-
+                    // fullName is assigned below by buildFullName(); the parent pointer is
+                    // @JsonIgnore and only (re)set during merge, so it's left null here.
                     orgNode.addChildToLowest(childOrgNode);
                 }
             }

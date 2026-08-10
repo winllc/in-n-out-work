@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabulator + Spring Boot</title>
+    <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
+    <link rel="stylesheet"
+          th:href="@{/libs/flatpickr/flatpickr.min.css}"/>
+    <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
+
+    <script th:src="@{/libs/flatpickr/flatpickr.min.js}"></script>
+    <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+</head>
+<body>
+<div layout:fragment="content">
+
+    <div class="d-flex justify-content-center">
+        <h3>Organization Details for <span th:text="${orgName}"></span></h3>
+    </div>
+
+
+    <!--
+    <div class="row">
+        <div class="col-md-4 justify-content-end">
+
+            <div class="card text-center mb-1">
+                <div class="card-header">
+                    <h5 class="card-title">Generate Group Report</h5>
+                </div>
+                <div class="card-body">
+                    <form th:action="@{/app/group/report}" method="post">
+                        <input type="hidden" name="groupDn" th:value="${groupDn}">
+                        <input type="hidden" name="fromDate" id="fromDate">
+                        <input type="hidden" name="toDate" id="toDate">
+
+                        <div class="input-group mb-3 justify-content-end">
+                            <input class="form-control" id="reportRange" type="text" placeholder="Report Range">
+                            <div class="input-group-append">
+                                <button type="submit" id="generateReportButton" class="btn btn-primary" disabled>Generate Report</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+    -->
+
+    <div class="row">
+        <div class="col-md-12 d-flex justify-content-end">
+            <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                <label class="form-check-label" for="advanced-btn">Advanced</label>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-12">
+            <div id="user-table"></div>
+        </div>
+    </div>
+
+    <!--
+    <div class="row mt-4" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h4>Group Managers</h4>
+                </div>
+                <div class="card-body">
+
+                    <div class="alert alert-warning" role="alert">
+                        <span>Add managers that will receive absent notifications and be able to see additional details of users in their group.</span>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-12">
+                            <input
+                                    id="search"
+                                    class="form-control"
+                                    type="text"
+                                    placeholder="Search..."
+                                    autocomplete="off"
+                            />
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <ul id="selectedList" class="list-group">
+
+                            </ul>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="text-end">
+                                <button type="button" class="btn btn-primary" id="updateManagers">Update</button>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+    -->
+
+
+    <script th:inline="javascript">
+        const groupName = /*[[${group}]]*/ "test";
+        const orgName = /*[[${orgName}]]*/ "test";
+
+        const table = new Tabulator("#user-table", {
+            ajaxURL: "/api/orgnodes/users/" + orgName,
+
+            ajaxResponse: function (url, params, response) {
+                // This endpoint returns a bare JSON array of user rows (not wrapped in {data: []}).
+                return Array.isArray(response) ? response : (response.data ?? []);
+            },
+            pagination: "local",
+            paginationSize: 10,
+            layout:"fitDataStretch", //fit columns to width of table (optional)
+            layoutColumnsOnNewData:true,
+            columns: [
+                {title: "Name", field: "cn", minWidth: 100, resizable:true, headerFilter: "input"},
+                {title: "DN", field: "dn", minWidth: 150, visible: false, resizable:true, headerFilter: "input"},
+                {title: "Status", field: "status", formatter: function(cell){
+                        let value = cell.getValue();
+
+                        if(value === "IN"){
+                            cell.getElement().style.color = "green";
+                        }else if(value === "OUT"){
+                            cell.getElement().style.color = "blue";
+                        }else if(value === "AWAY"){
+                            cell.getElement().style.color = "purple";
+                        }else if(value === "NONE"){
+                            cell.getElement().style.color = "gray";
+                        }
+                        return value;
+                    }},
+                {title: "Checked In", field: "checkedInAt", visible: false, resizable:true},
+                {title: "Last Status Change", field: "lastStatusChangeAt", resizable:true},
+                {title: "Checked Out", field: "checkedOutAt", visible: false, resizable:true},
+                {title: "Notes", field: "notes", widthGrow: 3}
+            ],
+        });
+
+        table.on("rowClick", function(e, row){
+            const data = row.getData();
+            window.location.href = `/app/user/details/${data.dn}`;
+        });
+
+        /*
+        testing data manipulation on page load, not working as expected, only updates the first row of the page and then stops, not sure why
+
+        table.on("dataProcessed", function(e, row){
+
+        })
+
+        table.on("pageLoaded", function(pageno){
+            var currentPageData = getCurrentPageData(table);
+
+            currentPageData.forEach((element, index, originalArray) => {
+                console.log(element);
+                element.notes = "OVERRIDE";
+                table.updateData(new Array(element));
+
+            });
+            //console.log(currentPageData);
+        });
+
+        function getCurrentPageData(table) {
+            // 1. Get visible row components on the current page
+            var pageRowComponents = table.getRows(true);
+
+            // 2. Extract the data objects from each component
+            var pageData = pageRowComponents.map(function(rowComponent) {
+                const rowData = rowComponent.getData();
+                rowData.id = rowComponent.getPosition();
+                console.log(rowComponent.getPosition());
+                console.log(rowData);
+                return rowData;
+            });
+
+            return pageData;
+        }
+
+         */
+
+
+        document.getElementById("advanced-btn").addEventListener("change", (event) => {
+
+            if((event.target.checked)){
+                table.showColumn("checkedInAt");
+                table.showColumn("checkedOutAt");
+                table.showColumn("dn");
+                table.hideColumn("cn");
+            }else{
+                table.hideColumn("checkedInAt");
+                table.hideColumn("checkedOutAt");
+                table.hideColumn("dn");
+                table.showColumn("cn");
+            }
+            table.redraw(true);
+
+        });
+
+
+
+
+    </script>
+</div>
+</body>
+</html>

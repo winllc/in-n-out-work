@@ -2,11 +2,14 @@ package com.winllc.innoutwork.service;
 
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.*;
+import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
+import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.rest.UserRestService;
 import io.micrometer.common.util.StringUtils;
@@ -20,7 +23,10 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -33,16 +39,18 @@ public class UserService {
 
     private final UserRecordRepository userRecordRepository;
     private final LdapService ldapService;
-    private final UserRestService userRestService;
     private final ApplicationProperties properties;
     private final LoadingCache<String, LdapUser> userCache;
+    @Autowired
+    private CheckInOutService checkInOutService;
+    @Autowired
+    private UserEventRecordRepository  userEventRecordRepository;
 
     public UserService(UserRecordRepository userRecordRepository,
-                       LdapService ldapService, UserRestService userRestService, ApplicationProperties properties,
+                       LdapService ldapService, ApplicationProperties properties,
                        @Qualifier("ldapUserLoadingCache") LoadingCache<String, LdapUser> userCache) {
         this.userRecordRepository = userRecordRepository;
         this.ldapService = ldapService;
-        this.userRestService = userRestService;
         this.properties = properties;
         this.userCache = userCache;
     }
@@ -119,6 +127,64 @@ public class UserService {
         return userRecordRepository.save(userRecord);
     }
 
+    public UserStatus getUserStatus(String dn, HttpSession session){
+        UserStatus status = UserStatus.builder()
+                .dn(dn).build();
+
+        ZonedDateTime selectedDate = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
+
+        List<CheckInOutRecord> todaysRecordsForUser = checkInOutService.findRecordsForUser(dn, session);
+        if(todaysRecordsForUser != null && !todaysRecordsForUser.isEmpty()){
+
+            Optional<CheckInOutRecord> mostRecent = todaysRecordsForUser.stream()
+                    .sorted()
+                    .findFirst();
+
+            Optional<CheckInOutRecord> firstLogin = todaysRecordsForUser.stream()
+                    .sorted(Comparator.reverseOrder())
+                    .filter(r -> r.getAction() == CheckInOutEnum.CHECK_IN)
+                    .findFirst();
+
+            Optional<CheckInOutRecord> lastLogout = todaysRecordsForUser.stream()
+                    .sorted()
+                    .filter(r -> r.getAction() == CheckInOutEnum.CHECK_OUT)
+                    .findFirst();
+
+            CheckInOutRecord record = mostRecent.get();
+            status.setLastStatusChangeAt(record.getZonedDateTimestamp());
+            firstLogin.ifPresent(r -> status.setCheckedInAt(r.getZonedDateTimestamp()));
+            lastLogout.ifPresent(r -> status.setCheckedOutAt(r.getZonedDateTimestamp()));
+
+            if(record.getAction() == CheckInOutEnum.CHECK_IN ||  record.getAction() == CheckInOutEnum.UNLOCK){
+                status.setStatus("IN");
+            }else if(record.getAction() == CheckInOutEnum.CHECK_OUT){
+                status.setStatus("OUT");
+            }else if(record.getAction() == CheckInOutEnum.LOCK){
+                status.setStatus("AWAY");
+            }
+        } else {
+            status.setStatus("NONE");
+        }
+
+        Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(status.getDn());
+        if(recordOptional.isPresent()){
+            UserRecord record = recordOptional.get();
+            status.setNotes(record.getNotes());
+            status.setOrganization(record.getOrganization());
+            status.setEmployeeType(record.getEmployeeType());
+        }
+
+        userEventRecordRepository.findByDnIgnoreCaseAndDate(dn, selectedDate.toLocalDate())
+                .stream()
+                .filter(r -> r.getStatus() != UserStatusEnum.STANDARD)
+                .findFirst()
+                .ifPresent(userEventRecord -> {
+                    status.setStatus(userEventRecord.getStatus().name());
+                });
+
+        return status;
+    }
+
     public UserStatus getUserDetails(LdapDn dn, HttpSession session) {
         String ldapDn = dn.dn();
         UserStatus.UserStatusBuilder builder = UserStatus.builder();
@@ -143,7 +209,7 @@ public class UserService {
         List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(ldapDn);
         builder.memberOf(groupsForUser);
 
-        UserStatus userStatus = userRestService.getUserStatus(ldapDn, session);
+        UserStatus userStatus = getUserStatus(ldapDn, session);
         builder.status(userStatus.getStatus());
         builder.organization(userStatus.getOrganization());
         builder.employeeType(userStatus.getEmployeeType());
