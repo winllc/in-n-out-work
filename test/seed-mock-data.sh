@@ -70,6 +70,28 @@ USERS=(
 MANAGER_ID="MGR-100"
 MANAGER_CN="Alice Adams"
 
+# ----------------------------- mock groups ----------------------------------
+# groupOfUniqueNames entries under ou=Groups; users are randomly assigned below.
+# NB: not named GROUPS -- that's a read-only bash builtin (the user's OS group ids).
+MOCK_GROUPS=("Engineering" "Sales" "Operations" "Finance" "Support")
+
+# Seed RANDOM so the (random) assignment is stable across runs.
+RANDOM=42
+GROUP_PRIMARY=()
+GROUP_SECOND=()
+assign_groups() {
+  local n=${#MOCK_GROUPS[@]} i s
+  for i in "${!USERS[@]}"; do
+    GROUP_PRIMARY[$i]=$(( RANDOM % n ))
+    GROUP_SECOND[$i]=-1
+    # ~40% of users also belong to a second, distinct group
+    if (( RANDOM % 10 < 4 )); then
+      s=$(( RANDOM % n ))
+      (( s != GROUP_PRIMARY[i] )) && GROUP_SECOND[$i]=$s
+    fi
+  done
+}
+
 # ----------------------------- build LDIF -----------------------------------
 build_ldif() {
   # Organizational units (harmless if they already exist; ldapadd -c continues)
@@ -118,28 +140,30 @@ LDIF
     echo   # blank line separates entries
   done
 
-  # Two groups (groupOfUniqueNames) so group/membership features have data
-  cat <<LDIF
-dn: cn=Engineering,${GROUPS_OU}
+  # Groups: users are randomly assigned (see assign_groups). Empty groups are skipped,
+  # since groupOfUniqueNames must have at least one uniqueMember.
+  local g i mcn members
+  for g in "${!MOCK_GROUPS[@]}"; do
+    members=""
+    for i in "${!USERS[@]}"; do
+      if (( GROUP_PRIMARY[i] == g || GROUP_SECOND[i] == g )); then
+        IFS='|' read -r mcn _ <<<"${USERS[$i]}"
+        members+="uniqueMember: cn=${mcn},${USERS_OU}"$'\n'
+      fi
+    done
+    if [[ -n "$members" ]]; then
+      cat <<LDIF
+dn: cn=${MOCK_GROUPS[$g]},${GROUPS_OU}
 objectClass: groupOfUniqueNames
-cn: Engineering
+cn: ${MOCK_GROUPS[$g]}
 owner: cn=${MANAGER_CN},${USERS_OU}
-uniqueMember: cn=Alice Adams,${USERS_OU}
-uniqueMember: cn=Bob Barker,${USERS_OU}
-uniqueMember: cn=Heidi Hughes,${USERS_OU}
-uniqueMember: cn=Carol Clark,${USERS_OU}
-
-dn: cn=Sales,${GROUPS_OU}
-objectClass: groupOfUniqueNames
-cn: Sales
-owner: cn=${MANAGER_CN},${USERS_OU}
-uniqueMember: cn=Dave Davis,${USERS_OU}
-uniqueMember: cn=Erin Evans,${USERS_OU}
-uniqueMember: cn=Grace Green,${USERS_OU}
-uniqueMember: cn=Frank Foster,${USERS_OU}
+${members}
 LDIF
+    fi
+  done
 }
 
+assign_groups
 echo "==> Loading mock users and groups into LDAP (${LDAP_CONTAINER})..."
 build_ldif | ldap_add || true   # -c already continues; tolerate 'already exists'
 
@@ -209,6 +233,17 @@ psql_exec -c "SELECT duty_sub_organization AS org, employee_type AS type, action
 
 echo
 echo "LDAP users:   ${#USERS[@]} under ${USERS_OU}"
+echo "LDAP groups (random membership):"
+for g in "${!MOCK_GROUPS[@]}"; do
+  members=""
+  for i in "${!USERS[@]}"; do
+    if (( GROUP_PRIMARY[i] == g || GROUP_SECOND[i] == g )); then
+      IFS='|' read -r mcn _ <<<"${USERS[$i]}"
+      members+="${mcn}, "
+    fi
+  done
+  [[ -n "$members" ]] && echo "  ${MOCK_GROUPS[$g]}: ${members%, }"
+done
 echo "Org values:   RYS34B, RYS34C, RYS35A, ABC12X, ABC12Y"
 echo "Today status: IN=Alice,Dave,Grace  OUT=Bob,Erin  AWAY=Heidi,Frank  NONE=Carol"
 echo

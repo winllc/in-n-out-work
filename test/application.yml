@@ -1,0 +1,92 @@
+# External Spring Boot config used when running the app via test/docker-compose.app.yml.
+# It is mounted into the container at /app/config/application.yml and picked up through
+# SPRING_CONFIG_ADDITIONAL_LOCATION, so its values override the packaged application.yml.
+#
+# The only differences from src/main/resources/application.yml are the datasource/ldap
+# hosts (container network names instead of localhost) and the super-user DN (a mock user).
+server:
+  port: 8444
+  ssl:
+    enabled: true
+    key-store: classpath:winhal.p12
+    key-store-password: capassword
+    key-store-type: PKCS12
+    client-auth: want
+    trust-store: classpath:truststore.p12
+    trust-store-password: changeit
+    trust-store-type: PKCS12
+
+logging:
+  level:
+    root: info
+
+spring:
+  datasource:
+    url: jdbc:postgresql://postgres:5432/appdb
+    username: appuser
+    password: secret123
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  ldap:
+    urls: ldap://openldap:389
+    username: cn=admin,dc=winllc,dc=com
+    password: adminpassword
+  jackson:
+    time-zone: America/New_York
+    date-format: yyyy-MM-dd HH:mm a z
+  mail:
+    host: mailcow.winllc-dev.com
+    port: 587
+    username: user1@winllc-dev.com
+    password: password
+    properties:
+      mail:
+        smtp:
+          ssl:
+            trust: "*"
+          auth: true
+          starttls:
+            enable: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env
+
+application:
+  user-base-dn: dc=winllc,dc=com
+  user-ldap-filter: (objectclass=inetOrgPerson)
+
+  banner-text: BANNER TEXT
+  timezone: America/New_York
+  user-ldap-employee-type-attribute: employeeType
+  user-ldap-organization-attribute: o
+  user-ldap-location-attribute: l
+  super-user-dns:
+    - CN=user3,OU=Users,DC=winllc,DC=com
+    # Mock super-user so admin features are testable with the seeded data (alice / password)
+    - CN=Alice Adams,OU=Users,DC=winllc,DC=com
+  groups:
+    - groups-base-dn: ou=Groups,dc=winllc,dc=com
+    - groups-base-dn: ou=Companies,dc=winllc,dc=com
+  update-profile-url: https://google.com
+  checkOutAfterMinutes: 2
+  inactive-cron:
+    fixed-rate: 60000
+    initial-delay: 60000
+  send-absent-notification-cron:
+    fixed-rate: 300000
+    initial-delay: 1
+  notification-sender-email: user1@winllc-dev.com
+  user-ldap-manager-id-attribute: title
+  manager-ldap-id-attribute: street
+  application-base-url: https://localhost:8444
+  duty-sub-org-groups-base-dn: ou=Groups,dc=winllc,dc=com
+  user-ldap-duty-sub-organization-attribute: departmentNumber
