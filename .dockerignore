@@ -1,0 +1,13 @@
+# Keep the Docker build context small. The repo root contains multi-hundred-MB
+# release tarballs and VCS/IDE caches that must never be sent to the daemon.
+*.tar
+.git
+.gradle
+node_modules
+.idea
+*.iml
+
+# CA material and local runtime state used by the test stack
+test/step-ca-data
+test/openldap_data
+test/postgres_data
