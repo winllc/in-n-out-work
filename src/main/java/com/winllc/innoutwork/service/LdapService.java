@@ -10,6 +10,7 @@ import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.ldap.NameNotFoundException;
 import org.springframework.ldap.core.*;
 import org.springframework.ldap.filter.AndFilter;
 import org.springframework.ldap.filter.EqualsFilter;
@@ -195,11 +196,17 @@ public class LdapService {
     }
 
     public List<LdapGroup> getGroups(TopLevelGroupProperties topProps) {
-        return ldapTemplate.search(
-                topProps.getGroupsBaseDn(),
-                "(objectClass=groupOfUniqueNames)",
-                new LdapGroupContextMapper()
-        );
+        try {
+            return ldapTemplate.search(
+                    topProps.getGroupsBaseDn(),
+                    "(objectClass=groupOfUniqueNames)",
+                    new LdapGroupContextMapper()
+            );
+        } catch (NameNotFoundException e) {
+            // Configured groups base DN doesn't exist; treat as no groups.
+            log.warn("Groups base DN not found, returning none: {}", topProps.getGroupsBaseDn());
+            return new ArrayList<>();
+        }
     }
 
     public List<String> getAllUniqueValuesForAttributes(String attribute) {
@@ -316,16 +323,24 @@ public class LdapService {
         node.setGroupSize(groupMembers.size());
 
         // 🔍 Find immediate child OUs of this DN
-        List<Name> childDns = ldapTemplate.search(
-                LdapQueryBuilder.query()
-                        .base(dn)
-                        .searchScope(SearchScope.ONELEVEL)
-                        .where("objectClass").is("groupOfUniqueNames"),
-                (ContextMapper<Name>) ctxObj -> {
-                    DirContextAdapter context = (DirContextAdapter) ctxObj;
-                    return context.getDn();
-                }
-        );
+        List<Name> childDns;
+        try {
+            childDns = ldapTemplate.search(
+                    LdapQueryBuilder.query()
+                            .base(dn)
+                            .searchScope(SearchScope.ONELEVEL)
+                            .where("objectClass").is("groupOfUniqueNames"),
+                    (ContextMapper<Name>) ctxObj -> {
+                        DirContextAdapter context = (DirContextAdapter) ctxObj;
+                        return context.getDn();
+                    }
+            );
+        } catch (Exception e) {
+            // Couldn't enumerate children (missing subtree, referral, etc.); return this
+            // node without descendants rather than failing the whole hierarchy build.
+            log.warn("Failed to enumerate child groups under {}: {}", dn, e.getMessage());
+            return node;
+        }
 
         for (Name childDn : childDns) {
             LdapGroup childNode = buildGroupRecursiveInternal(childDn.toString());
@@ -364,9 +379,16 @@ public class LdapService {
         List<LdapGroup> groups = new ArrayList<>();
 
         for (TopLevelGroupProperties topProp : properties.getGroups()) {
-            List<LdapGroup> temp = findGroupsForUserWithBaseDn(new LdapDn(topProp.getGroupsBaseDn()),
-                    new LdapDn(userDn));
-            groups.addAll(temp);
+            try {
+                groups.addAll(findGroupsForUserWithBaseDn(new LdapDn(topProp.getGroupsBaseDn()),
+                        new LdapDn(userDn)));
+            } catch (NameNotFoundException e) {
+                // A configured groups base DN doesn't exist in the directory; skip it rather
+                // than failing the whole lookup (e.g. an optional/unprovisioned OU).
+                log.warn("Groups base DN not found, skipping: {}", topProp.getGroupsBaseDn());
+            } catch (Exception e) {
+                log.error("Failed to search groups under {}", topProp.getGroupsBaseDn(), e);
+            }
         }
 
         return groups;
