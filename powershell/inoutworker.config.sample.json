@@ -1,0 +1,6 @@
+{
+  "BaseUrl": "https://192.168.1.29:8444/api/check",
+  "CertificateThumbprint": "",
+  "CertificateSubjectContains": "",
+  "SkipCertificateCheck": false
+}
