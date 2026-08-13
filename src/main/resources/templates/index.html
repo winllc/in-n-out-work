@@ -1,14 +1,29 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>Tabulator + Spring Boot</title>
+    <title>Record Table</title>
+    <!-- Standalone page (not decorated by layout.html), so it pulls in Tabler itself. -->
+    <link th:href="@{/libs/tabler/tabler.min.css}" rel="stylesheet">
     <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
+    <link th:href="@{/css/app.css}" rel="stylesheet">
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
 </head>
 <body>
-<h3>Record Table</h3>
-<div id="record-table"></div>
+<div class="page">
+    <div class="page-body">
+        <div class="container-xl">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Record Table</h3>
+                </div>
+                <div class="card-body">
+                    <div id="record-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <script>
     const table = new Tabulator("#record-table", {

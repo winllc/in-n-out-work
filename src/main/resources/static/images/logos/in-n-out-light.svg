@@ -6,12 +6,18 @@
   mark occupying only 59% x 38% of the artboard and rendering tiny wherever the
   logo is sized by height). Path data below is unchanged.
 -->
+<!--
+  White-filled sibling of in-n-out.svg, for dark backgrounds (the app sidebar).
+  Identical geometry; only the fill differs. Kept as its own asset so the sidebar
+  does not need a CSS filter to recolour it - filters force the element to be
+  rasterised, which shows up as pixelated edges on scaled/HiDPI displays.
+-->
 <svg version="1.0" xmlns="http://www.w3.org/2000/svg"
  width="624.000000pt" height="410.000000pt" viewBox="204 294 624 410"
  preserveAspectRatio="xMidYMid meet">
 
 <g transform="translate(0.000000,1024.000000) scale(0.100000,-0.100000)"
-fill="#000000" stroke="none">
+fill="#ffffff" stroke="none">
 <path d="M2911 7169 c-68 -13 -119 -52 -147 -112 -49 -105 -25 -190 103 -365
 48 -64 114 -155 148 -202 34 -47 189 -258 345 -470 156 -212 308 -420 339
 -462 54 -76 56 -78 98 -78 24 0 43 4 43 10 0 9 -139 200 -570 785 -97 132
