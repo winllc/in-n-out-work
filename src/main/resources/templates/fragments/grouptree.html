@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--
+  One node of the group hierarchy: a row plus, when it has children, a
+  collapsible container holding this same fragment again.
+
+  Lives in its own template because a self-including fragment defined inside a
+  layout-decorated page would also be evaluated in place, without its parameters.
+
+  group     - the LdapGroup to render
+  favorites - map of the viewer's pinned group DNs (may be null)
+  depth     - nesting level, drives the indent
+  expanded  - whether branches start open
+-->
+<div th:fragment="groupNode(group, favorites, depth, expanded)" class="group-node"
+     th:with="hasChildren=${!#lists.isEmpty(group.children)},
+              isFavorite=${favorites != null and favorites.containsKey(group.dn)},
+              nodeId='g-' + ${#strings.replace(#strings.replace(#strings.replace(group.dn, '=', ''), ',', '-'), ' ', '')}">
+
+    <div class="list-group-item group-item d-flex align-items-center gap-2"
+         th:attr="data-group-name=${#strings.toLowerCase(group.name)},data-favorite=${isFavorite}"
+         th:style="'padding-left: ' + ${0.75 + depth * 1.25} + 'rem'">
+
+        <button th:if="${hasChildren}" type="button"
+                class="btn btn-icon btn-sm btn-ghost-secondary group-toggle"
+                data-bs-toggle="collapse" th:attr="data-bs-target='#' + ${nodeId}"
+                th:classappend="${expanded} ? '' : 'collapsed'"
+                aria-label="Toggle sub-groups">
+            <i class="ti ti-chevron-down"></i>
+        </button>
+        <span th:unless="${hasChildren}" class="group-toggle-spacer"></span>
+
+        <a class="flex-fill text-truncate text-reset text-decoration-none"
+           th:href="@{'/app/users/' + ${group.dn}}" th:title="${group.dn}" th:text="${group.name}"></a>
+
+        <span class="badge bg-secondary-lt" th:if="${group.groupSize > 0}"
+              th:text="${group.groupSize}" th:title="${group.groupSize} + ' members'"></span>
+
+        <!-- Pinning a group is an admin/manager action; everyone else sees the state only. -->
+        <button type="button" class="btn btn-icon btn-sm btn-ghost-warning favorite-toggle"
+                sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')"
+                th:attr="data-dn=${group.dn}" aria-label="Toggle favorite">
+            <i class="ti ti-star" th:classappend="${isFavorite} ? 'text-yellow' : 'text-secondary'"></i>
+        </button>
+        <span sec:authorize="!hasAnyAuthority('ADMIN', 'MANAGER')" th:if="${isFavorite}"
+              class="favorite-static" title="Favorite">
+            <i class="ti ti-star text-yellow"></i>
+        </span>
+
+    </div>
+
+    <div th:if="${hasChildren}" class="collapse group-children" th:id="${nodeId}"
+         th:classappend="${expanded} ? 'show'">
+        <!-- th:each on a wrapper: on one element th:replace would run first and the
+             recursive call would receive an unbound `child`. -->
+        <th:block th:each="child : ${group.children}">
+            <div th:replace="~{fragments/grouptree :: groupNode(${child}, ${favorites}, ${depth} + 1, ${expanded})}"></div>
+        </th:block>
+    </div>
+</div>
+
+</body>
+</html>

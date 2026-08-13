@@ -4,63 +4,62 @@
       layout:decorate="~{layout}">
 <head>
     <meta charset="UTF-8">
-    <title>Tabulator + Spring Boot</title>
-    <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
-    <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+    <title>Notification</title>
 </head>
 <body>
+
+<span layout:fragment="page-title">Notification for <span th:text="${notificationFor}"></span></span>
+
 <div layout:fragment="content">
 
-    <div class="row">
-        <div class="col-md-11">
+    <div th:if="${message}" class="alert alert-success" role="alert">
+        <span th:text="${message}"></span>
+    </div>
 
-            <div th:if="${message}" class="alert alert-success">
-                <span th:text="${message}"></span>
-            </div>
+    <!-- Display error message if present -->
+    <div th:if="${error}" class="alert alert-danger" role="alert">
+        <span th:text="${error}"></span>
+    </div>
 
-            <!-- Display error message if present -->
-            <div th:if="${error}" class="alert alert-danger">
-                <span th:text="${error}"></span>
-            </div>
-
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
             <div class="card">
                 <div class="card-header">
-                    <div class="d-flex justify-content-center">
-                        <h3 th:text="'Notification for '+${notificationFor}"></h3>
-                    </div>
+                    <h3 class="card-title">Accountability Notification</h3>
                 </div>
                 <div class="card-body">
+
+                    <div class="datagrid mb-4">
+                        <div class="datagrid-item">
+                            <div class="datagrid-title">Summary</div>
+                            <div class="datagrid-content" th:text="${notification.getSummary()}"></div>
+                        </div>
+                        <div class="datagrid-item" th:if="${form.responseTimestamp != null}">
+                            <div class="datagrid-title">Status Updated On</div>
+                            <div class="datagrid-content" th:text="${form.responseTimestamp}"></div>
+                        </div>
+                        <div class="datagrid-item" th:if="${form.responseTimestamp != null}">
+                            <div class="datagrid-title">Status Updated By</div>
+                            <div class="datagrid-content wrap-with-underscores" th:text="${form.responderDn}"></div>
+                        </div>
+                    </div>
+
                     <form th:action="@{/app/notifications/update}" th:object="${form}" method="post">
                         <input type="hidden" th:name="notificationId" th:value="${notification.getId()}"/>
 
-                        <table class="table">
-                            <tbody>
-                            <tr>
-                                <td>Summary</td>
-                                <td><span th:text="${notification.getSummary()}"/></td>
-                            </tr>
-                            <tr th:if="${form.responseTimestamp != null}">
-                                <td>Status Updated On</td>
-                                <td th:text="${form.responseTimestamp}"></td>
-                            </tr>
-                            <tr th:if="${form.responseTimestamp != null}">
-                                <td>Status Updated By</td>
-                                <td th:text="${form.responderDn}"></td>
-                            </tr>
-                            <tr>
-                                <td>Status</td>
-                                <td>
-                                    <select class="form-control" th:field="*{response}">
-                                        <option th:each="status : ${statuses}" th:text="${status}"
-                                                th:value="${status}"></option>
-                                    </select>
-                                </td>
-                            </tr>
+                        <div class="mb-3">
+                            <label class="form-label" for="response">Status</label>
+                            <select class="form-select" id="response" th:field="*{response}">
+                                <option th:each="status : ${statuses}" th:text="${status}"
+                                        th:value="${status}"></option>
+                            </select>
+                        </div>
 
-                            </tbody>
-                        </table>
-
-                        <button type="submit" class="btn btn-primary">Submit</button>
+                        <div class="btn-list">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="ti ti-check me-1"></i>Submit
+                            </button>
+                        </div>
                     </form>
 
                 </div>

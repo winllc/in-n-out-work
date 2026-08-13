@@ -4,43 +4,38 @@
       layout:decorate="~{layout}">
 <head>
     <meta charset="UTF-8">
-    <title>Tabulator + Spring Boot</title>
-    <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
-    <link rel="stylesheet"
-          th:href="@{/libs/flatpickr/flatpickr.min.css}"/>
+    <title>Group Users</title>
     <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
 
-    <script th:src="@{/libs/flatpickr/flatpickr.min.js}"></script>
-    <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
     <script th:src="@{/libs/autoComplete/autoComplete.min.js}"></script>
 </head>
 <body>
+
+<span layout:fragment="page-title">User Table for <span th:text="${group}"></span></span>
+
 <div layout:fragment="content">
 
-    <div class="d-flex justify-content-center">
-        <h3>User Table for <span th:text="${group}"></span></h3>
-    </div>
-
-
-    <div class="row">
+    <div class="row row-cards">
         <div class="col-md-6">
-            <div class="card mb-1">
+            <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title">Options</h5>
+                    <h3 class="card-title">Options</h3>
                 </div>
                 <div class="card-body">
-                    <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" th:checked="${isFavorite}" id="favorite-btn">
-                        <label class="form-check-label" for="advanced-btn">Favorite</label>
-                    </div>
+                    <label class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch"
+                               th:checked="${isFavorite}" id="favorite-btn">
+                        <span class="form-check-label">Favorite</span>
+                    </label>
+                    <small class="form-hint">Pinned groups show up on the Groups page.</small>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 justify-content-end" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
 
-            <div class="card text-center mb-1">
+        <div class="col-md-6" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+            <div class="card">
                 <div class="card-header">
-                    <h5 class="card-title">Generate Group Report</h5>
+                    <h3 class="card-title">Generate Group Report</h3>
                 </div>
                 <div class="card-body">
                     <form th:action="@{/app/group/report}" method="post">
@@ -48,75 +43,79 @@
                         <input type="hidden" name="fromDate" id="fromDate">
                         <input type="hidden" name="toDate" id="toDate">
 
-                        <div class="input-group mb-3 justify-content-end">
+                        <div class="input-group">
+                            <span class="input-group-text">
+                                <i class="ti ti-calendar"></i>
+                            </span>
                             <input class="form-control" id="reportRange" type="text" placeholder="Report Range">
-                            <div class="input-group-append">
-                                <button type="submit" id="generateReportButton" class="btn btn-primary" disabled>Generate Report</button>
-                            </div>
+                            <button type="submit" id="generateReportButton" class="btn btn-primary" disabled>
+                                Generate Report
+                            </button>
                         </div>
+                        <small class="form-hint">Pick a date range to enable the report.</small>
                     </form>
                 </div>
             </div>
-
-
         </div>
     </div>
 
-    <div class="row">
-        <div class="col-md-12 d-flex justify-content-end">
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
-                <label class="form-check-label" for="advanced-btn">Advanced</label>
+    <div class="card mt-3">
+        <div class="card-header">
+            <h3 class="card-title">Members</h3>
+            <div class="card-actions">
+                <label class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                    <span class="form-check-label">Advanced</span>
+                </label>
             </div>
         </div>
-    </div>
-
-    <div class="row">
-        <div class="col-md-12">
+        <div class="card-body">
             <div id="user-table"></div>
         </div>
     </div>
 
-    <div class="row mt-4" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
-        <div class="col-md-6">
-            <div class="card">
-                <div class="card-header">
-                    <h4>Group Managers</h4>
-                </div>
-                <div class="card-body">
+    <div class="card mt-3" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+        <div class="card-header">
+            <h3 class="card-title">Group Managers</h3>
+        </div>
+        <div class="card-body">
 
-                    <div class="alert alert-warning" role="alert">
-                        <span>Add managers that will receive absent notifications and be able to see additional details of users in their group.</span>
+            <div class="alert alert-warning" role="alert">
+                <div class="d-flex">
+                    <div class="me-2">
+                        <i class="ti ti-alert-triangle"></i>
                     </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <input
-                                    id="search"
-                                    class="form-control"
-                                    type="text"
-                                    placeholder="Search..."
-                                    autocomplete="off"
-                            />
+                    <div>
+                        <h4 class="alert-title">Managers receive absent notifications</h4>
+                        <div class="text-secondary">
+                            Add managers that will receive absent notifications and be able to see
+                            additional details of users in their group.
                         </div>
                     </div>
-                    <div class="row">
-                        <div class="col-md-12">
-                            <ul id="selectedList" class="list-group">
-                                <!-- Selected items will appear here -->
-                            </ul>
-                        </div>
-                    </div>
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div class="text-end">
-                                <button type="button" class="btn btn-primary" id="updateManagers">Update</button>
-                            </div>
-                        </div>
-                    </div>
-
                 </div>
             </div>
+
+            <div class="mb-3">
+                <label class="form-label" for="search">Add a manager</label>
+                <input
+                        id="search"
+                        class="form-control"
+                        type="text"
+                        placeholder="Search..."
+                        autocomplete="off"
+                />
+            </div>
+
+            <ul id="selectedList" class="list-group list-group-flush mb-3">
+                <!-- Selected items will appear here -->
+            </ul>
+
+            <div class="btn-list justify-content-end">
+                <button type="button" class="btn btn-primary" id="updateManagers">
+                    <i class="ti ti-device-floppy me-1"></i>Update
+                </button>
+            </div>
+
         </div>
     </div>
 
@@ -124,6 +123,20 @@
     <script th:inline="javascript">
         const groupName = /*[[${group}]]*/ "test";
         const groupDn = /*[[${groupDn}]]*/ "test";
+
+        // Status colours come from Tabler's badge palette so the table matches the rest of the UI.
+        const STATUS_BADGES = {
+            IN: "bg-green-lt",
+            OUT: "bg-blue-lt",
+            AWAY: "bg-purple-lt",
+            NONE: "bg-secondary-lt"
+        };
+
+        function statusFormatter(cell) {
+            const value = cell.getValue();
+            const badge = STATUS_BADGES[value];
+            return badge ? `<span class="badge ${badge}">${value}</span>` : (value ?? "");
+        }
 
         const table = new Tabulator("#user-table", {
             ajaxURL: "/api/users/group/" + groupDn,
@@ -139,25 +152,16 @@
             columns: [
                 {title: "Name", field: "cn", minWidth: 100, resizable:true, headerFilter: "input"},
                 {title: "DN", field: "dn", minWidth: 150, visible: false, resizable:true, headerFilter: "input"},
-                {title: "Status", field: "status", formatter: function(cell){
-                        let value = cell.getValue();
-
-                        if(value === "IN"){
-                            cell.getElement().style.color = "green";
-                        }else if(value === "OUT"){
-                            cell.getElement().style.color = "blue";
-                        }else if(value === "AWAY"){
-                            cell.getElement().style.color = "purple";
-                        }else if(value === "NONE"){
-                            cell.getElement().style.color = "gray";
-                        }
-                        return value;
-                    }},
+                {title: "Status", field: "status", formatter: statusFormatter},
                 {title: "Checked In", field: "checkedInAt", visible: false, resizable:true},
                 {title: "Last Status Change", field: "lastStatusChangeAt", resizable:true},
                 {title: "Checked Out", field: "checkedOutAt", visible: false, resizable:true},
                 {title: "Notes", field: "notes", widthGrow: 3}
             ],
+        });
+
+        table.on("tableBuilt", function () {
+            table.element.classList.add("table-clickable");
         });
 
         table.on("rowClick", function(e, row){
@@ -311,40 +315,29 @@
             items.forEach(item => addItemToSelectedList(item));
         }
 
+        // Rendered as a Tabler list group row: label on the left, ghost icon button on the right.
         function addItemToSelectedList(item) {
             selectedItems.set(item.dn, item);
 
             const li = document.createElement("li");
             li.dataset.dn = item.dn;
-            li.classList.add("list-group-item");
+            li.className = "list-group-item d-flex align-items-center justify-content-between";
 
-            const table = document.createElement("table");
-            table.style.width = "100%";
-
-            const tbody = document.createElement("tbody");
-
-            const row = document.createElement("tr");
-            const cellDn = document.createElement("td");
-            const cellDelete = document.createElement("td");
-            cellDelete.classList.add("text-end");
-
-            cellDn.innerHTML = item.dn;
+            const label = document.createElement("span");
+            label.className = "text-truncate";
+            label.textContent = item.dn;
 
             const removeBtn = document.createElement("button");
-            removeBtn.textContent = "✖";
-            removeBtn.className = "btn btn-danger";
+            removeBtn.type = "button";
+            removeBtn.className = "btn btn-icon btn-ghost-danger";
+            removeBtn.title = "Remove";
+            removeBtn.innerHTML = '<i class="ti ti-x"></i>';
             removeBtn.onclick = () => {
                 selectedItems.delete(item.dn);
                 li.remove();
             };
 
-            cellDelete.append(removeBtn);
-
-            row.append(cellDn, cellDelete);
-            tbody.append(row);
-            table.appendChild(tbody);
-
-            li.append(table);
+            li.append(label, removeBtn);
             selectedListEl.appendChild(li);
         }
 

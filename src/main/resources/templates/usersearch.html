@@ -4,56 +4,62 @@
       layout:decorate="~{layout}">
 <head>
     <meta charset="UTF-8">
-    <title>Tabulator + Spring Boot</title>
-    <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
-    <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+    <title>User Search</title>
 </head>
 <body>
+
+<span layout:fragment="page-title">User Search</span>
+
 <div layout:fragment="content">
 
-    <div class="row">
-        <div class="col-md-11">
-            <div class="card">
-                <div class="card-body">
-                    <div class="d-flex justify-content-center">
-                        <div>
-                            <h3>User Search</h3>
-                        </div>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Find a user</h3>
+            <div class="card-actions">
+                <label class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                    <span class="form-check-label">Advanced</span>
+                </label>
+            </div>
+        </div>
+        <div class="card-body border-bottom py-3">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="input-group">
+                        <span class="input-group-text">
+                            <i class="ti ti-search"></i>
+                        </span>
+                        <input id="search-input" type="text" class="form-control" placeholder="Search name..."
+                               aria-label="Search name..." aria-describedby="search-btn">
+                        <button id="search-btn" class="btn btn-primary" type="button">Search</button>
                     </div>
-
-                    <div class="row">
-                        <div class="col-md-4">
-
-                            <div class="input-group mb-3">
-                                <input id="search-input" type="text" class="form-control" placeholder="Search name..."
-                                       aria-label="Search name..." aria-describedby="search-btn">
-                                <button id="search-btn" class="btn btn-primary" type="button">Search</button>
-                            </div>
-
-                        </div>
-                        <div class="col-md-8 d-flex justify-content-end">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
-                                <label class="form-check-label" for="advanced-btn">Advanced</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="row">
-                        <div class="col-md-12">
-                            <div id="user-table"></div>
-                        </div>
-                    </div>
+                    <small class="form-hint">Enter at least three characters.</small>
                 </div>
             </div>
         </div>
-
+        <div class="card-body">
+            <div id="user-table"></div>
+        </div>
     </div>
 
 
     <script th:inline="javascript">
 
         var searchTerm = "";
+
+        // Status colours come from Tabler's badge palette so the table matches the rest of the UI.
+        const STATUS_BADGES = {
+            IN: "bg-green-lt",
+            OUT: "bg-blue-lt",
+            AWAY: "bg-purple-lt",
+            NONE: "bg-secondary-lt"
+        };
+
+        function statusFormatter(cell) {
+            const value = cell.getValue();
+            const badge = STATUS_BADGES[value];
+            return badge ? `<span class="badge ${badge}">${value}</span>` : (value ?? "");
+        }
 
         const table = new Tabulator("#user-table", {
 
@@ -66,30 +72,20 @@
             paginationInitialPage: 1,
             layout: "fitDataStretch", //fit columns to width of table (optional)
             layoutColumnsOnNewData: true,
+            placeholder: "Search for a user by name",
             columns: [
                 {title: "Name", field: "cn", minWidth: 100, resizable: true},
                 {title: "DN", field: "dn", minWidth: 150, visible: false, resizable: true},
-                {
-                    title: "Status", field: "status", formatter: function (cell) {
-                        let value = cell.getValue();
-
-                        if (value === "IN") {
-                            cell.getElement().style.color = "green";
-                        } else if (value === "OUT") {
-                            cell.getElement().style.color = "blue";
-                        } else if (value === "AWAY") {
-                            cell.getElement().style.color = "purple";
-                        } else if (value === "NONE") {
-                            cell.getElement().style.color = "gray";
-                        }
-                        return value;
-                    }
-                },
+                {title: "Status", field: "status", formatter: statusFormatter},
                 {title: "Checked In", field: "checkedInAt", visible: false, resizable: true},
                 {title: "Last Status Change", field: "lastStatusChangeAt", resizable: true},
                 {title: "Checked Out", field: "checkedOutAt", visible: false, resizable: true},
                 {title: "Notes", field: "notes", widthGrow: 3}
             ],
+        });
+
+        table.on("tableBuilt", function () {
+            table.element.classList.add("table-clickable");
         });
 
         table.on("rowClick", function (e, row) {

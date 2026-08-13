@@ -4,21 +4,28 @@
       layout:decorate="~{layout}">
 <head>
     <meta charset="UTF-8">
-    <title>Tabulator + Spring Boot</title>
-    <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
-    <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+    <title>Unauthorized</title>
 </head>
 <body>
-<div layout:fragment="content">
 
+<span layout:fragment="page-title">Access denied</span>
+
+<div layout:fragment="content">
 
     <div class="card">
         <div class="card-body">
-
-            <div class="alert alert-danger" role="alert">
-                <span th:utext="#{error.unauthorized}"></span>
+            <div class="empty">
+                <div class="empty-icon text-danger">
+                    <i class="ti ti-lock fs-1"></i>
+                </div>
+                <p class="empty-title">Unauthorized</p>
+                <p class="empty-subtitle text-secondary" th:utext="#{error.unauthorized}"></p>
+                <div class="empty-action">
+                    <a th:href="@{/app}" class="btn btn-primary">
+                        <i class="ti ti-home me-1"></i>Take me home
+                    </a>
+                </div>
             </div>
-
         </div>
     </div>
 </div>

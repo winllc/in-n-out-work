@@ -4,22 +4,13 @@
       layout:decorate="~{layout}">
 <head>
     <meta charset="UTF-8">
-    <title>Tabulator + Spring Boot</title>
-    <link th:href="@{/libs/tabulator/tabulator.min.css}" rel="stylesheet">
-    <link rel="stylesheet"
-          th:href="@{/libs/flatpickr/flatpickr.min.css}"/>
-    <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
-
-    <script th:src="@{/libs/flatpickr/flatpickr.min.js}"></script>
-    <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
+    <title>Organization Details</title>
 </head>
 <body>
+
+<span layout:fragment="page-title">Organization Details for <span th:text="${orgName}"></span></span>
+
 <div layout:fragment="content">
-
-    <div class="d-flex justify-content-center">
-        <h3>Organization Details for <span th:text="${orgName}"></span></h3>
-    </div>
-
 
     <!--
     <div class="row">
@@ -49,17 +40,17 @@
     </div>
     -->
 
-    <div class="row">
-        <div class="col-md-12 d-flex justify-content-end">
-            <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
-                <label class="form-check-label" for="advanced-btn">Advanced</label>
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Members</h3>
+            <div class="card-actions">
+                <label class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                    <span class="form-check-label">Advanced</span>
+                </label>
             </div>
         </div>
-    </div>
-
-    <div class="row">
-        <div class="col-md-12">
+        <div class="card-body">
             <div id="user-table"></div>
         </div>
     </div>
@@ -114,6 +105,20 @@
         const groupName = /*[[${group}]]*/ "test";
         const orgName = /*[[${orgName}]]*/ "test";
 
+        // Status colours come from Tabler's badge palette so the table matches the rest of the UI.
+        const STATUS_BADGES = {
+            IN: "bg-green-lt",
+            OUT: "bg-blue-lt",
+            AWAY: "bg-purple-lt",
+            NONE: "bg-secondary-lt"
+        };
+
+        function statusFormatter(cell) {
+            const value = cell.getValue();
+            const badge = STATUS_BADGES[value];
+            return badge ? `<span class="badge ${badge}">${value}</span>` : (value ?? "");
+        }
+
         const table = new Tabulator("#user-table", {
             ajaxURL: "/api/orgnodes/users/" + orgName,
 
@@ -128,25 +133,16 @@
             columns: [
                 {title: "Name", field: "cn", minWidth: 100, resizable:true, headerFilter: "input"},
                 {title: "DN", field: "dn", minWidth: 150, visible: false, resizable:true, headerFilter: "input"},
-                {title: "Status", field: "status", formatter: function(cell){
-                        let value = cell.getValue();
-
-                        if(value === "IN"){
-                            cell.getElement().style.color = "green";
-                        }else if(value === "OUT"){
-                            cell.getElement().style.color = "blue";
-                        }else if(value === "AWAY"){
-                            cell.getElement().style.color = "purple";
-                        }else if(value === "NONE"){
-                            cell.getElement().style.color = "gray";
-                        }
-                        return value;
-                    }},
+                {title: "Status", field: "status", formatter: statusFormatter},
                 {title: "Checked In", field: "checkedInAt", visible: false, resizable:true},
                 {title: "Last Status Change", field: "lastStatusChangeAt", resizable:true},
                 {title: "Checked Out", field: "checkedOutAt", visible: false, resizable:true},
                 {title: "Notes", field: "notes", widthGrow: 3}
             ],
+        });
+
+        table.on("tableBuilt", function () {
+            table.element.classList.add("table-clickable");
         });
 
         table.on("rowClick", function(e, row){
