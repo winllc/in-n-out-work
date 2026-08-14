@@ -11,6 +11,7 @@ import java.util.Map;
 @Data
 @ConfigurationProperties(prefix = "application")
 public class ApplicationProperties {
+    private String organizationName = "TOP";
     private String timeZone = "ETC";
     private String userBaseDn;
     private String userLdapFilter = "(objectclass=*)";

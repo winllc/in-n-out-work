@@ -13,6 +13,11 @@ server:
 logging:
   level:
     root: info
+    # Application logging. INFO covers state changes: check-in/out records written,
+    # permission grants, report generation, org-chart rebuilds and scheduled-job
+    # summaries. Set to debug for per-query detail, timings and authorization
+    # decisions when diagnosing an issue.
+    com.winllc.innoutwork: info
 
 spring:
   datasource:

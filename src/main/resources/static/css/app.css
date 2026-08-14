@@ -213,14 +213,151 @@ body {
 }
 
 /* ---------------------------------------------------------------------- *
- * Org chart nodes (ApexTree renders raw HTML per node)
+ * Org chart nodes
+ *
+ * ApexTree renders each node's HTML inside an SVG foreignObject, so these are
+ * ordinary page styles. The node has a fixed size set in the chart options -
+ * everything here is built to fit without scrolling: one line per row, the
+ * long DN truncated rather than wrapped.
  * ---------------------------------------------------------------------- */
 .org-node {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+    height: 100%;
+    padding: 0.625rem 0.75rem;
+    overflow: hidden;
+    text-align: left;
     font-size: 0.75rem;
-    line-height: 1.35;
+    line-height: 1.3;
+    color: var(--tblr-body-color);
+    cursor: pointer;
 }
 
-.org-node .org-node-name {
+.org-node-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.org-node-name {
     font-weight: 600;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The full DN is reference detail, not the headline: one quiet, clipped line. */
+.org-node-fullname {
+    font-size: 0.6875rem;
+    color: var(--tblr-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: -0.25rem;
+}
+
+/* Present percentage, colour-coded so a row of nodes can be scanned at a glance. */
+.org-node-pct {
+    flex: none;
+    font-weight: 600;
+    font-size: 0.75rem;
+    padding: 0.0625rem 0.375rem;
+    border-radius: 999px;
+    background: var(--tblr-bg-surface-secondary);
+    color: var(--tblr-secondary);
+}
+
+.org-node-pct.is-good {
+    background: rgba(47, 179, 68, 0.14);
+    color: #1a7f2e;
+}
+
+.org-node-pct.is-warn {
+    background: rgba(245, 159, 0, 0.16);
+    color: #9a6700;
+}
+
+.org-node-pct.is-bad {
+    background: rgba(214, 57, 57, 0.14);
+    color: #b02a2a;
+}
+
+.org-node-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 0.25rem;
+}
+
+.org-node-stat-value {
+    font-size: 1.125rem;
+    font-weight: 600;
+    line-height: 1.1;
+}
+
+.org-node-stat-total {
     font-size: 0.8125rem;
+    color: var(--tblr-secondary);
+}
+
+.org-node-stat-label {
+    margin-left: auto;
+    font-size: 0.6875rem;
+    color: var(--tblr-secondary);
+}
+
+.org-node-bar {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--tblr-border-color);
+    overflow: hidden;
+}
+
+.org-node-bar > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background: var(--tblr-primary);
+}
+
+.org-node-bar.is-good > span { background: #2fb344; }
+.org-node-bar.is-warn > span { background: #f59f00; }
+.org-node-bar.is-bad > span  { background: #d63939; }
+
+/* Employee-type breakdown, capped so the row never wraps out of the node. */
+.org-node-chips {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    overflow: hidden;
+}
+
+.org-node-chip {
+    flex: none;
+    font-size: 0.6875rem;
+    padding: 0.0625rem 0.375rem;
+    border-radius: var(--tblr-border-radius);
+    background: var(--tblr-bg-surface-secondary);
+    color: var(--tblr-secondary);
+    white-space: nowrap;
+}
+
+.org-node-chip b {
+    color: var(--tblr-body-color);
+    font-weight: 600;
+}
+
+.org-node-footer {
+    margin-top: auto;
+    font-size: 0.6875rem;
+    color: var(--tblr-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.org-node-empty {
+    color: var(--tblr-secondary);
 }

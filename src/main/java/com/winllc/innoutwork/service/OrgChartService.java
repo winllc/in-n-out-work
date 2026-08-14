@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.service;
 
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.CheckInOutRecordGroup;
 import com.winllc.innoutwork.data.OrgNode;
@@ -12,6 +13,7 @@ import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -33,6 +35,10 @@ public class OrgChartService {
     @Autowired
     private ApplicationProperties props;
 
+    @Autowired
+    @Qualifier("ldapOrgLoadingCache")
+    private LoadingCache<String, OrgNode> orgNodeCache;
+
     /**
      * Builds the org-chart hierarchy and populates each node's employee-type statistics.
      * A failure loading stats for one node is logged and skipped so the rest of the tree
@@ -40,25 +46,39 @@ public class OrgChartService {
      *
      * @return the populated list of top-level org nodes (never {@code null})
      */
-    public List<OrgNode> loadStatistics(){
-        List<OrgNode> orgNodes = generateOrgChart();
+    public OrgNode loadStatistics(){
+        long start = System.currentTimeMillis();
 
-        for(OrgNode orgNode : orgNodes){
+        OrgNode orgNode = orgNodeCache.get(props.getOrganizationName());
+
+        log.debug("Loading org statistics for {} top-level org(s) under {}",
+                orgNode.getChildren().size(), props.getOrganizationName());
+
+        for(OrgNode node : orgNode.getChildren()){
             try {
-                loadOrgStats(orgNode);
+                loadOrgStats(node);
                 // Roll the per-node counts up through each subtree and derive the present %.
-                orgNode.rollupStats();
+                node.rollupStats();
             } catch (Exception e) {
                 log.error("Failed to load org stats for {}",
-                        orgNode != null ? orgNode.getFullName() : null, e);
+                        node != null ? node.getFullName() : null, e);
             }
         }
 
-        return orgNodes;
+        // Runs on every org-chart page load, so debug: the cost is only interesting
+        // when someone is investigating a slow page.
+        log.debug("Loaded org chart statistics for {} ({} nodes) in {}ms",
+                props.getOrganizationName(), orgNode.getTotalChildren(), System.currentTimeMillis() - start);
+
+        return orgNode;
     }
 
     private void loadOrgStats(OrgNode orgNode){
-        if(orgNode == null || StringUtils.isBlank(orgNode.getFullName())) return;
+        if(orgNode == null || StringUtils.isBlank(orgNode.getFullName())) {
+            // Nodes without a full name cannot be matched to records or directory entries.
+            log.debug("Skipping org node with no full name: {}", orgNode != null ? orgNode.getName() : null);
+            return;
+        }
 
         // Isolate each node so a single node's failure doesn't skip the rest of the subtree.
         try {
@@ -84,6 +104,9 @@ public class OrgChartService {
 
             orgNode.getData().setNodeMembersByEmployeeType(currentEntriesByEmployeeType);
             orgNode.getData().setTotalMembersByEmployeeType(totalEntriesByEmployeeType);
+
+            log.debug("Org {}: {} record(s) today, present {}, total {}", orgNode.getFullName(),
+                    currentRecords.size(), currentEntriesByEmployeeType, totalEntriesByEmployeeType);
         } catch (Exception e) {
             log.error("Failed to load stats for node {}", orgNode.getFullName(), e);
         }
@@ -95,110 +118,7 @@ public class OrgChartService {
         }
     }
 
-    public List<OrgNode> generateOrgChart(List<String> allSubOrgNames){
-        // Load parse rules once rather than re-querying for every org value.
-        List<OrgParseRuleRecord> parseRules = orgParseRuleRecordRepository.findAll();
 
-        List<OrgNode> list = allSubOrgNames.stream()
-                .filter(Objects::nonNull)
-                .filter(s -> !s.isEmpty())
-                .map(s -> buildOrgNodeFromAttribute(s, parseRules))
-                .filter(Objects::nonNull) // a parse rule whose regex doesn't match returns null
-                .toList();
 
-        return mergeOrgNodes(list);
-    }
 
-    public List<OrgNode> generateOrgChart(){
-
-        if(StringUtils.isEmpty(props.getDutySubOrgGroupsBaseDn())){
-            return new ArrayList<>();
-        }
-
-        List<String> orgs = ldapService.getAllUniqueValuesForAttributes(props.getUserLdapDutySubOrganizationAttribute());
-
-        return generateOrgChart(orgs);
-    }
-
-    public List<OrgNode> mergeOrgNodes(List<OrgNode> orgNodes){
-        // Group roots by fullName, merging each subsequent same-root tree into the first.
-        Map<String, OrgNode> byRoot = new LinkedHashMap<>();
-
-        for (OrgNode node : orgNodes) {
-            if (node == null) {
-                continue;
-            }
-            OrgNode root = byRoot.get(node.getFullName());
-            if (root == null) {
-                byRoot.put(node.getFullName(), node);
-            } else {
-                root.merge(node);
-            }
-        }
-
-        return new ArrayList<>(byRoot.values());
-    }
-
-    public OrgNode buildOrgNodeFromAttribute(String orgValue){
-        return buildOrgNodeFromAttribute(orgValue, orgParseRuleRecordRepository.findAll());
-    }
-
-    public OrgNode buildOrgNodeFromAttribute(String orgValue, List<OrgParseRuleRecord> parseRules){
-
-        Optional<OrgParseRuleRecord> parseRule = parseRules.stream()
-                .filter(rule -> orgValue.toLowerCase().startsWith(rule.getOrgName().toLowerCase()))
-                .findFirst();
-
-        if(parseRule.isPresent()){
-            OrgParseRuleRecord rule = parseRule.get();
-            return ruleOrgNodeParse(orgValue, rule.getOrgParseRegex());
-        }else{
-            return defaultOrgNodeParse(orgValue);
-        }
-
-    }
-
-    public OrgNode defaultOrgNodeParse(String orgValue){
-        String[] result = orgValue.split("(?<=\\D)(?=\\d)|(?<=\\d)(?=\\D)");
-
-        return buildOrgNodeFromFlatGroups(Arrays.asList(result));
-    }
-
-    public OrgNode ruleOrgNodeParse(String orgValue, String regex){
-        Pattern pattern = Pattern.compile(regex);
-        Matcher matcher = pattern.matcher(orgValue);
-
-        // Check if the regex matches the string
-        if (matcher.matches()) {
-            List<String> groups = new ArrayList<>();
-
-            // 2. Loop from 1 to the total group count
-            for (int i = 1; i <= matcher.groupCount(); i++) {
-                groups.add(matcher.group(i));
-            }
-
-           return buildOrgNodeFromFlatGroups(groups);
-
-        }
-        return null;
-    }
-
-    private OrgNode buildOrgNodeFromFlatGroups(List<String> groups){
-        if(!groups.isEmpty()){
-            OrgNode orgNode = new OrgNode(groups.getFirst());
-
-            if(groups.size() > 1){
-                for (int i = 1; i < groups.size(); i++) {
-                    OrgNode childOrgNode = new OrgNode(groups.get(i));
-                    // fullName is assigned below by buildFullName(); the parent pointer is
-                    // @JsonIgnore and only (re)set during merge, so it's left null here.
-                    orgNode.addChildToLowest(childOrgNode);
-                }
-            }
-
-            orgNode.buildFullName("");
-            return orgNode;
-        }
-        return null;
-    }
 }

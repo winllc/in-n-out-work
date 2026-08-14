@@ -3,8 +3,11 @@ package com.winllc.innoutwork.config;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.data.LdapGroup;
+import com.winllc.innoutwork.data.LdapOrg;
 import com.winllc.innoutwork.data.LdapUser;
+import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.service.loader.LdapGroupLoader;
+import com.winllc.innoutwork.service.loader.LdapOrgLoader;
 import com.winllc.innoutwork.service.loader.LdapTotalCountLoader;
 import com.winllc.innoutwork.service.loader.LdapUserLoader;
 import org.springframework.context.annotation.Bean;
@@ -46,6 +49,16 @@ public class CacheConfig {
     @Bean("ldapCountLoadingCache")
     public LoadingCache<String, Long> ldapCountLoadingCache(ApplicationProperties properties,
                                                                  LdapTotalCountLoader loader) {
+        return Caffeine.newBuilder()
+                .maximumSize(5000)
+                .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))
+                .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationExpirationMinutes()))  // default expiration
+                .build(loader);
+    }
+
+    @Bean("ldapOrgLoadingCache")
+    public LoadingCache<String, OrgNode> ldapOrgLoadingCache(ApplicationProperties properties,
+                                                               LdapOrgLoader loader) {
         return Caffeine.newBuilder()
                 .maximumSize(5000)
                 .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))

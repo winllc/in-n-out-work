@@ -64,7 +64,8 @@ public class SendAbsentNotificationsCron {
     @Scheduled(fixedDelayString = "#{@sendAbsentNotificationCronProperties.fixedRate}",
             initialDelayString = "#{@sendAbsentNotificationCronProperties.initialDelay}")
     public void sendNotifications() {
-        log.info("Starting SendAbsentNotificationsCron");
+        // The end-of-run summary below is the line worth keeping at info.
+        log.debug("Starting SendAbsentNotificationsCron");
 
         AtomicInteger notificationsSent = new AtomicInteger();
         int page = 0;

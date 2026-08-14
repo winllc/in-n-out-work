@@ -1,6 +1,8 @@
 package com.winllc.innoutwork.config;
 
 import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -22,6 +24,8 @@ import java.util.TimeZone;
 @ConfigurationPropertiesScan
 public class InOutWorkApplication {
 
+    private static final Logger log = LoggerFactory.getLogger(InOutWorkApplication.class);
+
     @Value("${application.timezone:UTC}")
     private String applicationTimeZone;
 
@@ -31,6 +35,12 @@ public class InOutWorkApplication {
 
     @PostConstruct
     public void postConstruct(){
-        TimeZone.setDefault(TimeZone.getTimeZone(applicationTimeZone));
+        TimeZone configured = TimeZone.getTimeZone(applicationTimeZone);
+        TimeZone.setDefault(configured);
+
+        // Every timestamp the app writes and every "today" it computes depends on this,
+        // and an unrecognised zone id silently becomes GMT - so state what took effect.
+        log.info("Default time zone set to {} (from application.timezone={})",
+                configured.getID(), applicationTimeZone);
     }
 }

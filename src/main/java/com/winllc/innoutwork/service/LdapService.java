@@ -154,7 +154,12 @@ public class LdapService {
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
         controls.setReturningAttributes(new String[0]); // don’t fetch attributes, just DNs
 
+        long start = System.currentTimeMillis();
         List<?> results = ldapTemplate.search(baseDn, filter, controls, (Object ctx) -> null);
+
+        log.debug("Counted {} entries under {} matching {} in {}ms",
+                results.size(), baseDn, filter, System.currentTimeMillis() - start);
+
         return results.size();
     }
 
@@ -210,6 +215,8 @@ public class LdapService {
     }
 
     public List<String> getAllUniqueValuesForAttributes(String attribute) {
+        long start = System.currentTimeMillis();
+
         List<String> allValues = ldapTemplate.search(
                 properties.getUserBaseDn(),
                 "(&(objectClass=*)(" + attribute + "=*))",
@@ -222,7 +229,15 @@ public class LdapService {
                     }
                 }
         );
-        return new ArrayList<>(new HashSet<>(allValues));
+
+        List<String> unique = new ArrayList<>(new HashSet<>(allValues));
+
+        // A full-subtree scan of every user entry: the slowest query the app makes, and
+        // the input to the whole org chart.
+        log.debug("Read attribute {} from {} entries, {} distinct value(s), in {}ms",
+                attribute, allValues.size(), unique.size(), System.currentTimeMillis() - start);
+
+        return unique;
     }
 
     public List<String> getGroupMembers(LdapDn dn) {
@@ -253,6 +268,10 @@ public class LdapService {
         } catch (Exception e) {
             log.error("Failed to get members for group: {}", dn.toString(), e);
         }
+
+        // An empty membership is a legitimate result and also the usual cause of an
+        // empty user table, so make the two distinguishable from the log.
+        log.debug("Group {} has {} member(s)", dn, members.size());
 
         return members.stream()
                 .map(LdapDn::toString)
@@ -390,6 +409,9 @@ public class LdapService {
                 log.error("Failed to search groups under {}", topProp.getGroupsBaseDn(), e);
             }
         }
+
+        // Drives both the "Member Of" list and the permission checks.
+        log.debug("User {} is a member of {} group(s)", userDn, groups.size());
 
         return groups;
     }

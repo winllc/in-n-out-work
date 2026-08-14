@@ -6,6 +6,8 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -19,6 +21,8 @@ import java.util.Optional;
 
 @Service
 public class CheckInOutService {
+
+    private static final Logger log = LoggerFactory.getLogger(CheckInOutService.class);
 
     private final CheckInOutRecordRepository checkinInOutRecordRepository;
     private final UserRecordRepository userRecordRepository;
@@ -44,16 +48,28 @@ public class CheckInOutService {
                     .findByTimestampBetweenAndDnIgnoreCaseOrderByTimestampDesc(beginning, ending, record.getDn());
 
             if(existingRecords.isEmpty()){
+                // The day's first unlock is the user arriving, so it is recorded as a check-in.
+                // Worth logging because the stored action differs from what was sent.
+                log.debug("First activity of the day for {}; promoting UNLOCK to CHECK_IN", record.getDn());
                 record.setAction(CheckInOutEnum.CHECK_IN);
+            } else {
+                log.debug("Unlock for {} follows {} earlier record(s) today; left as UNLOCK",
+                        record.getDn(), existingRecords.size());
             }
         }
 
         if(record.getAction() == CheckInOutEnum.CHECK_IN){
             Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(record.getDn());
+            if (recordOptional.isEmpty()) {
+                // No stored record means no rolling average to maintain for this user.
+                log.debug("No user record for {}; skipping average login update", record.getDn());
+            }
             recordOptional.ifPresent(userRecord -> {
 
                 LocalTime averageLogin = calculateAverageLogin(record.getDn());
                 if (averageLogin != null) {
+                    log.debug("Average login time for {} updated from {} to {}",
+                            record.getDn(), userRecord.getAverageLoginTime(), averageLogin);
                     userRecord.setAverageLoginTime(averageLogin);
 
                     userRecordRepository.save(userRecord);
@@ -61,7 +77,12 @@ public class CheckInOutService {
             });
         }
 
-        return checkinInOutRecordRepository.save(record);
+        CheckInOutRecord saved = checkinInOutRecordRepository.save(record);
+
+        // One line per status event across the whole workforce, so this stays at debug.
+        log.debug("Recorded {} for {} at {}", saved.getAction(), saved.getDn(), saved.getTimestamp());
+
+        return saved;
     }
 
     private LocalTime calculateAverageLogin(String dn){
@@ -74,6 +95,8 @@ public class CheckInOutService {
                 .filter(r -> r.getTimestamp() != null)
                 .map(CheckInOutRecord::getZonedDateTimestamp)
                 .toList();
+
+        log.debug("Averaging {} check-in(s) from the last 30 days for {}", timestamps.size(), dn);
 
         return calculateAverage(timestamps);
     }
