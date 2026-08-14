@@ -43,11 +43,7 @@ public class OrgNodeRestService {
     public OrgNode getHierarchy(Authentication authentication) {
         // loadStatistics() builds the tree AND populates each node's employee-type breakdowns;
         // generateOrgChart() alone returns structure only, leaving the data maps empty.
-        List<OrgNode> orgNodes = orgChartService.loadStatistics();
-
-        OrgNode top = new OrgNode("TOP");
-        top.setId("TOP");
-        top.setChildren(orgNodes);
+        OrgNode top = orgChartService.loadStatistics();
 
         top.rollupStats();
 

@@ -39,7 +39,7 @@ public class CheckInOutRestService {
     public CheckInOutRecord checkIn(Authentication auth,
                         @PathVariable String action,
                         @RequestBody CheckInOut checkInOut) {
-        log.info("Status change {} request received: {}, for user: {}", action, checkInOut, auth != null ? auth.getName() : "NONE");
+        log.debug("Status change {} request received: {}, for user: {}", action, checkInOut, auth != null ? auth.getName() : "NONE");
 
         if(StringUtils.isEmpty(action)) {
             throw new RuntimeException("action is empty");

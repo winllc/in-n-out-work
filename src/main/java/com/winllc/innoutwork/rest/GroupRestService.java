@@ -67,7 +67,7 @@ public class GroupRestService {
         //return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
         userRecordService.updateGroupFavorite(authentication, groupFavorite);
 
-        log.info("Group favorite: {}", groupFavorite);
+        log.debug("Group favorite: {}", groupFavorite);
     }
 
     @GetMapping("/managers/{groupName}")

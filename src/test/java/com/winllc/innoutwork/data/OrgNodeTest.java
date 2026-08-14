@@ -9,6 +9,20 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OrgNodeTest {
 
+    /**
+     * A node is identified by its name until buildFullName() walks the tree, so nodes that
+     * never get a path - the synthetic org-chart root - still carry an id.
+     */
+    @Test
+    void constructorSeedsIdAndDataWithTheName() {
+        OrgNode node = new OrgNode("TOP");
+
+        assertEquals("TOP", node.getId());
+        assertEquals("TOP", node.getName());
+        assertEquals("TOP", node.getData().getName());
+        assertNull(node.getFullName());
+    }
+
     @Test
     void buildFullNameConcatenatesThePathAndSetsId() {
         OrgNode root = new OrgNode("RYS");

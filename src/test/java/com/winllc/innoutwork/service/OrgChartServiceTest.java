@@ -1,191 +1,214 @@
 package com.winllc.innoutwork.service;
 
+import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.OrgNode;
-import com.winllc.innoutwork.model.OrgParseRuleRecord;
-import com.winllc.innoutwork.repository.OrgParseRuleRecordRepository;
+import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
+import java.time.ZonedDateTime;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
 
+/**
+ * Since the refactor the service no longer builds the org chart - that lives in
+ * {@link com.winllc.innoutwork.service.loader.LdapOrgLoader} behind a loading cache.
+ * What is left here is decorating the cached tree with check-in statistics.
+ */
 @ExtendWith(MockitoExtension.class)
 class OrgChartServiceTest {
 
-    @Mock
-    private OrgParseRuleRecordRepository orgParseRuleRecordRepository;
+    private static final String ORGANIZATION = "TOP";
+    private static final String USER_BASE_DN = "ou=users,dc=example,dc=com";
+    private static final String ORG_ATTRIBUTE = "dutySubOrganization";
+    private static final String TYPE_ATTRIBUTE = "employeeType";
 
-    @InjectMocks
+    @Mock
+    private CheckInOutRecordRepository checkInOutRecordRepository;
+
+    @Mock
+    private LdapService ldapService;
+
+    @Mock
+    private LoadingCache<String, OrgNode> orgNodeCache;
+
+    private ApplicationProperties props;
     private OrgChartService service;
 
-    /**
-     * The default parse splits on every letter/digit boundary, so "RYS34B" becomes the
-     * chain RYS -> 34 -> B, with each node's fullName being the concatenation of the path.
-     */
-    @Test
-    void defaultOrgNodeParseSplitsOnLetterDigitBoundaries() {
-        OrgNode node = service.defaultOrgNodeParse("RYS34B");
+    @BeforeEach
+    void setUp() {
+        props = new ApplicationProperties();
+        props.setOrganizationName(ORGANIZATION);
+        props.setUserBaseDn(USER_BASE_DN);
+        props.setUserLdapDutySubOrganizationAttribute(ORG_ATTRIBUTE);
+        props.setUserLdapEmployeeTypeAttribute(TYPE_ATTRIBUTE);
 
-        assertEquals("RYS", node.getName());
-        assertEquals("RYS", node.getFullName());
-        // RYS + 34 + B
-        assertEquals(3, node.getTotalChildren());
-
-        OrgNode mid = node.getChildren().get(0);
-        assertEquals("34", mid.getName());
-        assertEquals("RYS34", mid.getFullName());
-
-        OrgNode leaf = mid.getChildren().get(0);
-        assertEquals("B", leaf.getName());
-        assertEquals("RYS34B", leaf.getFullName());
-        assertTrue(leaf.getChildren().isEmpty());
+        service = new OrgChartService();
+        ReflectionTestUtils.setField(service, "checkInOutRecordRepository", checkInOutRecordRepository);
+        ReflectionTestUtils.setField(service, "ldapService", ldapService);
+        ReflectionTestUtils.setField(service, "orgNodeCache", orgNodeCache);
+        ReflectionTestUtils.setField(service, "props", props);
     }
 
     @Test
-    void ruleOrgNodeParseUsesRegexCaptureGroups() {
-        OrgNode ruleNode = service.ruleOrgNodeParse("abc445de", "([a-zA-Z]+\\d)(\\d+)([a-zA-Z]+)$");
+    void loadStatisticsFetchesTheTreeForTheConfiguredOrganization() {
+        OrgNode top = new OrgNode(ORGANIZATION);
+        when(orgNodeCache.get(ORGANIZATION)).thenReturn(top);
 
-        assertNotNull(ruleNode);
-        assertEquals("abc4", ruleNode.getName());
+        assertSame(top, service.loadStatistics(), "the cached tree is returned as-is");
 
-        OrgNode mid = ruleNode.getChildren().get(0);
-        assertEquals("45", mid.getName());
-        assertEquals("abc445", mid.getFullName());
-
-        OrgNode leaf = mid.getChildren().get(0);
-        assertEquals("de", leaf.getName());
-        assertEquals("abc445de", leaf.getFullName());
-    }
-
-    @Test
-    void ruleOrgNodeParseReturnsNullWhenRegexDoesNotMatch() {
-        assertNull(service.ruleOrgNodeParse("nomatch", "^(\\d+)$"));
+        verify(orgNodeCache).get(ORGANIZATION);
     }
 
     /**
-     * Merging trees that share a root collapses the common prefix and keeps the differing
-     * leaves as siblings, rather than duplicating the shared ancestors.
+     * A user counts as present when their first record of the day is a check-in and their
+     * last one is not a check-out; the totals come from the directory.
      */
     @Test
-    void mergeCollapsesSharedAncestorsAndKeepsDistinctLeaves() {
-        OrgNode node = service.defaultOrgNodeParse("RYS34B");
-        OrgNode node2 = service.defaultOrgNodeParse("RYS34C");
-        OrgNode node3 = service.defaultOrgNodeParse("RYS35A");
+    void loadStatisticsCountsCheckedInUsersPerEmployeeType() {
+        OrgNode top = treeWith(child("RYS"));
+        when(orgNodeCache.get(ORGANIZATION)).thenReturn(top);
 
-        node.merge(node2);
-        // RYS + 34 + B + C
-        assertEquals(4, node.getTotalChildren());
+        when(checkInOutRecordRepository
+                .findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(eq("RYS"), any(), any()))
+                .thenReturn(List.of(
+                        // present: checked in and never checked out
+                        record("cn=alice", "CIV", CheckInOutEnum.CHECK_IN, 8),
+                        // absent: checked in earlier, then out again
+                        record("cn=bob", "MIL", CheckInOutEnum.CHECK_IN, 7),
+                        record("cn=bob", "MIL", CheckInOutEnum.CHECK_OUT, 9)));
 
-        node.merge(node3);
-        // RYS + 34 + B + C + 35 + A
-        assertEquals(6, node.getTotalChildren());
+        when(ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(
+                USER_BASE_DN, ORG_ATTRIBUTE, "RYS", TYPE_ATTRIBUTE))
+                .thenReturn(Map.of("CIV", 4, "MIL", 2));
 
-        // "34" and "35" are siblings under the single shared "RYS" root.
-        assertEquals("RYS", node.getFullName());
-        assertEquals(List.of("RYS34", "RYS35"), childFullNames(node));
+        OrgNode rys = service.loadStatistics().getChildren().get(0);
 
-        // "B" and "C" are siblings under the shared "RYS34".
-        OrgNode thirtyFour = node.getChildren().get(0);
-        assertEquals(List.of("RYS34B", "RYS34C"), childFullNames(thirtyFour));
-    }
-
-    @Test
-    void mergeIgnoresNodeWithDifferentRoot() {
-        OrgNode node = service.defaultOrgNodeParse("RYS34B");
-        int before = node.getTotalChildren();
-
-        node.merge(service.defaultOrgNodeParse("ZZZ11A"));
-
-        assertEquals(before, node.getTotalChildren(), "a differently-rooted tree must not be merged in");
-    }
-
-    @Test
-    void mergeIgnoresNull() {
-        OrgNode node = service.defaultOrgNodeParse("RYS34B");
-        int before = node.getTotalChildren();
-
-        node.merge(null);
-
-        assertEquals(before, node.getTotalChildren());
+        assertEquals(Map.of("CIV", 1), rys.getData().getNodeMembersByEmployeeType());
+        assertEquals(Map.of("CIV", 4, "MIL", 2), rys.getData().getTotalMembersByEmployeeType());
     }
 
     /**
-     * Values sharing a root end up under one node; unrelated values become separate roots.
+     * Stats are loaded for the whole subtree, then rolled up, so a parent reflects its
+     * descendants without the REST layer doing a second pass.
      */
     @Test
-    void generateOrgChartGroupsValuesByRoot() {
-        when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
+    void loadStatisticsLoadsAndRollsUpNestedChildren() {
+        OrgNode rys = child("RYS");
+        OrgNode rys34 = new OrgNode("34");
+        rys.getChildren().add(rys34);
+        rys.buildFullName("");
+        OrgNode top = treeWith(rys);
 
-        List<OrgNode> chart = service.generateOrgChart(
-                List.of("RYS34B", "RYS34C", "RYS35A", "abc445de"));
+        when(orgNodeCache.get(ORGANIZATION)).thenReturn(top);
 
-        assertEquals(2, chart.size());
+        stubStats("RYS", record("cn=alice", "CIV", CheckInOutEnum.CHECK_IN, 8), Map.of("CIV", 2));
+        stubStats("RYS34", record("cn=bob", "MIL", CheckInOutEnum.CHECK_IN, 8), Map.of("MIL", 3));
 
-        OrgNode rys = findRoot(chart, "RYS");
-        assertEquals(6, rys.getTotalChildren());
+        service.loadStatistics();
 
-        OrgNode abc = findRoot(chart, "abc");
-        // abc + 445 + de
-        assertEquals(3, abc.getTotalChildren());
-    }
-
-    @Test
-    void generateOrgChartAppliesMatchingParseRule() {
-        when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of(
-                OrgParseRuleRecord.builder()
-                        .orgName("abc")
-                        .orgParseRegex("([a-zA-Z]+\\d)(\\d+)([a-zA-Z]+)$")
-                        .build()));
-
-        List<OrgNode> chart = service.generateOrgChart(List.of("abc445de"));
-
-        assertEquals(1, chart.size());
-        // The rule splits as abc4/45/de rather than the default abc/445/de.
-        assertEquals("abc4", chart.get(0).getName());
-    }
-
-    @Test
-    void generateOrgChartSkipsNullAndEmptyValues() {
-        when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
-
-        List<OrgNode> chart = service.generateOrgChart(
-                java.util.Arrays.asList("RYS34B", null, ""));
-
-        assertEquals(1, chart.size());
-        assertEquals("RYS", chart.get(0).getName());
+        // The child was visited recursively...
+        assertEquals(Map.of("MIL", 1), rys34.getData().getNodeMembersByEmployeeType());
+        // ...and its counts rolled into the parent's full-tree view.
+        assertEquals(Map.of("CIV", 1, "MIL", 1), rys.getData().getFullTreeNodeMembersByEmployeeType());
+        assertEquals(Map.of("CIV", 2, "MIL", 3), rys.getData().getFullTreeTotalMembersByEmployeeType());
+        // 2 present of 5 total across the subtree.
+        assertEquals(40.0, rys.getData().getFullTreePresentPercentage(), 0.0001);
     }
 
     /**
-     * A parse rule whose regex fails to match yields no node at all, and must not blow up
-     * the rest of the chart.
+     * One failing branch must not cost the rest of the chart.
      */
     @Test
-    void generateOrgChartDropsValuesWhoseRuleDoesNotMatch() {
-        when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of(
-                OrgParseRuleRecord.builder()
-                        .orgName("abc")
-                        .orgParseRegex("^(\\d+)$")
-                        .build()));
+    void loadStatisticsKeepsGoingWhenOneChildFails() {
+        OrgNode broken = child("BAD");
+        OrgNode healthy = child("RYS");
+        OrgNode top = treeWith(broken, healthy);
 
-        List<OrgNode> chart = service.generateOrgChart(List.of("abc445de", "RYS34B"));
+        when(orgNodeCache.get(ORGANIZATION)).thenReturn(top);
 
-        assertEquals(1, chart.size());
-        assertEquals("RYS", chart.get(0).getName());
+        when(checkInOutRecordRepository
+                .findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(eq("BAD"), any(), any()))
+                .thenThrow(new RuntimeException("database unavailable"));
+        stubStats("RYS", record("cn=alice", "CIV", CheckInOutEnum.CHECK_IN, 8), Map.of("CIV", 4));
+
+        assertDoesNotThrow(() -> service.loadStatistics());
+
+        assertTrue(broken.getData().getNodeMembersByEmployeeType().isEmpty());
+        assertEquals(Map.of("CIV", 1), healthy.getData().getNodeMembersByEmployeeType());
     }
 
-    private static List<String> childFullNames(OrgNode node) {
-        return node.getChildren().stream().map(OrgNode::getFullName).toList();
+    /**
+     * fullName is what identifies an org in both the records table and the directory, so a
+     * node without one is skipped rather than queried with a blank key.
+     */
+    @Test
+    void loadStatisticsSkipsNodesWithoutAFullName() {
+        OrgNode top = treeWith(new OrgNode("no-full-name"));
+        when(orgNodeCache.get(ORGANIZATION)).thenReturn(top);
+
+        service.loadStatistics();
+
+        verifyNoInteractions(checkInOutRecordRepository, ldapService);
     }
 
-    private static OrgNode findRoot(List<OrgNode> nodes, String fullName) {
-        return nodes.stream()
-                .filter(n -> fullName.equals(n.getFullName()))
-                .findFirst()
-                .orElseThrow(() -> new AssertionError("no root named " + fullName + " in " + nodes));
+    /**
+     * The synthetic root carries no fullName of its own; only its children map to real orgs.
+     */
+    @Test
+    void loadStatisticsDoesNotQueryStatsForTheSyntheticRoot() {
+        OrgNode top = treeWith();
+        when(orgNodeCache.get(ORGANIZATION)).thenReturn(top);
+
+        assertSame(top, service.loadStatistics());
+
+        verifyNoInteractions(checkInOutRecordRepository, ldapService);
+    }
+
+    /* ------------------------------------------------------------------ *
+     * helpers
+     * ------------------------------------------------------------------ */
+
+    /** Mirrors the loader: a synthetic root with no fullName, holding fully named children. */
+    private static OrgNode treeWith(OrgNode... children) {
+        OrgNode top = new OrgNode(ORGANIZATION);
+        top.getChildren().addAll(List.of(children));
+        return top;
+    }
+
+    private static OrgNode child(String name) {
+        OrgNode node = new OrgNode(name);
+        node.buildFullName("");
+        return node;
+    }
+
+    private static CheckInOutRecord record(String dn, String employeeType, CheckInOutEnum action, int hour) {
+        return CheckInOutRecord.builder()
+                .dn(dn)
+                .employeeType(employeeType)
+                .action(action)
+                .timestamp(ZonedDateTime.now().withHour(hour).withMinute(0))
+                .build();
+    }
+
+    private void stubStats(String fullName, CheckInOutRecord record, Map<String, Integer> totals) {
+        when(checkInOutRecordRepository
+                .findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(eq(fullName), any(), any()))
+                .thenReturn(List.of(record));
+        when(ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(
+                USER_BASE_DN, ORG_ATTRIBUTE, fullName, TYPE_ATTRIBUTE))
+                .thenReturn(totals);
     }
 }

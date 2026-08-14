@@ -97,7 +97,7 @@ public class SettingsRestService {
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public void deleteEvent(Authentication authentication, @PathVariable String eventId){
 
-        log.info("deleteEvent called by %s with data: %s".formatted(authentication.getName(), eventId));
+        log.debug("deleteEvent called by {} with data: {}", authentication.getName(), eventId);
 
         globalCalendarRecordRepository.deleteById(Long.parseLong(eventId));
     }

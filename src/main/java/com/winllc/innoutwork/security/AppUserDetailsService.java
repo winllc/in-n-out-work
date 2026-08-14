@@ -41,7 +41,8 @@ public class AppUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(@NonNull String username) throws UsernameNotFoundException {
         LdapDn dn = LdapDn.builder().dn(username).build();
 
-        log.info("Looking up user: {}", dn);
+        // Runs on every authentication.
+        log.debug("Looking up user: {}", dn);
 
         LdapUser ldapUser = userCache.get(username);
 

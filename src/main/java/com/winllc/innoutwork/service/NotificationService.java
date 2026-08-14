@@ -100,10 +100,10 @@ public class NotificationService {
                     if(managerUser.getEmail() != null) {
                         sendNotification(notificationRecord, managerUser.getEmail());
                     }else{
-                        log.error("Manager does not have an email address: " + managerDn);
+                        log.error("Manager does not have an email address: {}", managerDn);
                     }
                 }else{
-                    log.error("Manager not found in LDAP: " + managerDn);
+                    log.error("Manager not found in LDAP: {}", managerDn);
                 }
             }
 
@@ -114,6 +114,9 @@ public class NotificationService {
         if(ValueValidatorUtil.isValidEmail(email)) {
             try {
                 String notificationUrl = properties.getApplicationBaseUrl() + "/app/notifications/id/" + notification.getId();
+
+                log.debug("Sending {} notification {} about {} to {}", notification.getType(),
+                        notification.getId(), notification.getAboutUserDn(), email);
 
                 Map<String, Object> templateModel = new HashMap<>();
                 templateModel.put("for", LdapDn.builder().dn(notification.getForUserDn()).build().getCn());
@@ -135,12 +138,13 @@ public class NotificationService {
                 helper.setText(htmlBody, true);
 
                 mailSender.send(message);
-                log.info("Notification sent to user: " + email);
+                log.info("Notification {} about {} sent to {}",
+                        notification.getId(), notification.getAboutUserDn(), email);
             }catch (Exception e) {
-                log.error("Failed to send notification to " + email, e);
+                log.error("Failed to send notification to {}", email, e);
             }
         }else{
-            log.error("Invalid email address: " + email);
+            log.error("Invalid email address: {}", email);
         }
     }
 

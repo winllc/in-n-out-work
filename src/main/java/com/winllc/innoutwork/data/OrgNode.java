@@ -24,6 +24,7 @@ public class OrgNode {
     private List<String> memberDns = new ArrayList<>();
 
     public OrgNode(String name){
+        this.id = name;
         this.name = name;
         this.data = new OrgNodeData();
         this.data.setName(name);
