@@ -3,7 +3,6 @@ package com.winllc.innoutwork.data;
 import com.winllc.innoutwork.model.UserRecord;
 import lombok.*;
 
-import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 
 @Data

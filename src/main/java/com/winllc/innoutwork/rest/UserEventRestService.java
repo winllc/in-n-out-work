@@ -4,7 +4,6 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.CalendarEvent;
 import com.winllc.innoutwork.data.LdapDn;
-import com.winllc.innoutwork.data.SystemDateTimeForm;
 import com.winllc.innoutwork.data.UserEventData;
 import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.model.CheckInOutRecord;
@@ -17,13 +16,15 @@ import com.winllc.innoutwork.service.ReportService;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 

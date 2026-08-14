@@ -1,13 +1,14 @@
 package com.winllc.innoutwork.model;
 
 import com.winllc.innoutwork.constant.UserRoleEnum;
-import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapUser;
 import jakarta.persistence.*;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalTime;
-import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;

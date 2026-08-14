@@ -2,7 +2,6 @@ package com.winllc.innoutwork.data.charts;
 
 import lombok.Data;
 
-import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
 

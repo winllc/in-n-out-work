@@ -2,7 +2,6 @@ package com.winllc.innoutwork.data.reports;
 
 import com.winllc.innoutwork.data.LdapGroup;
 import lombok.Getter;
-import lombok.Setter;
 
 import java.time.LocalDate;
 import java.util.ArrayList;

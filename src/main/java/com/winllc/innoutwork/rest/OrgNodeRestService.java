@@ -3,21 +3,20 @@ package com.winllc.innoutwork.rest;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.data.UserStatus;
-import com.winllc.innoutwork.model.NotificationRecord;
-import com.winllc.innoutwork.repository.NotificationRepository;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.OrgChartService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ldap.filter.AndFilter;
 import org.springframework.ldap.filter.EqualsFilter;
 import org.springframework.ldap.filter.Filter;
-import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,14 +29,18 @@ public class OrgNodeRestService {
 
     private static final Logger log = LoggerFactory.getLogger(OrgNodeRestService.class);
 
-    @Autowired
-    private OrgChartService orgChartService;
-    @Autowired
-    private ApplicationProperties props;
-    @Autowired
-    private LdapService ldapService;
-    @Autowired
-    private UserService userService;
+    private final OrgChartService orgChartService;
+    private final ApplicationProperties props;
+    private final LdapService ldapService;
+    private final UserService userService;
+
+    public OrgNodeRestService(OrgChartService orgChartService, ApplicationProperties props,
+                              LdapService ldapService, UserService userService) {
+        this.orgChartService = orgChartService;
+        this.props = props;
+        this.ldapService = ldapService;
+        this.userService = userService;
+    }
 
     @GetMapping("/hierarchy")
     public OrgNode getHierarchy(Authentication authentication) {

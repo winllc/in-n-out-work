@@ -2,19 +2,15 @@ package com.winllc.innoutwork.security;
 
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
-import com.winllc.innoutwork.model.GroupRecord;
-import com.winllc.innoutwork.repository.GroupRecordRepository;
 import com.winllc.innoutwork.service.GroupService;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.PermissionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Optional;
 
 @Service
 public class PermissionEvaluator {
@@ -22,15 +18,13 @@ public class PermissionEvaluator {
     private static final Logger log = LoggerFactory.getLogger(PermissionEvaluator.class);
 
     private final PermissionService permissionService;
-    @Autowired
-    private GroupRecordRepository groupRecordRepository;
-    @Autowired
-    private LdapService ldapService;
-    @Autowired
-    private GroupService groupService;
+    private final LdapService ldapService;
+    private final GroupService groupService;
 
-    public PermissionEvaluator(PermissionService permissionService) {
+    public PermissionEvaluator(PermissionService permissionService, LdapService ldapService, GroupService groupService) {
         this.permissionService = permissionService;
+        this.ldapService = ldapService;
+        this.groupService = groupService;
     }
 
 

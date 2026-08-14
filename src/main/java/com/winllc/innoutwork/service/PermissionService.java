@@ -6,10 +6,8 @@ import com.winllc.innoutwork.model.PermissionRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.PermissionRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
-import com.winllc.innoutwork.rest.UserRestService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;

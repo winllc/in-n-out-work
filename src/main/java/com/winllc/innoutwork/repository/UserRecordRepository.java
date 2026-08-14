@@ -1,6 +1,5 @@
 package com.winllc.innoutwork.repository;
 
-import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;

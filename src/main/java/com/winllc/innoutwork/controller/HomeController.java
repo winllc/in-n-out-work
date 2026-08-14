@@ -3,23 +3,24 @@ package com.winllc.innoutwork.controller;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.config.TopLevelGroupProperties;
 import com.winllc.innoutwork.constant.UserRoleEnum;
-import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
-import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.CacheService;
-import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.PermissionService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Controller
