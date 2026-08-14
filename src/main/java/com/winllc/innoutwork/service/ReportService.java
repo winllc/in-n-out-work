@@ -5,8 +5,8 @@ import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.reports.DayReport;
-import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.data.reports.GroupReport;
+import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.data.reports.UserReport;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
@@ -14,7 +14,6 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;

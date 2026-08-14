@@ -5,20 +5,16 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.CheckInOutRecordGroup;
 import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.model.CheckInOutRecord;
-import com.winllc.innoutwork.model.OrgParseRuleRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
-import com.winllc.innoutwork.repository.OrgParseRuleRecordRepository;
 import com.winllc.innoutwork.util.DateTimeUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
-import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -26,18 +22,18 @@ public class OrgChartService {
 
     private static final Logger log = LoggerFactory.getLogger(OrgChartService.class);
 
-    @Autowired
-    private OrgParseRuleRecordRepository orgParseRuleRecordRepository;
-    @Autowired
-    private CheckInOutRecordRepository checkInOutRecordRepository;
-    @Autowired
-    private LdapService ldapService;
-    @Autowired
-    private ApplicationProperties props;
+    private final CheckInOutRecordRepository checkInOutRecordRepository;
+    private final LdapService ldapService;
+    private final ApplicationProperties props;
 
-    @Autowired
-    @Qualifier("ldapOrgLoadingCache")
-    private LoadingCache<String, OrgNode> orgNodeCache;
+    private final LoadingCache<String, OrgNode> orgNodeCache;
+
+    public OrgChartService(CheckInOutRecordRepository checkInOutRecordRepository, LdapService ldapService, ApplicationProperties props, @Qualifier("ldapOrgLoadingCache") LoadingCache<String, OrgNode> orgNodeCache) {
+        this.checkInOutRecordRepository = checkInOutRecordRepository;
+        this.ldapService = ldapService;
+        this.props = props;
+        this.orgNodeCache = orgNodeCache;
+    }
 
     /**
      * Builds the org-chart hierarchy and populates each node's employee-type statistics.

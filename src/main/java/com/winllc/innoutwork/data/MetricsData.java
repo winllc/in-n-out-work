@@ -1,7 +1,6 @@
 package com.winllc.innoutwork.data;
 
 import com.winllc.innoutwork.constant.CheckInOutEnum;
-import com.winllc.innoutwork.model.CheckInOutRecord;
 import lombok.Data;
 import lombok.ToString;
 

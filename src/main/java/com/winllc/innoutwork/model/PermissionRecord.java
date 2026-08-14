@@ -1,6 +1,5 @@
 package com.winllc.innoutwork.model;
 
-import com.winllc.innoutwork.constant.UserRoleEnum;
 import jakarta.persistence.*;
 import lombok.*;
 

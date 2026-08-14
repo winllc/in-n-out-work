@@ -1,6 +1,5 @@
 package com.winllc.innoutwork.model;
 
-import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.NotificationTypeEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;

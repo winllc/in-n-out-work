@@ -3,7 +3,6 @@ package com.winllc.innoutwork.config;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.data.LdapGroup;
-import com.winllc.innoutwork.data.LdapOrg;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.service.loader.LdapGroupLoader;

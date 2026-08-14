@@ -11,12 +11,10 @@ import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
-import com.winllc.innoutwork.rest.UserRestService;
 import io.micrometer.common.util.StringUtils;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
@@ -30,7 +28,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.stream.Stream;
 
 @Service
 public class UserService {
@@ -41,18 +38,19 @@ public class UserService {
     private final LdapService ldapService;
     private final ApplicationProperties properties;
     private final LoadingCache<String, LdapUser> userCache;
-    @Autowired
-    private CheckInOutService checkInOutService;
-    @Autowired
-    private UserEventRecordRepository  userEventRecordRepository;
+    private final CheckInOutService checkInOutService;
+    private final UserEventRecordRepository  userEventRecordRepository;
 
     public UserService(UserRecordRepository userRecordRepository,
                        LdapService ldapService, ApplicationProperties properties,
-                       @Qualifier("ldapUserLoadingCache") LoadingCache<String, LdapUser> userCache) {
+                       @Qualifier("ldapUserLoadingCache") LoadingCache<String, LdapUser> userCache,
+                       CheckInOutService checkInOutService, UserEventRecordRepository userEventRecordRepository) {
         this.userRecordRepository = userRecordRepository;
         this.ldapService = ldapService;
         this.properties = properties;
         this.userCache = userCache;
+        this.checkInOutService = checkInOutService;
+        this.userEventRecordRepository = userEventRecordRepository;
     }
 
     public Optional<UserRecord> getUserByDn(LdapDn dn) {

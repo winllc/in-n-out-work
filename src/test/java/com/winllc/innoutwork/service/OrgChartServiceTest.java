@@ -55,11 +55,7 @@ class OrgChartServiceTest {
         props.setUserLdapDutySubOrganizationAttribute(ORG_ATTRIBUTE);
         props.setUserLdapEmployeeTypeAttribute(TYPE_ATTRIBUTE);
 
-        service = new OrgChartService();
-        ReflectionTestUtils.setField(service, "checkInOutRecordRepository", checkInOutRecordRepository);
-        ReflectionTestUtils.setField(service, "ldapService", ldapService);
-        ReflectionTestUtils.setField(service, "orgNodeCache", orgNodeCache);
-        ReflectionTestUtils.setField(service, "props", props);
+        service = new OrgChartService(checkInOutRecordRepository, ldapService, props, orgNodeCache);
     }
 
     @Test

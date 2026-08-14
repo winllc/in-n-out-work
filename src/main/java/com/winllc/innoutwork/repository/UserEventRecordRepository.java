@@ -1,7 +1,6 @@
 package com.winllc.innoutwork.repository;
 
 import com.winllc.innoutwork.constant.UserStatusEnum;
-import com.winllc.innoutwork.model.PermissionRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.repository.PagingAndSortingRepository;
