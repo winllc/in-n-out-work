@@ -95,14 +95,10 @@ public class OrgChartService {
                             group -> group.getEmployeeType() != null ? group.getEmployeeType() : "N/A",
                             Collectors.summingInt(group -> 1)));
 
-            Map<String, Integer> totalEntriesByEmployeeType = ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(props.getUserBaseDn(), props.getUserLdapDutySubOrganizationAttribute(),
-                        orgNode.getFullName(), props.getUserLdapEmployeeTypeAttribute());
-
             orgNode.getData().setNodeMembersByEmployeeType(currentEntriesByEmployeeType);
-            orgNode.getData().setTotalMembersByEmployeeType(totalEntriesByEmployeeType);
 
-            log.debug("Org {}: {} record(s) today, present {}, total {}", orgNode.getFullName(),
-                    currentRecords.size(), currentEntriesByEmployeeType, totalEntriesByEmployeeType);
+            log.debug("Org {}: {} record(s) today, present {}", orgNode.getFullName(),
+                    currentRecords.size(), currentEntriesByEmployeeType);
         } catch (Exception e) {
             log.error("Failed to load stats for node {}", orgNode.getFullName(), e);
         }
@@ -113,8 +109,5 @@ public class OrgChartService {
             }
         }
     }
-
-
-
 
 }

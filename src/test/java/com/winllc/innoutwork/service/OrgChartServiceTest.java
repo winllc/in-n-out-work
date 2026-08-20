@@ -58,6 +58,23 @@ class OrgChartServiceTest {
         service = new OrgChartService(checkInOutRecordRepository, ldapService, props, orgNodeCache);
     }
 
+    /**
+     * Directory totals are loaded once by LdapOrgLoader when the tree is cached; the
+     * per-page-load path must not go back to LDAP.
+     */
+    @Test
+    void loadStatisticsNeverQueriesTheDirectory() {
+        OrgNode top = treeWith(child("RYS"));
+        when(orgNodeCache.get(ORGANIZATION)).thenReturn(top);
+        when(checkInOutRecordRepository
+                .findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(eq("RYS"), any(), any()))
+                .thenReturn(List.of());
+
+        service.loadStatistics();
+
+        verifyNoInteractions(ldapService);
+    }
+
     @Test
     void loadStatisticsFetchesTheTreeForTheConfiguredOrganization() {
         OrgNode top = new OrgNode(ORGANIZATION);
@@ -86,14 +103,9 @@ class OrgChartServiceTest {
                         record("cn=bob", "MIL", CheckInOutEnum.CHECK_IN, 7),
                         record("cn=bob", "MIL", CheckInOutEnum.CHECK_OUT, 9)));
 
-        when(ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(
-                USER_BASE_DN, ORG_ATTRIBUTE, "RYS", TYPE_ATTRIBUTE))
-                .thenReturn(Map.of("CIV", 4, "MIL", 2));
-
         OrgNode rys = service.loadStatistics().getChildren().get(0);
 
         assertEquals(Map.of("CIV", 1), rys.getData().getNodeMembersByEmployeeType());
-        assertEquals(Map.of("CIV", 4, "MIL", 2), rys.getData().getTotalMembersByEmployeeType());
     }
 
     /**
@@ -110,8 +122,12 @@ class OrgChartServiceTest {
 
         when(orgNodeCache.get(ORGANIZATION)).thenReturn(top);
 
-        stubStats("RYS", record("cn=alice", "CIV", CheckInOutEnum.CHECK_IN, 8), Map.of("CIV", 2));
-        stubStats("RYS34", record("cn=bob", "MIL", CheckInOutEnum.CHECK_IN, 8), Map.of("MIL", 3));
+        // Directory totals are already on the cached tree; the service adds presence.
+        rys.getData().setTotalMembersByEmployeeType(new java.util.HashMap<>(Map.of("CIV", 2)));
+        rys34.getData().setTotalMembersByEmployeeType(new java.util.HashMap<>(Map.of("MIL", 3)));
+
+        stubPresence("RYS", record("cn=alice", "CIV", CheckInOutEnum.CHECK_IN, 8));
+        stubPresence("RYS34", record("cn=bob", "MIL", CheckInOutEnum.CHECK_IN, 8));
 
         service.loadStatistics();
 
@@ -138,7 +154,7 @@ class OrgChartServiceTest {
         when(checkInOutRecordRepository
                 .findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(eq("BAD"), any(), any()))
                 .thenThrow(new RuntimeException("database unavailable"));
-        stubStats("RYS", record("cn=alice", "CIV", CheckInOutEnum.CHECK_IN, 8), Map.of("CIV", 4));
+        stubPresence("RYS", record("cn=alice", "CIV", CheckInOutEnum.CHECK_IN, 8));
 
         assertDoesNotThrow(() -> service.loadStatistics());
 
@@ -199,12 +215,9 @@ class OrgChartServiceTest {
                 .build();
     }
 
-    private void stubStats(String fullName, CheckInOutRecord record, Map<String, Integer> totals) {
+    private void stubPresence(String fullName, CheckInOutRecord record) {
         when(checkInOutRecordRepository
                 .findByDutySubOrganizationEqualsIgnoreCaseAndTimestampBetween(eq(fullName), any(), any()))
                 .thenReturn(List.of(record));
-        when(ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(
-                USER_BASE_DN, ORG_ATTRIBUTE, fullName, TYPE_ATTRIBUTE))
-                .thenReturn(totals);
     }
 }

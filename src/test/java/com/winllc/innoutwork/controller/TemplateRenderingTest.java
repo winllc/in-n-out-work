@@ -8,6 +8,7 @@ import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.MetricsData;
 import com.winllc.innoutwork.data.NotificationResponse;
+import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.data.UserStatus;
@@ -102,7 +103,28 @@ class TemplateRenderingTest {
 
     @Test
     void orgChartRenders() throws Exception {
+        assertRenders("/render/orgchart", "org-tree");
+        // the recursive fragment must reach the nested org, and the modal still exists
+        assertRenders("/render/orgchart", "RYS34");
         assertRenders("/render/orgchart", "modal-user-table");
+    }
+
+    /** Rows are searched by full name, so that is what the filter attribute carries. */
+    @Test
+    void orgChartRowsCarryTheFullNameForSearching() throws Exception {
+        assertRenders("/render/orgchart", "data-group-name=\"rys34\"");
+    }
+
+    /**
+     * An org with people assigned but nobody present has an empty "present" map; summing
+     * that in the template yielded a literal "null" next to the percentage.
+     */
+    @Test
+    void orgChartRendersZeroRatherThanNullWhenNobodyIsPresent() throws Exception {
+        assertRenders("/render/orgchart", "0 / 12");
+        mockMvc.perform(get("/render/orgchart").with(x509(mockCert(USER_DN))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("null /"))));
     }
 
     @Test
@@ -280,7 +302,38 @@ class TemplateRenderingTest {
 
         @GetMapping("/render/orgchart")
         ModelAndView orgChart() {
-            return new ModelAndView("orgchart");
+            // Mirrors the cached tree: a synthetic root holding fully-named orgs, one of
+            // them nested and one with no members at all.
+            OrgNode top = new OrgNode("TOP");
+
+            OrgNode rys = orgNode("RYS", 34, 40, 85.0);
+            OrgNode nested = orgNode("34", 12, 13, 92.3);
+            nested.buildFullName("RYS");
+            rys.getChildren().add(nested);
+
+            top.getChildren().add(rys);
+            top.getChildren().add(orgNode("OPS", 4, 17, 23.5));
+            top.getChildren().add(orgNode("VACANT", 0, 0, 0.0));
+            // Nobody present but people assigned: the case that used to render "null / 12".
+            top.getChildren().add(orgNode("EMPTYSHIFT", 0, 12, 0.0));
+
+            ModelAndView mav = new ModelAndView("orgchart");
+            mav.addObject("orgTree", top);
+            mav.addObject("initiallyExpanded", false);
+            return mav;
+        }
+
+        private static OrgNode orgNode(String name, int present, int total, double pct) {
+            OrgNode node = new OrgNode(name);
+            node.buildFullName("");
+            if (present > 0) {
+                node.getData().setFullTreeNodeMembersByEmployeeType(new java.util.HashMap<>(Map.of("FT", present)));
+            }
+            if (total > 0) {
+                node.getData().setFullTreeTotalMembersByEmployeeType(new java.util.HashMap<>(Map.of("FT", total)));
+            }
+            node.getData().setFullTreePresentPercentage(pct);
+            return node;
         }
 
         @GetMapping("/render/usersearch")

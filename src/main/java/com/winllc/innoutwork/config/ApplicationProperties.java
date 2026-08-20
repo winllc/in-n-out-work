@@ -42,4 +42,5 @@ public class ApplicationProperties {
     private String applicationBaseUrl = "https://localhost";
     private boolean groupsInitiallyExpanded = false;
     private String dutySubOrgGroupsBaseDn = "";
+    private String dutySubOrgFilter = "";
 }

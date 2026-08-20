@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--
+  One node of the org hierarchy, mirroring fragments/grouptree so both pages share the
+  same markup contract (.group-node / .group-item / .group-children) and therefore the
+  same CSS and the same HierarchyTree behaviour.
+
+  Where a group row carries a member count and a favourite star, an org row carries its
+  attendance: present / total across the subtree, plus a colour-banded percentage.
+
+  node     - the OrgNode to render
+  depth    - nesting level, drives the indent
+  expanded - whether branches start open
+-->
+<div th:fragment="orgNode(node, depth, expanded)" class="group-node"
+     th:with="hasChildren=${!#lists.isEmpty(node.children)},
+              present=${node.data.fullTreePresentCount},
+              total=${node.data.fullTreeTotalCount},
+              pct=${node.data.fullTreePresentPercentage != null ? node.data.fullTreePresentPercentage : 0},
+              nodeId='o-' + ${#strings.replace(#strings.replace(node.fullName, '=', ''), ',', '-')}">
+
+    <div class="list-group-item group-item d-flex align-items-center gap-2"
+         th:attr="data-group-name=${#strings.toLowerCase(node.fullName)},data-orgname=${node.fullName}"
+         th:style="'padding-left: ' + ${0.75 + depth * 1.25} + 'rem'">
+
+        <button th:if="${hasChildren}" type="button"
+                class="btn btn-icon btn-sm btn-ghost-secondary group-toggle"
+                data-bs-toggle="collapse" th:attr="data-bs-target='#' + ${nodeId}"
+                th:classappend="${expanded} ? '' : 'collapsed'"
+                aria-label="Toggle sub-organizations">
+            <i class="ti ti-chevron-down"></i>
+        </button>
+        <span th:unless="${hasChildren}" class="group-toggle-spacer"></span>
+
+        <!-- Opens the member list for this org; handled by the page, not a navigation.
+             Styled as a plain row label to match the group hierarchy. -->
+        <span class="flex-fill text-truncate org-open" role="button" tabindex="0"
+              th:attr="data-orgname=${node.fullName}" th:title="${node.fullName}"
+              th:text="${node.fullName}"></span>
+
+        <span class="text-secondary org-ratio" th:if="${total > 0}"
+              th:text="${present} + ' / ' + ${total}"
+              th:title="${present} + ' of ' + ${total} + ' present, including sub-organizations'"></span>
+
+        <span class="badge" th:if="${total > 0}"
+              th:classappend="${pct >= 75} ? 'bg-green-lt' : (${pct >= 50} ? 'bg-yellow-lt' : 'bg-red-lt')"
+              th:text="${#numbers.formatDecimal(pct, 1, 0)} + '%'"></span>
+        <span class="badge bg-secondary-lt" th:if="${total <= 0}">No members</span>
+
+    </div>
+
+    <div th:if="${hasChildren}" class="collapse group-children" th:id="${nodeId}"
+         th:classappend="${expanded} ? 'show'">
+        <!-- th:each on a wrapper: on one element th:replace would run first and the
+             recursive call would receive an unbound `child`. -->
+        <th:block th:each="child : ${node.children}">
+            <div th:replace="~{fragments/orgtree :: orgNode(${child}, ${depth} + 1, ${expanded})}"></div>
+        </th:block>
+    </div>
+</div>
+
+</body>
+</html>
