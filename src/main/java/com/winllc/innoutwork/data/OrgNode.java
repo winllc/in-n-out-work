@@ -80,6 +80,7 @@ public class OrgNode {
     public void buildFullName(String name){
         this.fullName = name + this.name;
         this.data.setFullName(this.fullName);
+        this.data.setName(this.fullName);
         this.id = this.fullName;
         for(OrgNode child : children){
             child.buildFullName(fullName);

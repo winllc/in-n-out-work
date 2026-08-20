@@ -24,10 +24,16 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 @Service
 public class UserService {
@@ -283,5 +289,164 @@ public class UserService {
 
             return userRecord;
         }
+    }
+
+    /**
+     * Number of users held in memory per round trip. Each batch costs one select and one
+     * batched write, so this trades memory against query count; 500 keeps both small.
+     */
+    static final int SYNC_BATCH_SIZE = 500;
+
+    /**
+     * Refreshes the metadata columns on {@link UserRecord} from the directory.
+     *
+     * <p>Cost is bounded regardless of directory size: one LDAP search for the whole
+     * population, then per batch of {@value #SYNC_BATCH_SIZE} users one select by DN and
+     * one batched save of just the rows that actually changed. Comparing before writing is
+     * what keeps a steady-state run to zero writes - the common case, since directory
+     * metadata rarely moves.
+     *
+     * <p>Only directory-owned columns are touched. Notes, favourites, role, alternate
+     * managers and login times are set inside the app and are never overwritten here.
+     *
+     * @return counts describing what the run did
+     */
+    public DirectorySyncResult syncUserRecordsFromDirectory() {
+        long start = System.currentTimeMillis();
+
+        List<LdapUser> directoryUsers = ldapService.findAllUsers();
+        if (directoryUsers.isEmpty()) {
+            log.debug("Directory returned no users; nothing to refresh");
+            return DirectorySyncResult.EMPTY;
+        }
+
+        // One entry per DN: a duplicate would otherwise be inserted twice in the same batch.
+        Map<String, LdapUser> byDn = new LinkedHashMap<>();
+        int skipped = 0;
+        for (LdapUser user : directoryUsers) {
+            if (user == null || StringUtils.isBlank(user.getDn())) {
+                skipped++;
+                continue;
+            }
+            byDn.put(user.getDn().toLowerCase(), user);
+        }
+
+        int created = 0;
+        int updated = 0;
+        int unchanged = 0;
+
+        List<LdapUser> batch = new ArrayList<>(SYNC_BATCH_SIZE);
+        for (LdapUser user : byDn.values()) {
+            batch.add(user);
+
+            if (batch.size() == SYNC_BATCH_SIZE) {
+                int[] counts = syncBatch(batch);
+                created += counts[0];
+                updated += counts[1];
+                unchanged += counts[2];
+                batch.clear();
+            }
+        }
+        if (!batch.isEmpty()) {
+            int[] counts = syncBatch(batch);
+            created += counts[0];
+            updated += counts[1];
+            unchanged += counts[2];
+        }
+
+        DirectorySyncResult result =
+                new DirectorySyncResult(directoryUsers.size(), created, updated, unchanged, skipped);
+
+        if (result.written() > 0) {
+            log.info("Directory refresh: {} scanned, {} created, {} updated, {} unchanged, {} skipped in {}ms",
+                    result.scanned(), result.created(), result.updated(), result.unchanged(), result.skipped(),
+                    System.currentTimeMillis() - start);
+        } else {
+            log.debug("Directory refresh: {} scanned, no changes, in {}ms",
+                    result.scanned(), System.currentTimeMillis() - start);
+        }
+
+        return result;
+    }
+
+    /**
+     * Handles one batch: a single select for the DNs, then a single save of the subset
+     * that changed.
+     *
+     * @return {created, updated, unchanged}
+     */
+    private int[] syncBatch(List<LdapUser> batch) {
+        List<String> dns = batch.stream()
+                .map(u -> u.getDn().toLowerCase())
+                .toList();
+
+        Map<String, UserRecord> existing = new HashMap<>();
+        for (UserRecord record : userRecordRepository.findAllByLowercaseDnIn(dns)) {
+            existing.put(record.getDn().toLowerCase(), record);
+        }
+
+        List<UserRecord> toSave = new ArrayList<>();
+        int created = 0;
+        int updated = 0;
+        int unchanged = 0;
+
+        for (LdapUser user : batch) {
+            UserRecord record = existing.get(user.getDn().toLowerCase());
+
+            if (record == null) {
+                UserRecord fresh = UserRecord.builder()
+                        .dn(user.getDn())
+                        .userRole(UserRoleEnum.USER)
+                        .build();
+                applyDirectoryMetadata(user, fresh);
+                toSave.add(fresh);
+                created++;
+                log.debug("Directory refresh: creating record for {}", user.getDn());
+            } else if (applyDirectoryMetadata(user, record)) {
+                toSave.add(record);
+                updated++;
+            } else {
+                unchanged++;
+            }
+        }
+
+        if (!toSave.isEmpty()) {
+            userRecordRepository.saveAll(toSave);
+        }
+
+        return new int[]{created, updated, unchanged};
+    }
+
+    /**
+     * Copies the directory-owned metadata onto a record, reporting whether anything moved.
+     *
+     * <p>Blank incoming values are ignored rather than written: the attribute mappers log
+     * and skip on a mapping failure, which surfaces here as a null, and a transient failure
+     * must not blank a column that still holds good data. A value genuinely removed in the
+     * directory therefore needs clearing by hand.
+     *
+     * @return true when at least one column changed
+     */
+    static boolean applyDirectoryMetadata(LdapUser user, UserRecord record) {
+        boolean changed = false;
+
+        changed |= copyIfPresent(user.getOrganization(), record.getOrganization(), record::setOrganization);
+        changed |= copyIfPresent(user.getEmployeeType(), record.getEmployeeType(), record::setEmployeeType);
+        changed |= copyIfPresent(user.getLocation(), record.getLocation(), record::setLocation);
+        changed |= copyIfPresent(user.getBranch(), record.getBranch(), record::setBranch);
+        changed |= copyIfPresent(user.getDutySubOrganization(), record.getDutySubOrganization(),
+                record::setDutySubOrganization);
+        changed |= copyIfPresent(user.getPhoneNumber(), record.getPhoneNumber(), record::setPhoneNumber);
+        changed |= copyIfPresent(user.getEmail(), record.getEmail(), record::setEmail);
+
+        return changed;
+    }
+
+    private static boolean copyIfPresent(String incoming, String current, Consumer<String> setter) {
+        if (StringUtils.isBlank(incoming) || Objects.equals(incoming, current)) {
+            return false;
+        }
+        setter.accept(incoming);
+        return true;
     }
 }

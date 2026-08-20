@@ -76,74 +76,23 @@
 
 <script>
     (function () {
-        const tree = document.getElementById("group-tree");
-        const filterInput = document.getElementById("group-filter");
+        // Shared with the org chart; the extra predicate is this page's favourites switch.
         const favoritesOnly = document.getElementById("favorites-only");
-        const noMatches = document.getElementById("group-tree-empty");
 
-        const rootNodes = () => tree.querySelectorAll(":scope > .group-node");
+        const tree = HierarchyTree.init({
+            treeId: "group-tree",
+            filterId: "group-filter",
+            emptyId: "group-tree-empty",
+            expandAllId: "expand-all",
+            collapseAllId: "collapse-all",
+            rowFilterActive: () => favoritesOnly.checked,
+            rowFilter: row => row.dataset.favorite === "true"
+        });
 
-        /*
-         * A node stays visible when it matches, or when anything under it matches -
-         * so ancestors of a hit are never hidden. Returns whether this subtree matched.
-         */
-        function applyFilter(node, query, favoritesOnlyMode) {
-            const row = node.querySelector(":scope > .group-item");
-            const children = node.querySelector(":scope > .group-children");
-
-            let childMatched = false;
-            if (children) {
-                children.querySelectorAll(":scope > .group-node").forEach(child => {
-                    childMatched = applyFilter(child, query, favoritesOnlyMode) || childMatched;
-                });
-            }
-
-            const nameMatches = !query || row.dataset.groupName.includes(query);
-            const favoriteMatches = !favoritesOnlyMode || row.dataset.favorite === "true";
-            const selfMatched = nameMatches && favoriteMatches;
-
-            node.classList.toggle("d-none", !(selfMatched || childMatched));
-
-            // Reveal the path down to a match; restore normal behaviour once cleared.
-            if (children && (query || favoritesOnlyMode) && childMatched) {
-                children.classList.add("show");
-                setToggleState(row, true);
-            }
-
-            return selfMatched || childMatched;
-        }
-
-        function setToggleState(row, expanded) {
-            const toggle = row.querySelector(".group-toggle");
-            if (toggle) {
-                toggle.classList.toggle("collapsed", !expanded);
-            }
-        }
-
-        function refresh() {
-            const query = filterInput.value.trim().toLowerCase();
-            const favoritesOnlyMode = favoritesOnly.checked;
-
-            let anyVisible = false;
-            rootNodes().forEach(node => {
-                anyVisible = applyFilter(node, query, favoritesOnlyMode) || anyVisible;
-            });
-
-            noMatches.classList.toggle("d-none", anyVisible);
-        }
-
-        function setAll(expanded) {
-            tree.querySelectorAll(".group-children").forEach(el => el.classList.toggle("show", expanded));
-            tree.querySelectorAll(".group-item").forEach(row => setToggleState(row, expanded));
-        }
-
-        filterInput.addEventListener("input", refresh);
-        favoritesOnly.addEventListener("change", refresh);
-        document.getElementById("expand-all").addEventListener("click", () => setAll(true));
-        document.getElementById("collapse-all").addEventListener("click", () => setAll(false));
+        favoritesOnly.addEventListener("change", tree.refresh);
 
         // Pin/unpin without leaving the page.
-        tree.addEventListener("click", async (event) => {
+        tree.element.addEventListener("click", async (event) => {
             const button = event.target.closest(".favorite-toggle");
             if (!button) {
                 return;
@@ -172,7 +121,7 @@
                 {type: "success"});
 
             if (favoritesOnly.checked) {
-                refresh();
+                tree.refresh();
             }
         });
     })();

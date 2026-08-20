@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Organization Chart</title>
+    <script th:src="@{/libs/apextree/apextree.min.js}"></script>
+</head>
+<body>
+
+<span layout:fragment="page-title">Organization Chart</span>
+
+<div layout:fragment="content">
+
+    <div th:if="${message}" class="alert alert-success" role="alert">
+        <span th:text="${message}"></span>
+    </div>
+
+    <!-- Display error message if present -->
+    <div th:if="${error}" class="alert alert-danger" role="alert">
+        <span th:text="${error}"></span>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Hierarchy</h3>
+            <div class="card-actions text-secondary">
+                Click a node to view its members
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="svg-tree"></div>
+        </div>
+    </div>
+
+    <!-- Popup showing the orgdetails content (member list) for the clicked node -->
+    <div id="orgDetailsModal" class="modal modal-blur fade" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Organization Details for <span id="orgDetailsTitle"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex justify-content-end mb-2">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                            <span class="form-check-label">Advanced</span>
+                        </label>
+                    </div>
+                    <div id="modal-user-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script th:inline="javascript" type="module">
+        async function getServerSideTreeData() {
+            try {
+                // 1. Fetch flat data from your API (e.g., Spring Boot or Node.js)
+                const response = await fetch('/api/orgnodes/hierarchy', {
+                    headers: {
+                        'Accept': 'application/json',
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                // 2. Convert a flat list (id, name, parentId) into a hierarchical tree
+                return await response.json();
+            } catch (error) {
+                console.error("Failed to load tree data from server:", error);
+                // Shaped like a real node (contentKey below reads `data`) so the fallback
+                // renders as a node instead of blowing up the template.
+                return {
+                    id: "root",
+                    name: "Error Loading Data",
+                    data: {name: "Error Loading Data", fullName: ""},
+                    children: []
+                };
+            }
+        }
+
+
+        const depts = {
+            hq: {bg: '#F8FAFC', border: '#94A3B8', borderHover: '#64748B', accent: '#475569'},
+            finance: {bg: '#EFF6FF', border: '#93C5FD', borderHover: '#3B82F6', accent: '#2563EB'},
+            hr: {bg: '#FDF2F8', border: '#F9A8D4', borderHover: '#EC4899', accent: '#DB2777'},
+            marketing: {bg: '#FFF7ED', border: '#FDBA74', borderHover: '#F97316', accent: '#EA580C'},
+            product: {bg: '#F0FDF4', border: '#86EFAC', borderHover: '#22C55E', accent: '#16A34A'},
+            sales: {bg: '#EEF2FF', border: '#A5B4FC', borderHover: '#6366F1', accent: '#4F46E5'},
+        };
+
+        const makeOpts = (dept) => ({
+            nodeBGColor: depts[dept].bg,
+            nodeBGColorHover: depts[dept].bg,
+            borderColor: depts[dept].border,
+            borderColorHover: depts[dept].borderHover,
+        });
+
+
+
+        const data = await getServerSideTreeData();
+
+        // Human-friendly names for raw employee-type codes. Add/adjust to match your directory's
+        // values; any code not listed here is shown as-is.
+        const employeeTypeLabels = {
+            FT: 'Full-Time',
+            PT: 'Part-Time',
+            C: 'Contractor',
+            CON: 'Contractor',
+            TEMP: 'Temporary',
+            INTERN: 'Intern',
+            'N/A': 'Unspecified',
+        };
+        const typeLabel = (code) =>
+            employeeTypeLabels[code] ?? employeeTypeLabels[String(code).toUpperCase()] ?? code;
+
+        const escapeHtml = (value) => String(value ?? '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+        const sumMap = (m) => m
+            ? Object.values(m).reduce((sum, v) => sum + (Number(v) || 0), 0)
+            : 0;
+
+        // Green / amber / red banding, so a row of nodes can be read at a glance
+        // without stopping to compare numbers.
+        const tone = (pct) => pct >= 75 ? 'is-good' : pct >= 50 ? 'is-warn' : 'is-bad';
+
+        /*
+         * Employee-type breakdown as compact chips (largest first). The node is a fixed
+         * size, so only the first few fit - the rest collapse into a "+N" chip and the
+         * full breakdown stays available via the title attribute.
+         */
+        const typeChips = (m, max = 3) => {
+            const entries = Object.entries(m ?? {})
+                .filter(([, v]) => Number(v) > 0)
+                .sort((a, b) => b[1] - a[1]);
+
+            if (entries.length === 0) {
+                return '<span class="org-node-empty">No members</span>';
+            }
+
+            const shown = entries.slice(0, max)
+                .map(([k, v]) => `<span class="org-node-chip" title="${escapeHtml(typeLabel(k))}">${escapeHtml(typeLabel(k))} <b>${v}</b></span>`)
+                .join('');
+
+            const rest = entries.slice(max);
+            const restChip = rest.length
+                ? `<span class="org-node-chip" title="${escapeHtml(rest.map(([k, v]) => `${typeLabel(k)}: ${v}`).join(', '))}">+${rest.length}</span>`
+                : '';
+
+            return shown + restChip;
+        };
+
+        const options = {
+            //width: 700,
+            height: 700,
+            nodeWidth: 240,
+            nodeHeight: 132,
+            childrenSpacing: 90,
+            siblingSpacing: 40,
+            enableSearch: true,
+            /*
+             * Semantic zoom is off deliberately. ApexTree computes a level-of-detail tier
+             * (nodeWidth * containerWidth / viewBoxWidth) and passes it to nodeTemplate,
+             * but in this build the tier is fixed at the first render: after the initial
+             * full-tree layout it reports "dot", and neither the collapse reflow,
+             * refreshLodNow(), fitScreen() nor a wheel zoom re-renders the nodes at the
+             * corrected tier. Left enabled, every node stays an unreadable dot.
+             *
+             * Collapsing to INITIAL_DEPTH below already keeps the node count low, which is
+             * what the tiers were protecting against. nodeTemplate still honours the `lod`
+             * argument, so switching this back on is a one-line change if the library
+             * starts re-rendering on zoom.
+             */
+            semanticZoom: {
+                enabled: false,
+                compactBelow: 150,
+                dotBelow: 70,
+            },
+            enableToolbar: true,
+            enableBreadcrumb: true,
+            // Node clicks open the member list, so expanding is left to the +/- control.
+            expandCollapseOnNodeClick: false,
+            // Collapsed branches advertise how much is hidden underneath them.
+            collapseBadgeEnabled: true,
+            countBadgeEnabled: true,
+            countBadgeSource: 'descendants',
+            direction: 'top',
+            canvasStyle: 'border: 1px solid var(--tblr-border-color); border-radius: var(--tblr-border-radius); background: var(--tblr-bg-surface-secondary);',
+            nodeBGColor: '#ffffff',
+            nodeBGColorHover: '#f8fafc',
+            borderColor: '#dbe0e5',
+            borderColorHover: '#066fd1',
+            borderRadius: '8px',
+            contentKey: 'data',
+            /*
+             * One node = who they are, how many are in today, and the type mix.
+             *
+             * The four raw member maps are deliberately not all shown: the headline is
+             * present/total across the subtree (the number the page exists to answer),
+             * with this node's own count demoted to the footer and only when it differs
+             * from the subtree - otherwise every leaf would print the same figure twice.
+             *
+             * A node without a `data` payload must not throw: the template runs during
+             * tree.render(), so one bad node would abort the rest of this script -
+             * including the click handler that opens the member popup.
+             */
+            nodeTemplate: (rawContent, meta) => {
+                const content = rawContent ?? {};
+                const lod = (meta && meta.lod) || 'full';
+
+                const treePresent = sumMap(content.fullTreeNodeMembersByEmployeeType);
+                const treeTotal = sumMap(content.fullTreeTotalMembersByEmployeeType);
+                const nodePresent = sumMap(content.nodeMembersByEmployeeType);
+                const nodeTotal = sumMap(content.totalMembersByEmployeeType);
+
+                const pct = content.fullTreePresentPercentage != null
+                    ? content.fullTreePresentPercentage
+                    : (treeTotal > 0 ? (treePresent / treeTotal) * 100 : 0);
+                const band = treeTotal > 0 ? tone(pct) : '';
+
+                const name = escapeHtml(content.name);
+                const fullName = escapeHtml(content.fullName);
+
+                // Sub-orgs roll up, so only show "here" when it is actually a subset.
+                const hasOwnMembers = nodeTotal > 0 && nodeTotal !== treeTotal;
+
+                /*
+                 * Zoomed far out the text would be unreadable anyway, so skip building it:
+                 * a dot is one element instead of ~15, which is what keeps a few hundred
+                 * nodes cheap to lay out and repaint.
+                 */
+                if (lod === 'dot') {
+                    return `<div class="org-node org-node--dot ${band}" data-orgname="${fullName}" title="${name}">` +
+                        `<span>${name}</span></div>`;
+                }
+
+                if (lod === 'compact') {
+                    return `
+    <div class="org-node org-node--compact" data-orgname="${fullName}" title="${fullName}">
+      <div class="org-node-header">
+        <span class="org-node-name" title="${name}">${name}</span>
+        <span class="org-node-pct ${band}">${treeTotal > 0 ? pct.toFixed(0) + '%' : '&mdash;'}</span>
+      </div>
+      <div class="org-node-stat">
+        <span class="org-node-stat-value">${treePresent}</span>
+        <span class="org-node-stat-total">/ ${treeTotal}</span>
+      </div>
+      <div class="org-node-bar ${band}">
+        <span style="width:${treeTotal > 0 ? Math.min(100, Math.max(0, pct)).toFixed(1) : 0}%"></span>
+      </div>
+    </div>
+  `;
+                }
+
+                return `
+    <div class="org-node" data-orgname="${name}" title="Click to view members">
+      <div class="org-node-header">
+        <span class="org-node-name" title="${name}">${name}</span>
+        <span class="org-node-pct ${band}">${treeTotal > 0 ? pct.toFixed(0) + '%' : '&mdash;'}</span>
+      </div>
+
+
+      <div class="org-node-stat">
+        <span class="org-node-stat-value">${treePresent}</span>
+        <span class="org-node-stat-total">/ ${treeTotal}</span>
+        <span class="org-node-stat-label">present</span>
+      </div>
+      <div class="org-node-bar ${band}">
+        <span style="width:${treeTotal > 0 ? Math.min(100, Math.max(0, pct)).toFixed(1) : 0}%"></span>
+      </div>
+
+      <div class="org-node-chips">${typeChips(content.fullTreeTotalMembersByEmployeeType)}</div>
+
+      ${hasOwnMembers
+                    ? `<div class="org-node-footer">${nodePresent} of ${nodeTotal} in this org directly</div>`
+                    : ''}
+    </div>
+  `;
+            },
+
+        };
+
+        /*
+         * Levels shown on load. Everything deeper starts collapsed (with a badge showing
+         * how many nodes are hidden) so a directory with hundreds of orgs opens as a
+         * readable top-level view instead of a wall of cards.
+         */
+        const INITIAL_DEPTH = 1;
+
+        // Long enough for the collapse animation and viewBox refit to finish.
+        const LOD_SETTLE_MS = 400;
+
+        const tree = new ApexTree(document.getElementById('svg-tree'), options);
+        // Exposed for console debugging: tree.graph carries the expand/collapse and
+        // level-of-detail API (expandToDepth, collapseAll, computeLodTier, ...).
+        window.orgChart = tree;
+        try {
+            tree.render(data);
+
+            // The expand/collapse API lives on the inner graph, not on the ApexTree
+            // instance (which only exposes render/destroy).
+            if (tree.graph && typeof tree.graph.expandToDepth === 'function') {
+                tree.graph.expandToDepth(INITIAL_DEPTH);
+
+                /*
+                 * Collapsing shrinks the viewBox, which changes the semantic-zoom tier.
+                 * That reflow is animated, so the recompute has to wait for it to land -
+                 * calling refreshLodNow() straight away pins the tier computed against
+                 * the old, full-tree viewBox and every node stays a dot.
+                 */
+                if (typeof tree.graph.refreshLodNow === 'function') {
+                    setTimeout(() => tree.graph.refreshLodNow(), LOD_SETTLE_MS);
+                }
+            } else {
+                console.warn('ApexTree: expandToDepth unavailable; rendering the full tree');
+            }
+        } catch (error) {
+            // Keep going: the member popup wired up below is useful even if the
+            // chart itself could not be drawn.
+            console.error("Failed to render org chart:", error);
+        }
+
+        // ----- Org details popup (mirrors the orgdetails page content) -----
+
+        // Status colours come from Tabler's badge palette so the table matches the rest of the UI.
+        const STATUS_BADGES = {
+            IN: "bg-green-lt",
+            OUT: "bg-blue-lt",
+            AWAY: "bg-purple-lt",
+            NONE: "bg-secondary-lt"
+        };
+
+        const statusFormatter = (cell) => {
+            const value = cell.getValue();
+            const badge = STATUS_BADGES[value];
+            return badge ? `<span class="badge ${badge}">${value}</span>` : (value ?? "");
+        };
+
+        let orgDetailsTable = null;
+        const orgDetailsModalEl = document.getElementById('orgDetailsModal');
+
+        // Tabulator renders at zero width inside a hidden modal; redraw once it's visible.
+        orgDetailsModalEl.addEventListener('shown.bs.modal', () => {
+            if (orgDetailsTable) {
+                orgDetailsTable.redraw(true);
+            }
+        });
+
+        // Exposed on window because this is a module script; the delegated listener below calls it.
+        window.openOrgDetails = function (orgName) {
+            if (!orgName) {
+                return;
+            }
+            document.getElementById('orgDetailsTitle').textContent = orgName;
+
+            if (orgDetailsTable) {
+                orgDetailsTable.destroy();
+                orgDetailsTable = null;
+            }
+
+            orgDetailsTable = new Tabulator("#modal-user-table", {
+                ajaxURL: "/api/orgnodes/users/" + encodeURIComponent(orgName),
+                ajaxResponse: (url, params, response) =>
+                    Array.isArray(response) ? response : (response.data ?? []),
+                pagination: "local",
+                paginationSize: 10,
+                layout: "fitDataStretch",
+                layoutColumnsOnNewData: true,
+                columns: [
+                    {title: "Name", field: "cn", minWidth: 100, resizable: true, headerFilter: "input"},
+                    {title: "DN", field: "dn", minWidth: 150, visible: false, resizable: true, headerFilter: "input"},
+                    {title: "Status", field: "status", formatter: statusFormatter},
+                    {title: "Checked In", field: "checkedInAt", visible: false, resizable: true},
+                    {title: "Last Status Change", field: "lastStatusChangeAt", resizable: true},
+                    {title: "Checked Out", field: "checkedOutAt", visible: false, resizable: true},
+                    {title: "Notes", field: "notes", widthGrow: 3}
+                ],
+            });
+
+            orgDetailsTable.on("tableBuilt", function () {
+                orgDetailsTable.element.classList.add("table-clickable");
+            });
+
+            orgDetailsTable.on("rowClick", function (e, row) {
+                window.location.href = `/app/user/details/${row.getData().dn}`;
+            });
+
+            bootstrap.Modal.getOrCreateInstance(orgDetailsModalEl).show();
+        };
+
+        // Advanced toggle inside the modal (same behavior as the orgdetails page).
+        document.getElementById("advanced-btn").addEventListener("change", (event) => {
+            if (!orgDetailsTable) {
+                return;
+            }
+            if (event.target.checked) {
+                orgDetailsTable.showColumn("checkedInAt");
+                orgDetailsTable.showColumn("checkedOutAt");
+                orgDetailsTable.showColumn("dn");
+                orgDetailsTable.hideColumn("cn");
+            } else {
+                orgDetailsTable.hideColumn("checkedInAt");
+                orgDetailsTable.hideColumn("checkedOutAt");
+                orgDetailsTable.hideColumn("dn");
+                orgDetailsTable.showColumn("cn");
+            }
+            orgDetailsTable.redraw(true);
+        });
+
+        // Delegated click: each node div carries data-orgname (empty for the synthetic root).
+        document.addEventListener('click', (event) => {
+            const nodeEl = event.target.closest('.org-node[data-orgname]');
+            if (nodeEl && nodeEl.dataset.orgname) {
+                window.openOrgDetails(nodeEl.dataset.orgname);
+            }
+        });
+    </script>
+
+
+
+</div>
+</body>
+</html>

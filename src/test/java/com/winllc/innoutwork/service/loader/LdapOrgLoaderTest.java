@@ -6,9 +6,11 @@ import com.winllc.innoutwork.model.OrgParseRuleRecord;
 import com.winllc.innoutwork.repository.OrgParseRuleRecordRepository;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.OrgChartService;
+import org.springframework.ldap.filter.Filter;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -17,6 +19,10 @@ import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.notNull;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 /**
@@ -224,7 +230,7 @@ class LdapOrgLoaderTest {
 
     @Test
     void generateOrgChartReadsTheOrgValuesFromTheConfiguredAttribute() {
-        when(ldapService.getAllUniqueValuesForAttributes(ORG_ATTRIBUTE))
+        when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), any()))
                 .thenReturn(List.of("RYS34B", "RYS34C"));
         when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
 
@@ -235,16 +241,31 @@ class LdapOrgLoaderTest {
     }
 
     /**
-     * Without a duty sub-org base DN there is nothing to enumerate, so the directory is
-     * never queried.
+     * The optional duty sub-org filter narrows which entries contribute org values; when
+     * it is not configured the attribute search runs unfiltered.
      */
     @Test
-    void generateOrgChartReturnsEmptyWhenNoBaseDnIsConfigured() {
-        props.setDutySubOrgGroupsBaseDn("");
+    void generateOrgChartPassesNoExtraFilterWhenNoneIsConfigured() {
+        props.setDutySubOrgFilter("");
+        when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), isNull()))
+                .thenReturn(List.of("RYS34B"));
+        when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
 
-        assertTrue(loader.generateOrgChart().isEmpty());
+        assertEquals(1, loader.generateOrgChart().size());
+    }
 
-        verifyNoInteractions(ldapService);
+    @Test
+    void generateOrgChartAppliesTheConfiguredDutySubOrgFilter() {
+        props.setDutySubOrgFilter("(objectClass=inetOrgPerson)");
+        when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), notNull()))
+                .thenReturn(List.of("RYS34B"));
+        when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
+
+        assertEquals(1, loader.generateOrgChart().size());
+
+        ArgumentCaptor<Filter> filter = ArgumentCaptor.forClass(Filter.class);
+        verify(ldapService).getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), filter.capture());
+        assertEquals("(objectClass=inetOrgPerson)", filter.getValue().encode());
     }
 
     /* ------------------------------------------------------------------ *
@@ -257,7 +278,7 @@ class LdapOrgLoaderTest {
      */
     @Test
     void generateTopLevelOrgChartWrapsRootsUnderTheConfiguredOrganizationName() {
-        when(ldapService.getAllUniqueValuesForAttributes(ORG_ATTRIBUTE))
+        when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), any()))
                 .thenReturn(List.of("RYS34B", "abc445de"));
         when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
 
@@ -270,7 +291,7 @@ class LdapOrgLoaderTest {
 
     @Test
     void loadReturnsTheTopLevelChart() {
-        when(ldapService.getAllUniqueValuesForAttributes(ORG_ATTRIBUTE))
+        when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), any()))
                 .thenReturn(List.of("RYS34B"));
         when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
 
@@ -287,7 +308,7 @@ class LdapOrgLoaderTest {
     @Test
     void reloadFallsBackToThePreviousValueWhenTheRebuildFails() throws Exception {
         OrgNode previous = new OrgNode("TOP");
-        when(ldapService.getAllUniqueValuesForAttributes(ORG_ATTRIBUTE))
+        when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), any()))
                 .thenThrow(new RuntimeException("ldap down"));
 
         assertSame(previous, loader.reload("TOP", previous));
@@ -295,7 +316,7 @@ class LdapOrgLoaderTest {
 
     @Test
     void reloadReturnsTheRebuiltChartOnSuccess() throws Exception {
-        when(ldapService.getAllUniqueValuesForAttributes(ORG_ATTRIBUTE))
+        when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), any()))
                 .thenReturn(List.of("RYS34B"));
         when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
 

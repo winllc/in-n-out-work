@@ -17,6 +17,8 @@ import org.springframework.ldap.core.DirContextAdapter;
 import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.filter.AndFilter;
 import org.springframework.ldap.filter.EqualsFilter;
+import org.springframework.ldap.filter.Filter;
+import org.springframework.ldap.filter.PresentFilter;
 import org.springframework.ldap.query.LdapQuery;
 import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.ldap.query.SearchScope;
@@ -109,6 +111,36 @@ public class LdapService {
                 query,
                 new LdapUserContextMapper(properties)
         );
+    }
+
+    /**
+     * Every user entry under the configured base DN, in a single subtree search.
+     * <p>
+     * This is the bulk counterpart to {@link #lookupUser(LdapDn)}: the refresh job needs
+     * the whole population, and doing that one DN at a time is a round trip per user.
+     *
+     * @return all mapped users; empty when no base DN is configured
+     */
+    public List<LdapUser> findAllUsers() {
+        if (StringUtils.isBlank(properties.getUserBaseDn())) {
+            log.warn("No user base DN configured; cannot enumerate directory users");
+            return List.of();
+        }
+
+        long start = System.currentTimeMillis();
+
+        LdapQuery query = LdapQueryBuilder.query()
+                .base(properties.getUserBaseDn())
+                .searchScope(SearchScope.SUBTREE)
+                .filter(properties.getUserLdapFilter());
+
+        List<LdapUser> users = searchUsers(query);
+
+        log.debug("Enumerated {} user entries under {} (filter {}) in {}ms",
+                users.size(), properties.getUserBaseDn(), properties.getUserLdapFilter(),
+                System.currentTimeMillis() - start);
+
+        return users;
     }
 
     public Optional<LdapUser> lookupUser(LdapDn dn) {
@@ -217,12 +249,19 @@ public class LdapService {
         }
     }
 
-    public List<String> getAllUniqueValuesForAttributes(String attribute) {
+    public List<String> getAllUniqueValuesForAttributes(String attribute, Filter additionalFilter) {
         long start = System.currentTimeMillis();
+
+        AndFilter filter = new AndFilter();
+        filter.and(new PresentFilter("objectClass"));
+        filter.and(new PresentFilter(attribute)); // Match any value for the attribute
+        if (additionalFilter != null) {
+            filter.and(additionalFilter);
+        }
 
         List<String> allValues = ldapTemplate.search(
                 properties.getUserBaseDn(),
-                "(&(objectClass=*)(" + attribute + "=*))",
+                filter.encode(),
                 (ContextMapper<String>) ctx -> {
                     DirContextAdapter context = (DirContextAdapter) ctx;
                     if (context.getAttributes() != null && context.getAttributes().get(attribute) != null) {

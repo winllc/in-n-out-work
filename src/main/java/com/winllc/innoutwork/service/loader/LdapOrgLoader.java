@@ -2,18 +2,24 @@ package com.winllc.innoutwork.service.loader;
 
 import com.github.benmanes.caffeine.cache.CacheLoader;
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.data.CheckInOutRecordGroup;
 import com.winllc.innoutwork.data.OrgNode;
+import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.OrgParseRuleRecord;
 import com.winllc.innoutwork.repository.OrgParseRuleRecordRepository;
 import com.winllc.innoutwork.service.LdapService;
+import com.winllc.innoutwork.util.DateTimeUtil;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ldap.filter.Filter;
+import org.springframework.ldap.filter.HardcodedFilter;
 import org.springframework.stereotype.Component;
 
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Component
 public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
@@ -56,6 +62,7 @@ public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
         long start = System.currentTimeMillis();
 
         OrgNode top = new OrgNode(props.getOrganizationName());
+        top.setFullName(props.getOrganizationName());
 
         List<OrgNode> orgNodes = generateOrgChart();
 
@@ -66,19 +73,20 @@ public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
                 top.getName(), orgNodes.size(), top.getTotalChildren(),
                 System.currentTimeMillis() - start);
 
+        loadOrgStats(top);
+
         return top;
     }
 
     public List<OrgNode> generateOrgChart(){
 
-        if(StringUtils.isEmpty(props.getDutySubOrgGroupsBaseDn())){
-            // Not an error: the org chart is optional. Repeats on every rebuild, so
-            // debug rather than info.
-            log.debug("No duty sub-org base DN configured; org chart will be empty");
-            return new ArrayList<>();
+        Filter additionalFilter = null;
+        if(StringUtils.isNotBlank(props.getDutySubOrgFilter())){
+            additionalFilter = new HardcodedFilter(props.getDutySubOrgFilter());
         }
 
-        List<String> orgs = ldapService.getAllUniqueValuesForAttributes(props.getUserLdapDutySubOrganizationAttribute());
+        List<String> orgs = ldapService.getAllUniqueValuesForAttributes(props.getUserLdapDutySubOrganizationAttribute(),
+                additionalFilter);
 
         log.debug("Found {} distinct values for attribute {}", orgs.size(),
                 props.getUserLdapDutySubOrganizationAttribute());
@@ -127,9 +135,6 @@ public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
         return new ArrayList<>(byRoot.values());
     }
 
-    public OrgNode buildOrgNodeFromAttribute(String orgValue){
-        return buildOrgNodeFromAttribute(orgValue, orgParseRuleRecordRepository.findAll());
-    }
 
     public OrgNode buildOrgNodeFromAttribute(String orgValue, List<OrgParseRuleRecord> parseRules){
 
@@ -198,5 +203,31 @@ public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
             return orgNode;
         }
         return null;
+    }
+
+    private void loadOrgStats(OrgNode orgNode){
+        if(orgNode == null || StringUtils.isBlank(orgNode.getFullName())) {
+            // Nodes without a full name cannot be matched to records or directory entries.
+            log.debug("Skipping org node with no full name: {}", orgNode != null ? orgNode.getName() : null);
+            return;
+        }
+
+        // Isolate each node so a single node's failure doesn't skip the rest of the subtree.
+        try {
+            Map<String, Integer> totalEntriesByEmployeeType = ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(props.getUserBaseDn(), props.getUserLdapDutySubOrganizationAttribute(),
+                    orgNode.getFullName(), props.getUserLdapEmployeeTypeAttribute());
+
+            orgNode.getData().setTotalMembersByEmployeeType(totalEntriesByEmployeeType);
+
+            log.debug("Org {}: total {}", orgNode.getFullName(), totalEntriesByEmployeeType);
+        } catch (Exception e) {
+            log.error("Failed to load stats for node {}", orgNode.getFullName(), e);
+        }
+
+        if(orgNode.getChildren() != null && !orgNode.getChildren().isEmpty()){
+            for(OrgNode child : orgNode.getChildren()){
+                loadOrgStats(child);
+            }
+        }
     }
 }
