@@ -304,4 +304,141 @@ class UserServiceTest {
         assertNull(details.getManagerDn());
         verify(ldapService, never()).lookupUser(anyString(), anyString());
     }
+
+    // ----------------------------------------------------------------------
+    // Direct reports
+    //
+    // The directory pairs two attributes: a manager holds their own id in
+    // managerLdapIdAttribute, and each report repeats it in userLdapManagerIdAttribute.
+    // ----------------------------------------------------------------------
+
+    @Test
+    void directReportsAreLookedUpByTheManagersOwnId() {
+        LdapDn managerDn = LdapDn.builder().dn(USER_DN).build();
+
+        when(ldapService.lookupUser(any(LdapDn.class)))
+                .thenReturn(Optional.of(LdapUser.builder().dn(USER_DN).managerLdapId("MGR-100").build()));
+        when(ldapService.findUsersReportingTo("MGR-100")).thenReturn(List.of(
+                LdapUser.builder().dn("cn=bob,ou=Users,dc=winllc,dc=com").build(),
+                LdapUser.builder().dn("cn=carol,ou=Users,dc=winllc,dc=com").build()));
+        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
+        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
+        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+
+        List<UserStatus> reports = userService.getDirectReports(managerDn, session);
+
+        assertEquals(2, reports.size());
+        verify(ldapService).findUsersReportingTo("MGR-100");
+    }
+
+    /** Sorted by name so the table has a stable order regardless of directory ordering. */
+    @Test
+    void directReportsAreSortedByName() {
+        when(ldapService.lookupUser(any(LdapDn.class)))
+                .thenReturn(Optional.of(LdapUser.builder().dn(USER_DN).managerLdapId("MGR-100").build()));
+        when(ldapService.findUsersReportingTo(anyString())).thenReturn(List.of(
+                LdapUser.builder().dn("cn=zoe,ou=Users,dc=winllc,dc=com").build(),
+                LdapUser.builder().dn("cn=adam,ou=Users,dc=winllc,dc=com").build(),
+                LdapUser.builder().dn("cn=Mia,ou=Users,dc=winllc,dc=com").build()));
+        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
+        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
+        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+
+        List<UserStatus> reports = userService.getDirectReports(
+                LdapDn.builder().dn(USER_DN).build(), session);
+
+        assertEquals(List.of("adam", "Mia", "zoe"),
+                reports.stream().map(UserStatus::getCn).toList());
+    }
+
+    /** Someone with no manager id has nobody pointing at them; never search for a blank id. */
+    @Test
+    void aUserWithNoManagerIdHasNoReports() {
+        when(ldapService.lookupUser(any(LdapDn.class)))
+                .thenReturn(Optional.of(LdapUser.builder().dn(USER_DN).build()));
+
+        List<UserStatus> reports = userService.getDirectReports(
+                LdapDn.builder().dn(USER_DN).build(), session);
+
+        assertTrue(reports.isEmpty());
+        verify(ldapService, never()).findUsersReportingTo(anyString());
+    }
+
+    @Test
+    void aUserMissingFromTheDirectoryHasNoReports() {
+        when(ldapService.lookupUser(any(LdapDn.class))).thenReturn(Optional.empty());
+
+        List<UserStatus> reports = userService.getDirectReports(
+                LdapDn.builder().dn(USER_DN).build(), session);
+
+        assertTrue(reports.isEmpty());
+        verify(ldapService, never()).findUsersReportingTo(anyString());
+    }
+
+    /** Guards against a self-referencing entry putting the manager in their own report list. */
+    @Test
+    void aManagerIsNeverListedAmongTheirOwnReports() {
+        when(ldapService.lookupUser(any(LdapDn.class)))
+                .thenReturn(Optional.of(LdapUser.builder().dn(USER_DN).managerLdapId("MGR-100").build()));
+        when(ldapService.findUsersReportingTo(anyString())).thenReturn(List.of(
+                LdapUser.builder().dn(USER_DN).build(),
+                LdapUser.builder().dn("cn=bob,ou=Users,dc=winllc,dc=com").build()));
+        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
+        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
+        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+
+        List<UserStatus> reports = userService.getDirectReports(
+                LdapDn.builder().dn(USER_DN).build(), session);
+
+        assertEquals(List.of("bob"), reports.stream().map(UserStatus::getCn).toList());
+    }
+
+    /**
+     * A report who has never used the app has no UserRecord, so the descriptive columns must come
+     * from the directory entry rather than rendering blank.
+     */
+    @Test
+    void reportsWithNoLocalRecordFallBackToDirectoryValues() {
+        when(ldapService.lookupUser(any(LdapDn.class)))
+                .thenReturn(Optional.of(LdapUser.builder().dn(USER_DN).managerLdapId("MGR-100").build()));
+        when(ldapService.findUsersReportingTo(anyString())).thenReturn(List.of(
+                LdapUser.builder()
+                        .dn("cn=bob,ou=Users,dc=winllc,dc=com")
+                        .organization("WinLLC")
+                        .employeeType("FT")
+                        .location("New York")
+                        .build()));
+        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
+        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
+        // no local record for the report
+        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+
+        UserStatus bob = userService.getDirectReports(
+                LdapDn.builder().dn(USER_DN).build(), session).getFirst();
+
+        assertEquals("WinLLC", bob.getOrganization());
+        assertEquals("FT", bob.getEmployeeType());
+        assertEquals("New York", bob.getLocation());
+    }
+
+    /** Where a local record does exist it wins, since the app is the more current source. */
+    @Test
+    void aLocalRecordTakesPrecedenceOverTheDirectory() {
+        when(ldapService.lookupUser(any(LdapDn.class)))
+                .thenReturn(Optional.of(LdapUser.builder().dn(USER_DN).managerLdapId("MGR-100").build()));
+        when(ldapService.findUsersReportingTo(anyString())).thenReturn(List.of(
+                LdapUser.builder()
+                        .dn("cn=bob,ou=Users,dc=winllc,dc=com")
+                        .organization("StaleOrgFromLdap")
+                        .build()));
+        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
+        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
+        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(
+                Optional.of(UserRecord.builder().dn("cn=bob").organization("CurrentOrg").build()));
+
+        UserStatus bob = userService.getDirectReports(
+                LdapDn.builder().dn(USER_DN).build(), session).getFirst();
+
+        assertEquals("CurrentOrg", bob.getOrganization());
+    }
 }
