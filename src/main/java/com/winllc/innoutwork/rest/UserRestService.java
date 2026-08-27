@@ -67,6 +67,24 @@ public class UserRestService {
         return response;
     }
 
+    /**
+     * The signed-in user's direct reports. Scoped to the caller by design: it derives the manager
+     * from the authenticated principal rather than a path variable, so it cannot be used to read
+     * somebody else's team.
+     */
+    @GetMapping("/reports")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+    public Map<String, Object> getMyReports(HttpSession session, Authentication authentication) {
+        List<UserStatus> reports = userService.getDirectReports(
+                LdapDn.builder().dn(authentication.getName()).build(), session);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("data", reports);
+        return response;
+    }
+
     @GetMapping("/search")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER," +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
