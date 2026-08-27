@@ -111,6 +111,39 @@ public class LdapService {
         );
     }
 
+    /**
+     * Finds the users who report to the given manager id.
+     * <p>
+     * The directory models the relationship with a pair of attributes: a manager carries their own
+     * id in {@code managerLdapIdAttribute}, and each of their reports carries that same value in
+     * {@code userLdapManagerIdAttribute}. So the reports of a manager are the users whose
+     * {@code userLdapManagerIdAttribute} equals the manager id passed in here.
+     *
+     * @param managerId the manager's own id; a blank value returns an empty list rather than matching everyone
+     * @return the matching users, never {@code null}
+     */
+    public List<LdapUser> findUsersReportingTo(String managerId) {
+        if (StringUtils.isBlank(managerId)) {
+            return new ArrayList<>();
+        }
+
+        String filter = "(&(%s)(%s=%s))".formatted(
+                properties.getUserLdapFilter(),
+                properties.getUserLdapManagerIdAttribute(),
+                escapeLdapFilter(managerId));
+
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+
+        try {
+            return ldapTemplate.search(properties.getUserBaseDn(), filter, controls,
+                    new LdapUserContextMapper(properties));
+        } catch (Exception e) {
+            log.error("Failed to look up reports for manager id {}", managerId, e);
+            return new ArrayList<>();
+        }
+    }
+
     public Optional<LdapUser> lookupUser(LdapDn dn) {
         LdapUser user = null;
         try {
@@ -498,6 +531,12 @@ public class LdapService {
                                 builder.managerId(type);
                             } catch (NamingException e) {
                                 log.error("Could not map branch attribute: ", e);
+                            }
+                        } else if (attr.getID().equalsIgnoreCase(appProperties.getManagerLdapIdAttribute())) {
+                            try {
+                                builder.managerLdapId(attr.get().toString());
+                            } catch (NamingException e) {
+                                log.error("Could not map managerLdapId attribute: ", e);
                             }
                         } else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapEmailAttribute())) {
                             try {
