@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Organization Chart</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">Organization Chart</span>
+
+<div layout:fragment="content">
+
+    <div th:if="${message}" class="alert alert-success" role="alert">
+        <span th:text="${message}"></span>
+    </div>
+
+    <!-- Display error message if present -->
+    <div th:if="${error}" class="alert alert-danger" role="alert">
+        <span th:text="${error}"></span>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Organization Hierarchy</h3>
+            <div class="card-actions text-secondary">
+                Select an organization to view its members
+            </div>
+        </div>
+
+        <div class="card-body border-bottom py-2">
+            <div class="row g-2 align-items-center">
+                <div class="col">
+                    <div class="input-icon">
+                        <span class="input-icon-addon">
+                            <i class="ti ti-search"></i>
+                        </span>
+                        <input type="text" id="org-filter" class="form-control"
+                               placeholder="Search organizations..." autocomplete="off">
+                    </div>
+                </div>
+                <div class="col-auto">
+                    <div class="btn-list">
+                        <button type="button" class="btn btn-sm" id="expand-all">Expand All</button>
+                        <button type="button" class="btn btn-sm" id="collapse-all">Collapse All</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="list-group list-group-flush" id="org-tree">
+            <!-- th:each sits on a wrapper: on one element th:replace would run first,
+                 handing the fragment an unbound `node`. -->
+            <th:block th:each="node : ${orgTree != null ? orgTree.children : null}">
+                <div th:replace="~{fragments/orgtree :: orgNode(${node}, 0, ${initiallyExpanded})}"></div>
+            </th:block>
+        </div>
+
+        <div class="card-body d-none" id="org-tree-empty">
+            <div class="empty">
+                <div class="empty-icon">
+                    <i class="ti ti-search fs-1"></i>
+                </div>
+                <p class="empty-title">No matching organizations</p>
+                <p class="empty-subtitle text-secondary">Try a different search term.</p>
+            </div>
+        </div>
+
+        <div class="card-body" th:if="${orgTree == null or #lists.isEmpty(orgTree.children)}">
+            <div class="empty">
+                <div class="empty-icon">
+                    <i class="ti ti-hierarchy-3 fs-1"></i>
+                </div>
+                <p class="empty-title">No organizations available</p>
+                <p class="empty-subtitle text-secondary">
+                    Nothing was parsed out of the directory yet. Check the organization
+                    parse rules in Settings.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popup showing the orgdetails content (member list) for the selected node -->
+    <div id="orgDetailsModal" class="modal modal-blur fade" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Organization Details for <span id="orgDetailsTitle"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="d-flex justify-content-end mb-2">
+                        <label class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                            <span class="form-check-label">Advanced</span>
+                        </label>
+                    </div>
+                    <div id="modal-user-table"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            // Same collapsible-tree behaviour as the Groups page.
+            HierarchyTree.init({
+                treeId: "org-tree",
+                filterId: "org-filter",
+                emptyId: "org-tree-empty",
+                expandAllId: "expand-all",
+                collapseAllId: "collapse-all"
+            });
+
+            // Status colours come from Tabler's badge palette so the table matches the rest of the UI.
+            const STATUS_BADGES = {
+                IN: "bg-green-lt",
+                OUT: "bg-blue-lt",
+                AWAY: "bg-purple-lt",
+                NONE: "bg-secondary-lt"
+            };
+
+            const statusFormatter = (cell) => {
+                const value = cell.getValue();
+                const badge = STATUS_BADGES[value];
+                return badge ? `<span class="badge ${badge}">${value}</span>` : (value ?? "");
+            };
+
+            let orgDetailsTable = null;
+            const orgDetailsModalEl = document.getElementById('orgDetailsModal');
+            const advancedToggle = document.getElementById('advanced-btn');
+
+            // Tabulator renders at zero width inside a hidden modal; redraw once it's visible.
+            orgDetailsModalEl.addEventListener('shown.bs.modal', () => {
+                if (orgDetailsTable) {
+                    orgDetailsTable.redraw(true);
+                }
+            });
+
+            function openOrgDetails(orgName) {
+                if (!orgName) {
+                    return;
+                }
+                document.getElementById('orgDetailsTitle').textContent = orgName;
+
+                if (orgDetailsTable) {
+                    orgDetailsTable.destroy();
+                    orgDetailsTable = null;
+                }
+
+                orgDetailsTable = new Tabulator("#modal-user-table", {
+                    ajaxURL: "/api/orgnodes/users/" + encodeURIComponent(orgName),
+                    ajaxResponse: (url, params, response) =>
+                        Array.isArray(response) ? response : (response.data ?? []),
+                    pagination: "local",
+                    paginationSize: 10,
+                    layout: "fitDataStretch",
+                    layoutColumnsOnNewData: true,
+                    columns: [
+                        {title: "Name", field: "cn", minWidth: 100, resizable: true, headerFilter: "input"},
+                        {title: "DN", field: "dn", minWidth: 150, visible: advancedToggle.checked, resizable: true, headerFilter: "input"},
+                        {title: "Status", field: "status", formatter: statusFormatter},
+                        {title: "Checked In", field: "checkedInAt", visible: advancedToggle.checked, resizable: true},
+                        {title: "Last Status Change", field: "lastStatusChangeAt", resizable: true},
+                        {title: "Checked Out", field: "checkedOutAt", visible: advancedToggle.checked, resizable: true},
+                        {title: "Notes", field: "notes", widthGrow: 3}
+                    ],
+                });
+
+                orgDetailsTable.on("tableBuilt", function () {
+                    orgDetailsTable.element.classList.add("table-clickable");
+                });
+
+                orgDetailsTable.on("rowClick", function (e, row) {
+                    window.location.href = `/app/user/details/${row.getData().dn}`;
+                });
+
+                bootstrap.Modal.getOrCreateInstance(orgDetailsModalEl).show();
+            }
+
+            // Delegated: every org row carries the org's full name.
+            const orgTree = document.getElementById('org-tree');
+
+            orgTree.addEventListener('click', (event) => {
+                const opener = event.target.closest('.org-open');
+                if (opener) {
+                    openOrgDetails(opener.dataset.orgname);
+                }
+            });
+
+            // The label is a span rather than a button (so it reads as a row label like
+            // the group hierarchy), so it needs its own keyboard handling.
+            orgTree.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') {
+                    return;
+                }
+                const opener = event.target.closest('.org-open');
+                if (opener) {
+                    event.preventDefault();
+                    openOrgDetails(opener.dataset.orgname);
+                }
+            });
+
+            // Advanced toggle inside the modal (same behavior as the orgdetails page).
+            advancedToggle.addEventListener("change", (event) => {
+                if (!orgDetailsTable) {
+                    return;
+                }
+                if (event.target.checked) {
+                    orgDetailsTable.showColumn("checkedInAt");
+                    orgDetailsTable.showColumn("checkedOutAt");
+                    orgDetailsTable.showColumn("dn");
+                    orgDetailsTable.hideColumn("cn");
+                } else {
+                    orgDetailsTable.hideColumn("checkedInAt");
+                    orgDetailsTable.hideColumn("checkedOutAt");
+                    orgDetailsTable.hideColumn("dn");
+                    orgDetailsTable.showColumn("cn");
+                }
+                orgDetailsTable.redraw(true);
+            });
+        })();
+    </script>
+
+</div>
+</body>
+</html>

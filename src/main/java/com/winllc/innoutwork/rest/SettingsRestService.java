@@ -1,18 +1,13 @@
 package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
-import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.CalendarEvent;
 import com.winllc.innoutwork.data.CalendarEventData;
-import com.winllc.innoutwork.data.LdapDn;
-import com.winllc.innoutwork.data.UserEventData;
 import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.GlobalCalendarRecord;
-import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
-import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.service.ReportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -20,14 +15,14 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.*;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-
-import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 
 @RequestMapping("/api/settings/calendar")
 @RestController
@@ -35,14 +30,12 @@ public class SettingsRestService {
 
     private static final Logger log = LoggerFactory.getLogger(SettingsRestService.class);
 
-    private final UserEventRecordRepository userEventRecordRepository;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
 
-    public SettingsRestService(UserEventRecordRepository userEventRecordRepository,
-                               CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties, GlobalCalendarRecordRepository globalCalendarRecordRepository) {
-        this.userEventRecordRepository = userEventRecordRepository;
+    public SettingsRestService(CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
+                               GlobalCalendarRecordRepository globalCalendarRecordRepository) {
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
         this.globalCalendarRecordRepository = globalCalendarRecordRepository;
@@ -97,7 +90,7 @@ public class SettingsRestService {
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public void deleteEvent(Authentication authentication, @PathVariable String eventId){
 
-        log.info("deleteEvent called by %s with data: %s".formatted(authentication.getName(), eventId));
+        log.debug("deleteEvent called by {} with data: {}", authentication.getName(), eventId);
 
         globalCalendarRecordRepository.deleteById(Long.parseLong(eventId));
     }

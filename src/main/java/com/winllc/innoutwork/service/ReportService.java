@@ -5,14 +5,15 @@ import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.reports.DayReport;
-import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.data.reports.GroupReport;
+import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.data.reports.UserReport;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
-import org.springframework.beans.factory.annotation.Autowired;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -24,6 +25,8 @@ import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 
 @Service
 public class ReportService {
+
+    private static final Logger log = LoggerFactory.getLogger(ReportService.class);
 
     private final LdapService ldapService;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
@@ -37,6 +40,12 @@ public class ReportService {
     }
 
     public GroupReport generateGroupReport(LdapDn groupDn, ZonedDateTime from, ZonedDateTime to){
+        long start = System.currentTimeMillis();
+
+        // The completion line below carries the same identifiers plus the outcome.
+        log.debug("Generating group report for {} from {} to {}",
+                groupDn.dn(), from.toLocalDate(), to.toLocalDate());
+
         Optional<LdapGroup> groupOptional = ldapService.lookupGroup(groupDn);
 
         if(groupOptional.isPresent()){
@@ -44,6 +53,8 @@ public class ReportService {
 
             GroupReport groupReport = GroupReport.build(group, from.toLocalDate(), to.toLocalDate());
             List<String> groupMembers = ldapService.getGroupMembers(groupDn);
+
+            log.debug("Group {} has {} member(s) to report on", group.getCn(), groupMembers.size());
 
             ZonedDateTime fromAtStartOfDay = from.toLocalDate().atStartOfDay(from.getZone());
             ZonedDateTime toAtEndOfDay = to.toLocalDate().atTime(23, 59, 59).atZone(from.getZone());
@@ -78,6 +89,11 @@ public class ReportService {
 
                     UserReport userReport = UserReport.createUserReport(user, dayReports);
                     userReports.add(userReport);
+                } else {
+                    // A member DN that no longer resolves is silently absent from the
+                    // report, which otherwise looks like missing data.
+                    log.warn("Group member {} could not be resolved in the directory; omitted from the report",
+                            groupMember);
                 }
             }
 
@@ -87,8 +103,14 @@ public class ReportService {
 
             Collections.sort(groupReport.getDayReports());
 
+            log.info("Generated group report for {}: {} user report(s), {} day report(s) in {}ms",
+                    group.getCn(), userReports.size(), groupReport.getDayReports().size(),
+                    System.currentTimeMillis() - start);
+
             return groupReport;
         }else{
+            // Callers turn this null into an empty page; without a log the cause is invisible.
+            log.warn("No group found for {}; cannot generate report", groupDn.dn());
             return null;
         }
     }

@@ -16,7 +16,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.HashMap;
@@ -39,7 +38,7 @@ public class CheckInOutRestService {
     public CheckInOutRecord checkIn(Authentication auth,
                         @PathVariable String action,
                         @RequestBody CheckInOut checkInOut) {
-        log.info("Status change {} request received: {}, for user: {}", action, checkInOut, auth != null ? auth.getName() : "NONE");
+        log.debug("Status change {} request received: {}, for user: {}", action, checkInOut, auth != null ? auth.getName() : "NONE");
 
         if(StringUtils.isEmpty(action)) {
             throw new RuntimeException("action is empty");
@@ -79,6 +78,7 @@ public class CheckInOutRestService {
                 record.setEmployeeType(details.getEmployeeType());
                 record.setLocation(details.getLocation());
                 record.setBranch(details.getBranch());
+                record.setDutySubOrganization(details.getDutySubOrganization());
             }
 
             return checkInOutService.saveCheckInOutRecord(record);

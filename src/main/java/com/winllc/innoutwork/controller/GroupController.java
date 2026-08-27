@@ -4,15 +4,14 @@ import com.winllc.innoutwork.data.GenerateReportForm;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.reports.GroupReport;
 import com.winllc.innoutwork.service.ReportService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Controller;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.ModelAndView;
 
-import java.time.LocalDate;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 
 import static com.winllc.innoutwork.constant.DateTimeConstants.ISO_DATE_TIME_FORMATTER;
 

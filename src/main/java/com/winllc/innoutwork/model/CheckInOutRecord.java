@@ -6,10 +6,7 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
-import java.io.Serializable;
-import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.UUID;
@@ -43,6 +40,7 @@ public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     private String employeeType;
     private String location;
     private String branch;
+    private String dutySubOrganization;
     private Boolean forced = false;
 
     public CheckInOutRecord() {

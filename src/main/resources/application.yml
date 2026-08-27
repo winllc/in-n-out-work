@@ -13,6 +13,11 @@ server:
 logging:
   level:
     root: info
+    # Application logging. INFO covers state changes: check-in/out records written,
+    # permission grants, report generation, org-chart rebuilds and scheduled-job
+    # summaries. Set to debug for per-query detail, timings and authorization
+    # decisions when diagnosing an issue.
+    com.winllc.innoutwork: info
 
 spring:
   datasource:
@@ -27,6 +32,12 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc:
+          # saveAll() only reaches the database as batches when this is set; the
+          # directory refresh writes its changed rows in one round trip per batch.
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
   ldap:
     #urls: ldap://fid.winllc-dev.com:2389
     urls: ldap://localhost:1389
@@ -67,6 +78,13 @@ application:
   user-base-dn: dc=winllc,dc=com
   user-ldap-filter: (objectclass=inetOrgPerson)
 
+  # Directory -> database metadata refresh. Values are milliseconds; set enabled to
+  # false to stop the sweep without removing the schedule.
+  refresh-user-records-cron:
+    enabled: true
+    fixed-rate: 3600000
+    initial-delay: 300000
+
   banner-text: BANNER TEXT
   timezone: America/New_York
   user-ldap-employee-type-attribute: employeeType
@@ -89,3 +107,6 @@ application:
   user-ldap-manager-id-attribute: title
   manager-ldap-id-attribute: street
   application-base-url: https://localhost:8444
+  duty-sub-org-groups-base-dn: ou=Groups,dc=winllc,dc=com
+  user-ldap-duty-sub-organization-attribute: departmentNumber
+  duty-sub-org-filter: (departmentNumber=*)

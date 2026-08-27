@@ -11,6 +11,7 @@ import java.util.Map;
 @Data
 @ConfigurationProperties(prefix = "application")
 public class ApplicationProperties {
+    private String organizationName = "TOP";
     private String timeZone = "ETC";
     private String userBaseDn;
     private String userLdapFilter = "(objectclass=*)";
@@ -21,6 +22,7 @@ public class ApplicationProperties {
     private String userLdapManagerIdAttribute = "title";
     private String userLdapEmailAttribute = "mail";
     private String userLdapPhoneAttribute = "telephoneNumber";
+    private String userLdapDutySubOrganizationAttribute = "dutySubOrganization";
     private String managerLdapIdAttribute = "Email";
     private boolean lookupOnDnAttribute = false;
     private String userDnAttribute = "";
@@ -39,4 +41,6 @@ public class ApplicationProperties {
     private String notificationSenderEmail = "noreply@test.com";
     private String applicationBaseUrl = "https://localhost";
     private boolean groupsInitiallyExpanded = false;
+    private String dutySubOrgGroupsBaseDn = "";
+    private String dutySubOrgFilter = "";
 }

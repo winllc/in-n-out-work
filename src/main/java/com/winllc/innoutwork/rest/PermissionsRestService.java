@@ -27,7 +27,8 @@ public class PermissionsRestService {
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public void addGroupToUser(@RequestBody PermissionUpdate permissionUpdate) {
-        log.info("updating permission to group: {}", permissionUpdate);
+        // PermissionService logs the resulting grant/revoke at info.
+        log.debug("updating permission to group: {}", permissionUpdate);
 
         if(permissionUpdate.isSelected()){
             permissionService.addGroupToUser(new LdapDn(permissionUpdate.getGroupDn()), new LdapDn(permissionUpdate.getUserDn()));

@@ -21,16 +21,28 @@ public class LdapUserLoader implements CacheLoader<String, LdapUser> {
 
     @Override
     public LdapUser load(String dn) {
-        return ldapGroupService.lookupUser(LdapDn.builder().dn(dn).build()).orElse(null);
+        LdapUser user = ldapGroupService.lookupUser(LdapDn.builder().dn(dn).build()).orElse(null);
+
+        if (user == null) {
+            // Not fatal - the caller gets null - but a DN that never resolves usually means
+            // a stale group membership or a base-DN misconfiguration.
+            log.debug("Cache miss for user {} resolved to no directory entry", dn);
+        } else {
+            log.debug("Loaded user {} from the directory", dn);
+        }
+
+        return user;
     }
 
     @Override
     public LdapUser reload(String dn, LdapUser oldValue) throws Exception {
         // reload is async and non-blocking for callers
         try {
+            log.debug("Refreshing cached user {}", dn);
             return ldapGroupService.lookupUser(LdapDn.builder().dn(dn).build()).orElse(null);
         }catch (Exception e) {
             log.error("Failed to reload ldap group %s".formatted(dn), e);
+            log.warn("Serving stale cached user {} after refresh failure", dn);
             return oldValue;
         }
     }

@@ -6,12 +6,19 @@ import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
+import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.ldap.core.*;
+import org.springframework.ldap.NameNotFoundException;
+import org.springframework.ldap.core.AttributesMapper;
+import org.springframework.ldap.core.ContextMapper;
+import org.springframework.ldap.core.DirContextAdapter;
+import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.filter.AndFilter;
 import org.springframework.ldap.filter.EqualsFilter;
+import org.springframework.ldap.filter.Filter;
+import org.springframework.ldap.filter.PresentFilter;
 import org.springframework.ldap.query.LdapQuery;
 import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.ldap.query.SearchScope;
@@ -25,9 +32,7 @@ import javax.naming.directory.Attribute;
 import javax.naming.directory.Attributes;
 import javax.naming.directory.DirContext;
 import javax.naming.directory.SearchControls;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class LdapService {
@@ -54,8 +59,34 @@ public class LdapService {
         return buildGroupHierarchyFromAttribute(dn, new ArrayList<>());
     }
 
+    /**
+     * Counts LDAP entries under a top-level group's base DN that carry a given attribute value,
+     * e.g. how many users have {@code branch=NORTH}.
+     *
+     * @param attribute the attribute name to match on (e.g. "branch")
+     * @param value     the attribute value to match (matched exactly; encoded to prevent injection)
+     * @return the number of matching entries, or {@code 0} if inputs are missing or the search fails
+     */
+    public Map<String, Integer> getTotalEntriesWithAttributeValueSplitOnAttribute(String baseDn, String attribute, String value,
+                                                                 String splitByAttribute) {
+        if (baseDn == null || baseDn.isBlank() || attribute == null || attribute.isBlank() || value == null) {
+            return Collections.emptyMap();
+        }
+
+        // EqualsFilter encodes the value, guarding against LDAP injection via the value parameter.
+        EqualsFilter filter = new EqualsFilter(attribute, value);
+
+        try {
+            return countWithSplit(baseDn, filter.encode(), splitByAttribute);
+        } catch (Exception e) {
+            log.error("Failed to count entries under {} where {}={}",
+                    baseDn, attribute, value, e);
+            return Collections.emptyMap();
+        }
+    }
+
     // Alternative: More efficient approach that doesn't iterate through all previous pages
-    public List<UserStatus> search(String filter, int pageNumber, int pageSize) {
+    public List<UserStatus> search(String filter) {
         SearchControls controls = new SearchControls();
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
 
@@ -80,6 +111,36 @@ public class LdapService {
                 query,
                 new LdapUserContextMapper(properties)
         );
+    }
+
+    /**
+     * Every user entry under the configured base DN, in a single subtree search.
+     * <p>
+     * This is the bulk counterpart to {@link #lookupUser(LdapDn)}: the refresh job needs
+     * the whole population, and doing that one DN at a time is a round trip per user.
+     *
+     * @return all mapped users; empty when no base DN is configured
+     */
+    public List<LdapUser> findAllUsers() {
+        if (StringUtils.isBlank(properties.getUserBaseDn())) {
+            log.warn("No user base DN configured; cannot enumerate directory users");
+            return List.of();
+        }
+
+        long start = System.currentTimeMillis();
+
+        LdapQuery query = LdapQueryBuilder.query()
+                .base(properties.getUserBaseDn())
+                .searchScope(SearchScope.SUBTREE)
+                .filter(properties.getUserLdapFilter());
+
+        List<LdapUser> users = searchUsers(query);
+
+        log.debug("Enumerated {} user entries under {} (filter {}) in {}ms",
+                users.size(), properties.getUserBaseDn(), properties.getUserLdapFilter(),
+                System.currentTimeMillis() - start);
+
+        return users;
     }
 
     public Optional<LdapUser> lookupUser(LdapDn dn) {
@@ -128,14 +189,45 @@ public class LdapService {
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
         controls.setReturningAttributes(new String[0]); // don’t fetch attributes, just DNs
 
+        long start = System.currentTimeMillis();
         List<?> results = ldapTemplate.search(baseDn, filter, controls, (Object ctx) -> null);
+
+        log.debug("Counted {} entries under {} matching {} in {}ms",
+                results.size(), baseDn, filter, System.currentTimeMillis() - start);
+
         return results.size();
+    }
+
+    public Map<String, Integer> countWithSplit(String baseDn, String filter, String splitByAttribute) {
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
+        if(StringUtils.isBlank(baseDn)) {
+            controls.setReturningAttributes(new String[0]); // don’t fetch attributes, just DNs
+        }else{
+            controls.setReturningAttributes(new String[]{splitByAttribute});
+        }
+
+
+        List<String> results = ldapTemplate.search(baseDn, filter, controls, (ContextMapper<String>) ctx -> {
+            DirContextAdapter context = (DirContextAdapter) ctx;
+            if (context.getAttributes() != null && context.getAttributes().get(splitByAttribute) != null) {
+                return context.getAttributes().get(splitByAttribute).get().toString();
+            }else{
+                return "EMPTY";
+            }
+        });
+
+        Map<String, Integer> counts = new HashMap<>();
+        for (String result : results) {
+            counts.put(result, counts.getOrDefault(result, 0) + 1);
+        }
+        return counts;
     }
 
     public Optional<LdapGroup> lookupGroup(LdapDn dn) {
         LdapGroup group = null;
         try {
-            group = ldapTemplate.lookup(dn.toString(), new LdaGroupContextMapper());
+            group = ldapTemplate.lookup(dn.toString(), new LdapGroupContextMapper());
         } catch (Exception e) {
             log.error("Not found: %s".formatted(dn), e);
         }
@@ -144,11 +236,50 @@ public class LdapService {
     }
 
     public List<LdapGroup> getGroups(TopLevelGroupProperties topProps) {
-        return ldapTemplate.search(
-                topProps.getGroupsBaseDn(),
-                "(objectClass=groupOfUniqueNames)",
-                new LdaGroupContextMapper()
+        try {
+            return ldapTemplate.search(
+                    topProps.getGroupsBaseDn(),
+                    "(objectClass=groupOfUniqueNames)",
+                    new LdapGroupContextMapper()
+            );
+        } catch (NameNotFoundException e) {
+            // Configured groups base DN doesn't exist; treat as no groups.
+            log.warn("Groups base DN not found, returning none: {}", topProps.getGroupsBaseDn());
+            return new ArrayList<>();
+        }
+    }
+
+    public List<String> getAllUniqueValuesForAttributes(String attribute, Filter additionalFilter) {
+        long start = System.currentTimeMillis();
+
+        AndFilter filter = new AndFilter();
+        filter.and(new PresentFilter("objectClass"));
+        filter.and(new PresentFilter(attribute)); // Match any value for the attribute
+        if (additionalFilter != null) {
+            filter.and(additionalFilter);
+        }
+
+        List<String> allValues = ldapTemplate.search(
+                properties.getUserBaseDn(),
+                filter.encode(),
+                (ContextMapper<String>) ctx -> {
+                    DirContextAdapter context = (DirContextAdapter) ctx;
+                    if (context.getAttributes() != null && context.getAttributes().get(attribute) != null) {
+                        return context.getAttributes().get(attribute).get().toString();
+                    } else {
+                        return null;
+                    }
+                }
         );
+
+        List<String> unique = new ArrayList<>(new HashSet<>(allValues));
+
+        // A full-subtree scan of every user entry: the slowest query the app makes, and
+        // the input to the whole org chart.
+        log.debug("Read attribute {} from {} entries, {} distinct value(s), in {}ms",
+                attribute, allValues.size(), unique.size(), System.currentTimeMillis() - start);
+
+        return unique;
     }
 
     public List<String> getGroupMembers(LdapDn dn) {
@@ -180,6 +311,10 @@ public class LdapService {
             log.error("Failed to get members for group: {}", dn.toString(), e);
         }
 
+        // An empty membership is a legitimate result and also the usual cause of an
+        // empty user table, so make the two distinguishable from the log.
+        log.debug("Group {} has {} member(s)", dn, members.size());
+
         return members.stream()
                 .map(LdapDn::toString)
                 .toList();
@@ -197,7 +332,7 @@ public class LdapService {
                 LdapQueryBuilder.query()
                         .base("")
                         .where("distinguishedName").is(dn),
-                new LdaGroupContextMapper()
+                new LdapGroupContextMapper()
         );
 
         if (results.isEmpty()) return null;
@@ -249,16 +384,24 @@ public class LdapService {
         node.setGroupSize(groupMembers.size());
 
         // 🔍 Find immediate child OUs of this DN
-        List<Name> childDns = ldapTemplate.search(
-                LdapQueryBuilder.query()
-                        .base(dn)
-                        .searchScope(SearchScope.ONELEVEL)
-                        .where("objectClass").is("groupOfUniqueNames"),
-                (ContextMapper<Name>) ctxObj -> {
-                    DirContextAdapter context = (DirContextAdapter) ctxObj;
-                    return context.getDn();
-                }
-        );
+        List<Name> childDns;
+        try {
+            childDns = ldapTemplate.search(
+                    LdapQueryBuilder.query()
+                            .base(dn)
+                            .searchScope(SearchScope.ONELEVEL)
+                            .where("objectClass").is("groupOfUniqueNames"),
+                    (ContextMapper<Name>) ctxObj -> {
+                        DirContextAdapter context = (DirContextAdapter) ctxObj;
+                        return context.getDn();
+                    }
+            );
+        } catch (Exception e) {
+            // Couldn't enumerate children (missing subtree, referral, etc.); return this
+            // node without descendants rather than failing the whole hierarchy build.
+            log.warn("Failed to enumerate child groups under {}: {}", dn, e.getMessage());
+            return node;
+        }
 
         for (Name childDn : childDns) {
             LdapGroup childNode = buildGroupRecursiveInternal(childDn.toString());
@@ -297,10 +440,20 @@ public class LdapService {
         List<LdapGroup> groups = new ArrayList<>();
 
         for (TopLevelGroupProperties topProp : properties.getGroups()) {
-            List<LdapGroup> temp = findGroupsForUserWithBaseDn(new LdapDn(topProp.getGroupsBaseDn()),
-                    new LdapDn(userDn));
-            groups.addAll(temp);
+            try {
+                groups.addAll(findGroupsForUserWithBaseDn(new LdapDn(topProp.getGroupsBaseDn()),
+                        new LdapDn(userDn)));
+            } catch (NameNotFoundException e) {
+                // A configured groups base DN doesn't exist in the directory; skip it rather
+                // than failing the whole lookup (e.g. an optional/unprovisioned OU).
+                log.warn("Groups base DN not found, skipping: {}", topProp.getGroupsBaseDn());
+            } catch (Exception e) {
+                log.error("Failed to search groups under {}", topProp.getGroupsBaseDn(), e);
+            }
         }
+
+        // Drives both the "Member Of" list and the permission checks.
+        log.debug("User {} is a member of {} group(s)", userDn, groups.size());
 
         return groups;
     }
@@ -313,7 +466,7 @@ public class LdapService {
         return ldapTemplate.search(
                 groupDn.toString(),  // base DN (empty means use the default search base)
                 filter.encode(),
-                new LdaGroupContextMapper()
+                new LdapGroupContextMapper()
         );
     }
 
@@ -399,6 +552,13 @@ public class LdapService {
                             } catch (NamingException e) {
                                 log.error("Could not map branch attribute: ", e);
                             }
+                        }else if (attr.getID().equalsIgnoreCase(appProperties.getUserLdapDutySubOrganizationAttribute())) {
+                            try {
+                                String type = attr.get().toString();
+                                builder.dutySubOrganization(type);
+                            } catch (NamingException e) {
+                                log.error("Could not map dutySubOrganization attribute: ", e);
+                            }
                         }
 
                     });
@@ -412,7 +572,7 @@ public class LdapService {
         }
     }
 
-    private static final class LdaGroupContextMapper implements ContextMapper<LdapGroup> {
+    private static final class LdapGroupContextMapper implements ContextMapper<LdapGroup> {
 
         @Override
         public LdapGroup mapFromContext(Object o) throws NamingException {
@@ -443,5 +603,20 @@ public class LdapService {
                 group.setManager((String) attrs.get("owner").get());
             return group;
         }
+    }
+
+    /**
+     * Escapes LDAP filter special characters to prevent LDAP injection attacks.
+     * Characters: * ( ) \ NUL
+     */
+    public static String escapeLdapFilter(String input) {
+        if (input == null) {
+            return "";
+        }
+        return input.replace("\\", "\\5c")
+                .replace("*", "\\2a")
+                .replace("(", "\\28")
+                .replace(")", "\\29")
+                .replace("\0", "\\00");
     }
 }

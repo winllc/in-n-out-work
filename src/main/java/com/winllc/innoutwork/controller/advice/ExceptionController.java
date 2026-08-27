@@ -15,7 +15,10 @@ public class ExceptionController {
 
 
     @ExceptionHandler({ AuthorizationDeniedException.class })
-    public ModelAndView handleAuthenticationException(Exception ex) {
+    public ModelAndView handleAuthenticationException(HttpServletRequest req, Exception ex) {
+        // Expected whenever someone reaches for a page they lack rights to, so this is
+        // not an error - but knowing which URL was refused is what makes it actionable.
+        log.info("Access denied for {} {}", req.getMethod(), req.getRequestURI());
         log.debug(ex.getMessage(), ex);
 
         ModelAndView mav = new ModelAndView();
@@ -28,8 +31,9 @@ public class ExceptionController {
 
     @ExceptionHandler(Exception.class)
     public ModelAndView handleError(HttpServletRequest req, Exception ex) {
-        log.error("Request: " + req.getRequestURL() + " raised " + ex);
-        log.debug(ex.getMessage(), ex);
+        // Pass the exception as the last argument so the stack trace is logged, rather
+        // than only its toString().
+        log.error("Request {} {} failed", req.getMethod(), req.getRequestURL(), ex);
 
         ModelAndView mav = new ModelAndView();
         mav.addObject("exception", ex);

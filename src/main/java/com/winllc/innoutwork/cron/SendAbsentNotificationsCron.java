@@ -12,10 +12,8 @@ import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.NotificationService;
-import com.winllc.innoutwork.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
@@ -28,7 +26,6 @@ import org.springframework.util.CollectionUtils;
 import java.time.*;
 import java.util.EnumSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -64,7 +61,8 @@ public class SendAbsentNotificationsCron {
     @Scheduled(fixedDelayString = "#{@sendAbsentNotificationCronProperties.fixedRate}",
             initialDelayString = "#{@sendAbsentNotificationCronProperties.initialDelay}")
     public void sendNotifications() {
-        log.info("Starting SendAbsentNotificationsCron");
+        // The end-of-run summary below is the line worth keeping at info.
+        log.debug("Starting SendAbsentNotificationsCron");
 
         AtomicInteger notificationsSent = new AtomicInteger();
         int page = 0;

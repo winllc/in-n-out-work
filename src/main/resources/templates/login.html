@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in &middot; In-N-Out-Work</title>
+    <link rel="stylesheet" th:href="@{/libs/tabler/tabler.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/icons/tabler-icons/tabler-icons.css}"/>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body class="d-flex flex-column">
+<div class="page page-center">
+    <div class="container container-tight py-4">
+        <div class="text-center mb-4">
+            <img th:src="@{/images/logos/in-n-out.svg}" alt="In-N-Out-Work"
+                 style="max-width:140px;height:auto;" onerror="this.style.display='none'"/>
+        </div>
+        <div class="card card-md">
+            <div class="card-body">
+                <h2 class="h2 text-center mb-1">Sign in</h2>
+                <p class="text-secondary text-center mb-4">Use your directory credentials</p>
+
+                <div th:if="${param.error}" class="alert alert-danger" role="alert">
+                    Invalid username or password.
+                </div>
+                <div th:if="${param.logout}" class="alert alert-success" role="alert">
+                    You have been signed out.
+                </div>
+
+                <form th:action="@{/login}" method="post" autocomplete="off">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" id="username" name="username" class="form-control"
+                               placeholder="uid, name, or email" autocomplete="username" autofocus required>
+                    </div>
+                    <div class="mb-2">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" id="password" name="password" class="form-control"
+                               autocomplete="current-password" required>
+                    </div>
+                    <div class="form-footer">
+                        <button type="submit" class="btn btn-primary w-100">Sign in</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

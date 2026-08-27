@@ -6,6 +6,8 @@ import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.ZonedDateTime;
@@ -17,6 +19,8 @@ import java.util.stream.Collectors;
 
 @Service
 public class MetricsService {
+
+    private static final Logger log = LoggerFactory.getLogger(MetricsService.class);
 
     private final CheckInOutRecordRepository checkInOutRecordRepository;
 
@@ -32,17 +36,27 @@ public class MetricsService {
         List<CheckInOutEnum> totalCurrentStatuses = checkInOutRecordRepository
                 .findTotalCurrentStatuses(beginning, ending);
 
-        return totalCurrentStatuses.stream()
+        Map<CheckInOutEnum, Long> counts = totalCurrentStatuses.stream()
                 .collect(Collectors.groupingBy(s -> s, Collectors.counting()));
+
+        log.debug("Today's statuses for {}: {}", beginning.toLocalDate(), counts);
+
+        return counts;
     }
 
     public MetricsData getCombinedStatistics(HttpSession session){
+        long start = System.currentTimeMillis();
+
         MetricsData metricsData = new MetricsData();
 
         ZonedDateTime beginning = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         List<CheckInOutRecord> totalCurrentRecords = checkInOutRecordRepository.findTotalCurrentRecords(beginning, ending);
+
+        // The session can pin metrics to an earlier day, so log which day was actually used.
+        log.debug("Building metrics for {} from {} current record(s)",
+                beginning.toLocalDate(), totalCurrentRecords.size());
 
         Map<String, List<CheckInOutRecord>> orgGroup = totalCurrentRecords.stream()
                 .filter(r -> r.getOrganization() != null)
@@ -103,6 +117,11 @@ public class MetricsService {
         metricsData.setEmployeeTypeStatusCounts(employeeTypeGroupStats);
         metricsData.setLocationStatusCounts(locationGroupStats);
         metricsData.setBranchStatusCounts(branchGroupStats);
+
+        log.debug("Metrics built in {}ms: {} orgs, {} employee types, {} locations, {} branches",
+                System.currentTimeMillis() - start, orgGroupStats.size(), employeeTypeGroupStats.size(),
+                locationGroupStats.size(), branchGroupStats.size());
+
         return metricsData;
     }
 }

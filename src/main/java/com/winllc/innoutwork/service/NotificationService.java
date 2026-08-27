@@ -8,15 +8,10 @@ import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.model.NotificationRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.NotificationRepository;
-import com.winllc.innoutwork.security.AppUserDetailsService;
 import com.winllc.innoutwork.util.ValueValidatorUtil;
-import jakarta.mail.internet.InternetAddress;
 import jakarta.mail.internet.MimeMessage;
-import org.aspectj.weaver.ast.Not;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
@@ -100,10 +95,10 @@ public class NotificationService {
                     if(managerUser.getEmail() != null) {
                         sendNotification(notificationRecord, managerUser.getEmail());
                     }else{
-                        log.error("Manager does not have an email address: " + managerDn);
+                        log.error("Manager does not have an email address: {}", managerDn);
                     }
                 }else{
-                    log.error("Manager not found in LDAP: " + managerDn);
+                    log.error("Manager not found in LDAP: {}", managerDn);
                 }
             }
 
@@ -114,6 +109,9 @@ public class NotificationService {
         if(ValueValidatorUtil.isValidEmail(email)) {
             try {
                 String notificationUrl = properties.getApplicationBaseUrl() + "/app/notifications/id/" + notification.getId();
+
+                log.debug("Sending {} notification {} about {} to {}", notification.getType(),
+                        notification.getId(), notification.getAboutUserDn(), email);
 
                 Map<String, Object> templateModel = new HashMap<>();
                 templateModel.put("for", LdapDn.builder().dn(notification.getForUserDn()).build().getCn());
@@ -135,12 +133,13 @@ public class NotificationService {
                 helper.setText(htmlBody, true);
 
                 mailSender.send(message);
-                log.info("Notification sent to user: " + email);
+                log.info("Notification {} about {} sent to {}",
+                        notification.getId(), notification.getAboutUserDn(), email);
             }catch (Exception e) {
-                log.error("Failed to send notification to " + email, e);
+                log.error("Failed to send notification to {}", email, e);
             }
         }else{
-            log.error("Invalid email address: " + email);
+            log.error("Invalid email address: {}", email);
         }
     }
 

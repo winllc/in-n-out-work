@@ -18,6 +18,7 @@ public class LdapUser {
     private String location;
     private String department;
     private String branch;
+    private String dutySubOrganization;
     private String managerId;
     private String phoneNumber;
     private String email;

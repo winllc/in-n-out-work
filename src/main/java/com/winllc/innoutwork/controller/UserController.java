@@ -3,15 +3,11 @@ package com.winllc.innoutwork.controller;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.UserStatus;
-import com.winllc.innoutwork.rest.UserRestService;
 import com.winllc.innoutwork.security.PermissionEvaluator;
-import com.winllc.innoutwork.service.GroupService;
-import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -28,11 +24,11 @@ public class UserController {
     private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     private final UserService userRecordService;
-    @Autowired
-    private PermissionEvaluator permissionEvaluator;
+    private final PermissionEvaluator permissionEvaluator;
 
-    public UserController(UserService userRecordService) {
+    public UserController(UserService userRecordService, PermissionEvaluator permissionEvaluator) {
         this.userRecordService = userRecordService;
+        this.permissionEvaluator = permissionEvaluator;
     }
 
     @GetMapping("/details/{dn}")

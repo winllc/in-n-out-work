@@ -5,17 +5,14 @@ import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.model.GroupRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.GroupRecordRepository;
-import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.GroupService;
 import com.winllc.innoutwork.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -27,15 +24,13 @@ public class GroupRestService {
     private static final Logger log = LoggerFactory.getLogger(GroupRestService.class);
 
     private final UserService userRecordService;
-    @Autowired
-    private UserRecordRepository userRecordRepository;
-    @Autowired
-    private GroupRecordRepository groupRecordRepository;
-    @Autowired
-    private GroupService groupService;
+    private final GroupRecordRepository groupRecordRepository;
+    private final GroupService groupService;
 
-    public GroupRestService(UserService userRecordService) {
+    public GroupRestService(UserService userRecordService, GroupRecordRepository groupRecordRepository, GroupService groupService) {
         this.userRecordService = userRecordService;
+        this.groupRecordRepository = groupRecordRepository;
+        this.groupService = groupService;
     }
 
     /*
@@ -67,7 +62,7 @@ public class GroupRestService {
         //return cacheService.getGroup(applicationProperties.getGroupsBaseDn());
         userRecordService.updateGroupFavorite(authentication, groupFavorite);
 
-        log.info("Group favorite: {}", groupFavorite);
+        log.debug("Group favorite: {}", groupFavorite);
     }
 
     @GetMapping("/managers/{groupName}")
