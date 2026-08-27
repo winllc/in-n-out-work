@@ -2,8 +2,10 @@ package com.winllc.innoutwork.data;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.winllc.innoutwork.constant.DateTimeConstants;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 import lombok.ToString;
 
 import java.time.ZonedDateTime;
@@ -13,8 +15,12 @@ import java.util.List;
 @Data
 @ToString
 @Builder
+// @Builder on its own would leave this class with only an all-args constructor, which makes
+// Spring and Jackson fall back to constructor binding and turns any unsupplied primitive into a
+// conversion failure. The explicit pair below keeps a no-args constructor available.
+@NoArgsConstructor
+@AllArgsConstructor
 public class UserStatus {
-    private int id;
     private String dn;
     private String cn;
     private String status;

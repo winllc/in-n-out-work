@@ -5,6 +5,7 @@ import com.winllc.innoutwork.constant.NotificationTypeEnum;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapGroup;
+import com.winllc.innoutwork.data.RoleUpdateForm;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.MetricsData;
 import com.winllc.innoutwork.data.NotificationResponse;
@@ -79,6 +80,17 @@ class TemplateRenderingTest {
     @Test
     void userDetailsRenders() throws Exception {
         assertRenders("/render/userdetails", "Member Of");
+    }
+
+    @Test
+    void myReportsRenders() throws Exception {
+        assertRenders("/render/myreports", "Direct reports");
+    }
+
+    /** The empty state is a separate branch of the template, so it is rendered too. */
+    @Test
+    void myReportsEmptyStateRenders() throws Exception {
+        assertRenders("/render/myreports-empty", "No direct reports");
     }
 
     @Test
@@ -207,8 +219,25 @@ class TemplateRenderingTest {
 
             ModelAndView mav = new ModelAndView("userdetails");
             mav.addObject("user", user);
+            mav.addObject("roleForm", RoleUpdateForm.buildFromStatus(user));
             mav.addObject("roles", UserRoleEnum.getVisibleRoles());
             mav.addObject("isGroupManager", true);
+            return mav;
+        }
+
+        @GetMapping("/render/myreports")
+        ModelAndView myReports() {
+            ModelAndView mav = new ModelAndView("myreports");
+            mav.addObject("reportCount", 3);
+            mav.addObject("managerCn", "alice");
+            return mav;
+        }
+
+        @GetMapping("/render/myreports-empty")
+        ModelAndView myReportsEmpty() {
+            ModelAndView mav = new ModelAndView("myreports");
+            mav.addObject("reportCount", 0);
+            mav.addObject("managerCn", "alice");
             return mav;
         }
 

@@ -244,6 +244,70 @@ public class UserService {
         return null;
     }
 
+    /**
+     * Returns the users who report directly to {@code managerDn}, each enriched with today's
+     * attendance status so they can be listed in one table.
+     * <p>
+     * Reporting comes from the directory, not from the application role: a user is a manager
+     * because other entries point at their id, so someone holding only {@code USER} can still
+     * have reports. A manager with no reports yields an empty list.
+     *
+     * @return the direct reports sorted by common name, never {@code null}
+     */
+    public List<UserStatus> getDirectReports(LdapDn managerDn, HttpSession session) {
+        Optional<LdapUser> managerOptional = ldapService.lookupUser(managerDn);
+        if (managerOptional.isEmpty()) {
+            log.debug("No directory entry for {}, so no reports", managerDn.dn());
+            return List.of();
+        }
+
+        String managerId = managerOptional.get().getManagerLdapId();
+        if (StringUtils.isBlank(managerId)) {
+            log.debug("{} carries no manager id, so nobody reports to them", managerDn.dn());
+            return List.of();
+        }
+
+        List<LdapUser> reports = ldapService.findUsersReportingTo(managerId);
+        log.debug("{} (manager id {}) has {} direct report(s)", managerDn.dn(), managerId, reports.size());
+
+        return reports.stream()
+                .filter(Objects::nonNull)
+                .filter(u -> StringUtils.isNotBlank(u.getDn()))
+                // A manager whose own entry somehow points at their id must not list themselves.
+                .filter(u -> !u.getDn().equalsIgnoreCase(managerDn.dn()))
+                .map(u -> describeReport(u, session))
+                .sorted(Comparator.comparing(UserStatus::getCn, String.CASE_INSENSITIVE_ORDER))
+                .toList();
+    }
+
+    /**
+     * Builds the table row for one report: today's status, backfilled from the directory entry we
+     * already hold.
+     * <p>
+     * {@link #getUserStatus} reads the descriptive fields from the local {@code UserRecord}, which
+     * is only created once the application has seen that user check in. Reports who have never used
+     * the app therefore have no record yet, and those columns would otherwise all be blank even
+     * though the directory knows the values.
+     */
+    private UserStatus describeReport(LdapUser ldapUser, HttpSession session) {
+        UserStatus status = getUserStatus(ldapUser.getDn(), session);
+
+        if (StringUtils.isBlank(status.getOrganization())) {
+            status.setOrganization(ldapUser.getOrganization());
+        }
+        if (StringUtils.isBlank(status.getEmployeeType())) {
+            status.setEmployeeType(ldapUser.getEmployeeType());
+        }
+        if (StringUtils.isBlank(status.getLocation())) {
+            status.setLocation(ldapUser.getLocation());
+        }
+        if (StringUtils.isBlank(status.getEmail())) {
+            status.setEmail(ldapUser.getEmail());
+        }
+
+        return status;
+    }
+
     public UserRecord createUserIfDoesNotExist(LdapDn dn) {
         LdapUser ldapUser = userCache.get(dn.dn());
 

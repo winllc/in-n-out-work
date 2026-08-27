@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>My Reports</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">My Reports</span>
+
+<div layout:fragment="content">
+
+    <!-- Shown when the directory lists nobody reporting to this user, so the empty table
+         does not read as a loading failure. -->
+    <div class="card" th:if="${reportCount == 0}">
+        <div class="card-body">
+            <div class="empty">
+                <div class="empty-icon">
+                    <i class="ti ti-users-group fs-1"></i>
+                </div>
+                <p class="empty-title">No direct reports</p>
+                <p class="empty-subtitle text-secondary">
+                    Nobody in the directory currently reports to
+                    <span th:text="${managerCn}">you</span>.
+                    Reporting lines come from the directory, so if this looks wrong it is the
+                    manager attribute on your team's entries that needs updating.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" th:unless="${reportCount == 0}">
+        <div class="card-header">
+            <h3 class="card-title">
+                Direct reports
+                <span class="badge bg-blue-lt ms-2" th:text="${reportCount}">0</span>
+            </h3>
+            <div class="card-actions">
+                <label class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" role="switch" id="advanced-btn">
+                    <span class="form-check-label">Advanced</span>
+                </label>
+            </div>
+        </div>
+        <div class="card-body">
+            <div id="reports-table"></div>
+        </div>
+    </div>
+
+    <script th:inline="javascript">
+        // Status colours come from Tabler's badge palette so the table matches the rest of the UI.
+        const STATUS_BADGES = {
+            IN: "bg-green-lt",
+            OUT: "bg-blue-lt",
+            AWAY: "bg-purple-lt",
+            NONE: "bg-secondary-lt"
+        };
+
+        function statusFormatter(cell) {
+            const value = cell.getValue();
+            const badge = STATUS_BADGES[value];
+            return badge ? `<span class="badge ${badge}">${value}</span>` : (value ?? "");
+        }
+
+        const tableEl = document.getElementById("reports-table");
+
+        if (tableEl) {
+            const table = new Tabulator("#reports-table", {
+                // Scoped to the caller server-side; there is no dn parameter to tamper with.
+                ajaxURL: "/api/users/reports",
+                ajaxResponse: function (url, params, response) {
+                    return response.data;
+                },
+                pagination: "local",
+                paginationSize: 25,
+                layout: "fitDataStretch",
+                layoutColumnsOnNewData: true,
+                placeholder: "No direct reports found",
+                columns: [
+                    {title: "Name", field: "cn", minWidth: 140, resizable: true, headerFilter: "input"},
+                    {title: "DN", field: "dn", minWidth: 150, visible: false, resizable: true, headerFilter: "input"},
+                    {title: "Status", field: "status", formatter: statusFormatter, headerFilter: "input"},
+                    {title: "Organization", field: "organization", resizable: true, headerFilter: "input"},
+                    {title: "Employee Type", field: "employeeType", resizable: true, headerFilter: "input"},
+                    {title: "Checked In", field: "checkedInAt", visible: false, resizable: true},
+                    {title: "Checked Out", field: "checkedOutAt", visible: false, resizable: true},
+                    {title: "Last Status Change", field: "lastStatusChangeAt", resizable: true},
+                    {title: "Notes", field: "notes", widthGrow: 3}
+                ]
+            });
+
+            table.on("tableBuilt", function () {
+                table.element.classList.add("table-clickable");
+            });
+
+            table.on("rowClick", function (e, row) {
+                window.location.href = `/app/user/details/${row.getData().dn}`;
+            });
+
+            document.getElementById("advanced-btn").addEventListener("change", (event) => {
+                if (event.target.checked) {
+                    table.showColumn("checkedInAt");
+                    table.showColumn("checkedOutAt");
+                    table.showColumn("dn");
+                    table.hideColumn("cn");
+                } else {
+                    table.hideColumn("checkedInAt");
+                    table.hideColumn("checkedOutAt");
+                    table.hideColumn("dn");
+                    table.showColumn("cn");
+                }
+                table.redraw(true);
+            });
+        }
+    </script>
+</div>
+</body>
+</html>
