@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.security;
 
+import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.service.GroupService;
@@ -27,6 +28,22 @@ public class PermissionEvaluator {
         this.groupService = groupService;
     }
 
+    public boolean forCurrentUser(String userDn, Authentication authentication) {
+        LdapDn userLdapDn = new LdapDn(userDn);
+        if(authentication.getPrincipal() instanceof AppUserDetails userDetails){
+            LdapDn authLdapDn = new LdapDn(userDetails.getDn());
+            boolean isSelf = userLdapDn.equals(authLdapDn);
+
+            if (isSelf) {
+                log.debug("User access to {} granted for {}", userDn, authentication.getName());
+            } else {
+                log.debug("User access to {} denied for {}", userDn, authentication.getName());
+            }
+
+            return isSelf;
+        }
+        return false;
+    }
 
     public boolean groupCheck(String group, Authentication authentication) {
         LdapDn ldapDn = new LdapDn(group);

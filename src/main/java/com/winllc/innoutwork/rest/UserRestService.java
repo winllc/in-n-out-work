@@ -122,8 +122,11 @@ public class UserRestService {
 
     @GetMapping("/checkinoutrecords/{dn}")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)" +
+            "or @permissionEvaluator.forCurrentUser(#dn, #authentication) " +
+            "or @permissionEvaluator.userManagerCheck(#dn, #authentication)")
     public PagedModel<CheckInOutRecord> getUserCheckInOutRecords(
+            Authentication authentication,
             @PathVariable String dn,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
