@@ -21,7 +21,6 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.ArrayList;
 import java.util.List;
 
-import static com.winllc.innoutwork.service.LdapService.escapeLdapFilter;
 
 @RestController
 @RequestMapping("/api/orgnodes")
@@ -58,9 +57,12 @@ public class OrgNodeRestService {
                             HttpSession session,
                             @PathVariable(name = "orgName") String orgName) {
 
+        // EqualsFilter.encode() already escapes the value per RFC 2254. Escaping it here as
+        // well double-encodes the backslashes, so an org name containing a metacharacter such
+        // as an asterisk or a bracket would be searched for literally and match nobody.
         Filter filter = new AndFilter()
                 .and(new EqualsFilter("objectClass", "inetOrgPerson"))
-                .and(new EqualsFilter(props.getUserLdapDutySubOrganizationAttribute(), escapeLdapFilter(orgName)));
+                .and(new EqualsFilter(props.getUserLdapDutySubOrganizationAttribute(), orgName));
 
         List<UserStatus> result = ldapService.search(filter.encode());
         List<UserStatus> users = new ArrayList<>();
