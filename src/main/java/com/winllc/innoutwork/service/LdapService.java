@@ -96,8 +96,12 @@ public class LdapService {
                 controls,
                 (ContextMapper<UserStatus>) ctx -> {
                     DirContextAdapter context = (DirContextAdapter) ctx;
+                    // getDn() is the entry name relative to the search base, so on its own it
+                    // names nothing the rest of the app can resolve: callers re-read every row by
+                    // DN for its status, notes and details link. getNameInNamespace() puts the
+                    // base back on, matching how LdapUserContextMapper maps a DN.
                     UserStatus user = UserStatus.builder()
-                            .dn(context.getDn().toString())
+                            .dn(context.getNameInNamespace().replace(", ", ","))
                             .build();
                     return user;
                 }

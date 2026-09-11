@@ -102,7 +102,8 @@ public class UserRestService {
         Pageable pageable = PageRequest.of(page, size,
                 dir.equalsIgnoreCase("asc") ? Sort.by(sort).ascending() : Sort.by(sort).descending());
 
-        String filter = "objectClass=inetOrgPerson";
+        // Parenthesised: JNDI rejects a bare "attr=value" as a malformed search filter.
+        String filter = "(objectClass=inetOrgPerson)";
 
         if (!search.isEmpty()) {
             // Escape LDAP special characters to prevent LDAP injection
