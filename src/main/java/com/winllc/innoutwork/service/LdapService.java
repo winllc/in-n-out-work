@@ -96,12 +96,12 @@ public class LdapService {
                 controls,
                 (ContextMapper<UserStatus>) ctx -> {
                     DirContextAdapter context = (DirContextAdapter) ctx;
-                    // getDn() is the entry name relative to the search base, so on its own it
-                    // names nothing the rest of the app can resolve: callers re-read every row by
-                    // DN for its status, notes and details link. getNameInNamespace() puts the
-                    // base back on, matching how LdapUserContextMapper maps a DN.
+                    // getDn() is relative to the context source's base (spring.ldap.base), so it
+                    // is only absolute while that base is unset. Callers re-read every row by DN
+                    // for its status, notes and details link, so take the absolute name, matching
+                    // how LdapUserContextMapper maps a DN.
                     UserStatus user = UserStatus.builder()
-                            .dn(context.getNameInNamespace().replace(", ", ","))
+                            .dn(LdapDn.normalize(context.getNameInNamespace()))
                             .build();
                     return user;
                 }
@@ -532,7 +532,7 @@ public class LdapService {
                 throw new IllegalArgumentException("Unsupported: "+o.getClass());
             }
 
-            builder.dn(dn.replace(", ", ","));
+            builder.dn(LdapDn.normalize(dn));
 
             if (attributes != null) {
 
@@ -632,7 +632,7 @@ public class LdapService {
                 throw new IllegalArgumentException("Unsupported: "+o.getClass());
             }
 
-            dn = dn.replace(", ", ",");
+            dn = LdapDn.normalize(dn);
 
             LdapGroup group = new LdapGroup();
             group.setDn(dn);

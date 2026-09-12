@@ -146,6 +146,15 @@
                         <a th:href="@{/app/profile}" class="dropdown-item">
                             <i class="ti ti-user me-2"></i>My Profile
                         </a>
+                        <!-- Password sessions only: a client certificate would sign straight back in. -->
+                        <th:block th:if="${passwordLogin}">
+                            <div class="dropdown-divider"></div>
+                            <form id="logout-form" th:action="@{/logout}" method="post" class="m-0">
+                                <button type="submit" class="dropdown-item">
+                                    <i class="ti ti-logout me-2"></i>Log out
+                                </button>
+                            </form>
+                        </th:block>
                     </div>
                 </div>
             </div>

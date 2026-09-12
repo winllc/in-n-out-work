@@ -3,6 +3,7 @@ package com.winllc.innoutwork.rest;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.CheckInOut;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.service.CheckInOutService;
 import jakarta.servlet.http.HttpSession;
@@ -45,10 +46,10 @@ public class CheckInOutRestService {
         }else{
             Optional<CheckInOutRecord> optionalRecord = checkInOutService.lookupBySessionId(checkInOut.getSessionId());
 
-            String dn = auth != null ? auth.getName().replace(", ", ",") : null;
+            String dn = auth != null ? LdapDn.normalize(auth.getName()) : null;
 
             if (optionalRecord.isPresent()) {
-                dn = optionalRecord.get().getDn().replace(", ", ",");
+                dn = LdapDn.normalize(optionalRecord.get().getDn());
             }
 
             CheckInOutRecord.CheckInOutRecordBuilder recordBuilder = CheckInOutRecord.builder()

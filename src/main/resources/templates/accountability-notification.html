@@ -20,9 +20,9 @@
         <td><strong>On:</strong></td>
         <td th:text="${notificationDate}"></td>
     </tr>
-    <tr>
+    <tr th:if="${expectedCheckIn != null}">
         <td><strong>Expected Check In:</strong></td>
-        <td th:text="${summary}"></td>
+        <td th:text="${expectedCheckIn}"></td>
     </tr>
     <tr>
         <td><strong>Type:</strong></td>

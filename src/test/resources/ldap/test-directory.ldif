@@ -1,0 +1,94 @@
+# Shaped after test/seed-mock-data.sh: common names with spaces, the manager link carried as
+# user.title -> manager.street, and groupOfUniqueNames under ou=Groups. "Doe\, Jane" adds an escaped
+# comma, the one DN shape naive string handling gets wrong.
+
+dn: dc=winllc,dc=com
+objectClass: domain
+dc: winllc
+
+dn: ou=Users,dc=winllc,dc=com
+objectClass: organizationalUnit
+ou: Users
+
+dn: ou=Groups,dc=winllc,dc=com
+objectClass: organizationalUnit
+ou: Groups
+
+dn: ou=Companies,dc=winllc,dc=com
+objectClass: organizationalUnit
+ou: Companies
+
+dn: cn=Alice Adams,ou=Users,dc=winllc,dc=com
+objectClass: inetOrgPerson
+objectClass: extensibleObject
+cn: Alice Adams
+sn: Adams
+uid: alice
+mail: alice@winllc.com
+telephoneNumber: 555-0100
+employeeType: FT
+departmentNumber: RYS34B
+o: WinLLC
+l: New York
+street: MGR-100
+
+dn: cn=Bob Barker,ou=Users,dc=winllc,dc=com
+objectClass: inetOrgPerson
+objectClass: extensibleObject
+cn: Bob Barker
+sn: Barker
+uid: bob
+mail: bob@winllc.com
+employeeType: PT
+departmentNumber: RYS34B
+o: WinLLC
+l: New York
+title: MGR-100
+
+dn: cn=Carol Clark,ou=Users,dc=winllc,dc=com
+objectClass: inetOrgPerson
+objectClass: extensibleObject
+cn: Carol Clark
+sn: Clark
+uid: carol
+employeeType: FT
+departmentNumber: RYS34C
+o: WinLLC
+l: Chicago
+title: MGR-100
+
+dn: cn=Doe\, Jane,ou=Users,dc=winllc,dc=com
+objectClass: inetOrgPerson
+objectClass: extensibleObject
+cn: Doe, Jane
+sn: Doe
+uid: jane
+employeeType: CON
+departmentNumber: ABC12X
+o: WinLLC
+l: Los Angeles
+
+dn: cn=Star*Man,ou=Users,dc=winllc,dc=com
+objectClass: inetOrgPerson
+cn: Star*Man
+sn: Man
+uid: starman
+
+dn: cn=Engineering,ou=Groups,dc=winllc,dc=com
+objectClass: groupOfUniqueNames
+cn: Engineering
+description: Builds things
+owner: cn=Alice Adams,ou=Users,dc=winllc,dc=com
+uniqueMember: cn=Alice Adams,ou=Users,dc=winllc,dc=com
+uniqueMember: cn=Bob Barker,ou=Users,dc=winllc,dc=com
+
+dn: cn=Platform,cn=Engineering,ou=Groups,dc=winllc,dc=com
+objectClass: groupOfUniqueNames
+cn: Platform
+uniqueMember: cn=Bob Barker,ou=Users,dc=winllc,dc=com
+
+dn: cn=Sales,ou=Groups,dc=winllc,dc=com
+objectClass: groupOfUniqueNames
+cn: Sales
+uniqueMember: cn=Carol Clark,ou=Users,dc=winllc,dc=com
+uniqueMember: cn=Doe\, Jane,ou=Users,dc=winllc,dc=com

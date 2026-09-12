@@ -45,12 +45,6 @@ public class UserStatus {
     private String averageLoginTime;
 
     public String getCn(){
-        if(dn != null){
-            String[] parts = dn.split(",");
-            if(parts.length > 0){
-                return parts[0].trim().replace("cn=", "").replace("CN=", "");
-            }
-        }
-        return "";
+        return LdapDn.cnOf(dn);
     }
 }
