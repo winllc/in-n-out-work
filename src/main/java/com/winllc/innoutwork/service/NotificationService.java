@@ -19,6 +19,8 @@ import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.*;
 
@@ -56,7 +58,11 @@ public class NotificationService {
         return notificationRepository.findByAboutUserDnIgnoreCaseAndNotificationDateBetween(dn, startOfDay, endOfDay);
     }
 
-    public void createAbsentNotification(String userDn){
+    /**
+     * @param expectedCheckInTime the time the user was expected in by, as the absence check decided it;
+     *                            recorded on the notification and shown in the email
+     */
+    public void createAbsentNotification(String userDn, LocalTime expectedCheckInTime){
         Optional<UserRecord> aboutUserOptional = userService.getUserByDn(LdapDn.builder().dn(userDn).build());
 
         if(aboutUserOptional.isPresent()){
@@ -88,7 +94,7 @@ public class NotificationService {
                     notificationRecord.setAboutUserDn(userDn);
                     notificationRecord.setForUserDn(managerDn);
                     notificationRecord.setNotificationDate(ZonedDateTime.now());
-                    notificationRecord.setExpectedCheckInTime(userRecord.getAverageLoginTime());
+                    notificationRecord.setExpectedCheckInTime(expectedCheckInTime);
 
                     notificationRepository.save(notificationRecord);
 
@@ -115,7 +121,8 @@ public class NotificationService {
 
                 Map<String, Object> templateModel = new HashMap<>();
                 templateModel.put("for", LdapDn.builder().dn(notification.getForUserDn()).build().getCn());
-                templateModel.put("expectedCheckIn", notification.getExpectedCheckInTime());
+                templateModel.put("expectedCheckIn", notification.getExpectedCheckInTime() == null ? null
+                        : DateTimeConstants.TIME_FORMATTER.withZone(ZoneId.systemDefault()).format(notification.getExpectedCheckInTime()));
                 templateModel.put("aboutUser", LdapDn.builder().dn(notification.getAboutUserDn()).build().getCn());
                 templateModel.put("type", notification.getType());
                 templateModel.put("notificationDate", DateTimeConstants.DATE_FORMATTER.format(notification.getNotificationDate()));

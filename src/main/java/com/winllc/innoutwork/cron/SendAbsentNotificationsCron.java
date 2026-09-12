@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.cron;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.model.CheckInOutRecord;
@@ -24,17 +25,14 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
 import java.time.*;
-import java.util.EnumSet;
 import java.util.List;
-import java.util.Set;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
 public class SendAbsentNotificationsCron {
 
     private static final Logger log = LoggerFactory.getLogger(SendAbsentNotificationsCron.class);
-
-    private static final Set<DayOfWeek> WEEKEND_DAYS = EnumSet.of(DayOfWeek.SATURDAY, DayOfWeek.SUNDAY);
 
 
     private final UserRecordRepository userRecordRepository;
@@ -87,9 +85,12 @@ public class SendAbsentNotificationsCron {
         log.info("End SendAbsentNotificationsCron. Sent notifications: %s".formatted(notificationsSent.get()));
     }
 
-    private void createAndSendNotification(UserRecord user) {
-        //todo create and send notification
-        notificationService.createAbsentNotification(user.getDn());
+    void createAndSendNotification(UserRecord user) {
+        List<UserEventRecord> todaysEvents =
+                userEventRecordRepository.findByDnIgnoreCaseAndDate(user.getDn(), LocalDate.now());
+
+        // The notification carries the same expected time the absence check just used.
+        notificationService.createAbsentNotification(user.getDn(), expectedLoginTime(user, todaysEvents));
     }
 
     private boolean notificationAlreadySent(UserRecord user) {
@@ -136,7 +137,7 @@ public class SendAbsentNotificationsCron {
 
     private static boolean isWeekend(LocalDate date) {
         DayOfWeek dayOfWeek = date.getDayOfWeek();
-        return WEEKEND_DAYS.contains(dayOfWeek);
+        return DateTimeConstants.WEEKEND_DAYS.contains(dayOfWeek);
     }
 
     private boolean isHoliday(LocalDate date) {
@@ -148,23 +149,28 @@ public class SendAbsentNotificationsCron {
         return false;
     }
 
-    private boolean isPastCheckinWindow(UserRecord user, List<UserEventRecord> records) {
-        int additionalWaitMinutes = properties.getExtraTimeBeforeAbsentNotificationMinutes();
-
-        LocalTime lateArrivalTime = records.stream()
+    /**
+     * When the user is expected in today: a late-arrival entry for today, else the login time they
+     * chose on their profile, else their average login time. Null when none is known.
+     */
+    static LocalTime expectedLoginTime(UserRecord user, List<UserEventRecord> todaysEvents) {
+        LocalTime lateArrivalTime = todaysEvents.stream()
                 .filter(record -> record.getStatus() == UserStatusEnum.LATE_ARRIVAL)
                 .map(UserEventRecord::getLoginByTime)
+                .filter(Objects::nonNull)
                 .findFirst()
                 .orElse(null);
 
-        LocalTime expectedLoginTime;
-        if(lateArrivalTime != null) {
-            expectedLoginTime = lateArrivalTime;
-        } else if(user.getChosenLoginTime() == null) {
-            expectedLoginTime = user.getAverageLoginTime();
-        }else{
-            expectedLoginTime = user.getChosenLoginTime();
+        if (lateArrivalTime != null) {
+            return lateArrivalTime;
         }
+        return user.getChosenLoginTime() != null ? user.getChosenLoginTime() : user.getAverageLoginTime();
+    }
+
+    private boolean isPastCheckinWindow(UserRecord user, List<UserEventRecord> records) {
+        int additionalWaitMinutes = properties.getExtraTimeBeforeAbsentNotificationMinutes();
+
+        LocalTime expectedLoginTime = expectedLoginTime(user, records);
 
         if(expectedLoginTime != null) {
             ZonedDateTime absentIfAfter = expectedLoginTime.atDate(LocalDate.now()).atZone(ZoneId.systemDefault())

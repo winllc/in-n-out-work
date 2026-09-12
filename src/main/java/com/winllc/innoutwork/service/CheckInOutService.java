@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.constant.CheckInOutEnum;
+import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
@@ -18,6 +19,7 @@ import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 public class CheckInOutService {
@@ -58,6 +60,13 @@ public class CheckInOutService {
             }
         }
 
+        // Saved before the average is recalculated, which reads check-ins back from the repository:
+        // the average should include this check-in, and a user's first one should set it.
+        CheckInOutRecord saved = checkinInOutRecordRepository.save(record);
+
+        // One line per status event across the whole workforce, so this stays at debug.
+        log.debug("Recorded {} for {} at {}", saved.getAction(), saved.getDn(), saved.getTimestamp());
+
         if(record.getAction() == CheckInOutEnum.CHECK_IN){
             Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(record.getDn());
             if (recordOptional.isEmpty()) {
@@ -77,11 +86,6 @@ public class CheckInOutService {
             });
         }
 
-        CheckInOutRecord saved = checkinInOutRecordRepository.save(record);
-
-        // One line per status event across the whole workforce, so this stays at debug.
-        log.debug("Recorded {} for {} at {}", saved.getAction(), saved.getDn(), saved.getTimestamp());
-
         return saved;
     }
 
@@ -91,33 +95,68 @@ public class CheckInOutService {
         List<CheckInOutRecord> allCheckins = checkinInOutRecordRepository
                 .findByDnIgnoreCaseAndTimestampIsBetweenAndActionEqualsOrderByTimestampDesc(dn, from, to, CheckInOutEnum.CHECK_IN);
 
+        // Arrival is the day's first check-in. The workstation posts one on every Windows logon, so
+        // a reboot or signing back in after lunch adds more, and averaging those would push the
+        // expected login time, and with it the absence alerts, later in the day. Weekends are left
+        // out as the absence check skips them: a quick Saturday sign-in says nothing about weekdays.
         List<ZonedDateTime> timestamps = allCheckins.stream()
                 .filter(r -> r.getTimestamp() != null)
                 .map(CheckInOutRecord::getZonedDateTimestamp)
+                .filter(t -> !DateTimeConstants.WEEKEND_DAYS.contains(t.getDayOfWeek()))
+                .collect(Collectors.toMap(ZonedDateTime::toLocalDate, t -> t, (a, b) -> a.isBefore(b) ? a : b))
+                .values().stream()
                 .toList();
 
-        log.debug("Averaging {} check-in(s) from the last 30 days for {}", timestamps.size(), dn);
+        log.debug("Averaging the first check-in of {} weekday(s) from the last 30 days ({} check-ins) for {}",
+                timestamps.size(), allCheckins.size(), dn);
 
         return calculateAverage(timestamps);
     }
 
+    private static final long SECONDS_PER_DAY = 86_400;
+
+    /**
+     * The mean time of day, ignoring dates, to the second (fractions dropped).
+     * <p>
+     * Clock times wrap at midnight, so a plain mean of 23:30 and 00:30 would be noon. Each time is
+     * first taken as whichever of itself or its copy a day earlier or later lies within twelve hours
+     * of the times' circular mean, then averaged normally. Times that do not straddle midnight are
+     * left as they are, so for them this is exactly the ordinary mean. When the circular mean is
+     * undefined (times spread evenly round the clock) it falls back to the ordinary mean.
+     */
     public static LocalTime calculateAverage(List<ZonedDateTime> timestamps) {
         if (timestamps == null || timestamps.isEmpty()) {
             return null;
         }
 
-        List<LocalTime> localTimes = timestamps.stream()
-                .map(t -> t.toLocalTime())
-                .toList();
+        long[] seconds = timestamps.stream()
+                .mapToLong(t -> t.toLocalTime().toSecondOfDay())
+                .toArray();
 
+        double sin = 0;
+        double cos = 0;
+        for (long s : seconds) {
+            double angle = 2 * Math.PI * s / SECONDS_PER_DAY;
+            sin += Math.sin(angle);
+            cos += Math.cos(angle);
+        }
+        double halfDay = SECONDS_PER_DAY / 2.0;
+        double centre = Math.hypot(sin, cos) < 1e-9 * seconds.length
+                ? halfDay
+                : Math.floorMod(Math.round(Math.atan2(sin, cos) / (2 * Math.PI) * SECONDS_PER_DAY), SECONDS_PER_DAY);
 
-        long averageSeconds =
-                (long) localTimes.stream()
-                        .mapToLong(LocalTime::toSecondOfDay)
-                        .average()
-                        .orElseThrow(() -> new IllegalStateException("Failed to calculate average of timestamps"));
+        long sum = 0;
+        for (long s : seconds) {
+            if (s - centre >= halfDay) {
+                sum += s - SECONDS_PER_DAY;
+            } else if (centre - s > halfDay) {
+                sum += s + SECONDS_PER_DAY;
+            } else {
+                sum += s;
+            }
+        }
 
-        return LocalTime.ofSecondOfDay(averageSeconds);
+        return LocalTime.ofSecondOfDay(Math.floorMod(Math.floorDiv(sum, seconds.length), SECONDS_PER_DAY));
     }
 
     public Optional<CheckInOutRecord> lookupBySessionId(String sessionId) {
@@ -147,13 +186,20 @@ public class CheckInOutService {
         return checkinInOutRecordRepository.findByTimestampBetweenOrderByTimestampDesc(beginning, ending);
     }
 
+    /**
+     * The moment being viewed, in the server's zone.
+     * <p>
+     * Callers cut "the day" from this with {@code truncatedTo(DAYS)}, which works in whatever zone
+     * the value carries. The date picker posts local midnight as a UTC ISO string, so left as sent
+     * the day would be UTC midnight to midnight: 8pm the evening before to 8pm in New York.
+     */
     public static ZonedDateTime getDateTimeFromSession(HttpSession session) {
         ZonedDateTime selectedDateTime =
                 (ZonedDateTime) session.getAttribute("systemTime");
 
         if (selectedDateTime == null) {
-            selectedDateTime = ZonedDateTime.now().withZoneSameInstant(ZoneId.systemDefault());
+            selectedDateTime = ZonedDateTime.now();
         }
-        return selectedDateTime;
+        return selectedDateTime.withZoneSameInstant(ZoneId.systemDefault());
     }
 }
