@@ -8,7 +8,23 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import com.winllc.innoutwork.service.CacheService;
+import com.winllc.innoutwork.service.HomeService;
 import com.winllc.innoutwork.service.LdapService;
+import com.winllc.innoutwork.constant.NotificationTypeEnum;
+import com.winllc.innoutwork.data.ExpectedLogin;
+import com.winllc.innoutwork.data.home.AttendanceSummary;
+import com.winllc.innoutwork.data.home.HomeDashboard;
+import com.winllc.innoutwork.data.home.NotInYet;
+import com.winllc.innoutwork.data.home.PersonalSummary;
+import com.winllc.innoutwork.data.home.TeamSummary;
+import com.winllc.innoutwork.data.home.UpcomingStatus;
+import com.winllc.innoutwork.data.metrics.AccountabilityMetrics;
+import com.winllc.innoutwork.data.metrics.AccountedFor;
+import com.winllc.innoutwork.data.metrics.AgentCoverage;
+import com.winllc.innoutwork.data.metrics.StatusMixEntry;
+import com.winllc.innoutwork.data.metrics.StoppedAgent;
+import com.winllc.innoutwork.data.metrics.UserRef;
+import com.winllc.innoutwork.model.NotificationRecord;
 import com.winllc.innoutwork.service.PermissionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,15 +41,23 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.Optional;
 
 import static com.winllc.innoutwork.controller.ProfileControllerTest.mockCert;
 import static org.mockito.ArgumentMatchers.any;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.model;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -64,6 +88,8 @@ class HomeControllerTest {
     private PermissionService permissionService;
     @MockitoBean
     private LdapService ldapService;
+    @MockitoBean
+    private HomeService homeService;
     /** Referenced by name from the @PreAuthorize expression on /app/users/{group}. */
     @MockitoBean(name = "permissionEvaluator")
     private com.winllc.innoutwork.security.PermissionEvaluator permissionEvaluator;
@@ -93,17 +119,93 @@ class HomeControllerTest {
     }
 
     @Test
-    void rootRedirectsToGroups() throws Exception {
+    void rootRedirectsToHome() throws Exception {
         mockMvc.perform(get("/").with(x509(mockCert(USER_DN))))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/app/groups"));
+                .andExpect(redirectedUrl("/app/home"));
     }
 
     @Test
-    void appRedirectsToGroups() throws Exception {
+    void appRedirectsToHome() throws Exception {
         mockMvc.perform(get("/app").with(x509(mockCert(USER_DN))))
                 .andExpect(status().is3xxRedirection())
-                .andExpect(redirectedUrl("/app/groups"));
+                .andExpect(redirectedUrl("/app/home"));
+    }
+
+    // --- home page ---------------------------------------------------------------------------------
+
+    private static final LocalDate TODAY = LocalDate.now();
+    private static final String BOB = "cn=Bob Barker,ou=Users,dc=winllc,dc=com";
+
+    private static PersonalSummary me(boolean agentQuiet) {
+        ZonedDateTime in = TODAY.atTime(8, 5).atZone(ZoneId.systemDefault());
+        return new PersonalSummary(TODAY, "Checked in", "bg-green-lt", in, in, null,
+                new ExpectedLogin(LocalTime.of(9, 0), ExpectedLogin.Source.PREFERRED), LocalTime.of(8, 40),
+                new AttendanceSummary(21, 18, 2, 1), agentQuiet ? null : in, agentQuiet,
+                List.of(new UpcomingStatus(TODAY.plusDays(3), USER_DN, "alice", "Scheduled Leave")));
+    }
+
+    private static TeamSummary team() {
+        String carol = "cn=Carol Clark,ou=Users,dc=winllc,dc=com";
+        AccountabilityMetrics metrics = new AccountabilityMetrics(
+                new AccountedFor(TODAY, null, 3, 2, 1, 1, List.of(new UserRef(carol, "Carol Clark")), 1),
+                List.of(new StatusMixEntry(StatusMixEntry.CHECKED_IN, "Checked in", 1),
+                        new StatusMixEntry("TDY", "TDY", 1),
+                        new StatusMixEntry(StatusMixEntry.UNACCOUNTED, "Unaccounted for", 1)),
+                new AgentCoverage(3, 2, 1, 0, 7, List.of(new StoppedAgent(BOB, "Bob Barker", TODAY.minusDays(9)))));
+        NotificationRecord notification = NotificationRecord.builder().id(42L).aboutUserDn(carol)
+                .type(NotificationTypeEnum.ABSENT).notificationDate(ZonedDateTime.now()).build();
+        return new TeamSummary(3, metrics, List.of(new NotInYet(carol, "Carol Clark", LocalTime.of(9, 0), true)),
+                List.of(notification), List.of(new UpcomingStatus(TODAY.plusDays(2), BOB, "Bob Barker", "TDY")));
+    }
+
+    @Test
+    void homeShowsTheSignedInUsersOwnFigures() throws Exception {
+        when(homeService.forUser(eq(USER_DN), any())).thenReturn(new HomeDashboard(me(false), null));
+
+        mockMvc.perform(get("/app/home").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(view().name("home"))
+                .andExpect(content().string(containsString("Checked in")))
+                .andExpect(content().string(containsString("your preferred time")))
+                .andExpect(content().string(containsString("18 of 21")))
+                .andExpect(content().string(containsString("Scheduled Leave")))
+                .andExpect(content().string(containsString("Reporting")))
+                .andExpect(content().string(not(containsString("id=\"my-team\""))));
+    }
+
+    @Test
+    void homeWarnsWhenTheUsersAgentIsQuiet() throws Exception {
+        when(homeService.forUser(eq(USER_DN), any())).thenReturn(new HomeDashboard(me(true), null));
+
+        mockMvc.perform(get("/app/home").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("Not reporting")))
+                .andExpect(content().string(containsString("Nothing received in the last 30 days.")));
+    }
+
+    @Test
+    void homeAddsTheTeamForAManager() throws Exception {
+        when(homeService.forUser(eq(USER_DN), any())).thenReturn(new HomeDashboard(me(false), team()));
+
+        mockMvc.perform(get("/app/home").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("3 direct reports")))
+                .andExpect(content().string(containsString("2 of 3 reports")))
+                .andExpect(content().string(containsString("67%")))
+                .andExpect(content().string(containsString("Unaccounted for")))
+                .andExpect(content().string(containsString("expected 09:00")))
+                .andExpect(content().string(containsString(">Late</span>")))
+                .andExpect(content().string(containsString("href=\"/app/notifications/id/42\"")))
+                .andExpect(content().string(containsString("Carol Clark \u00b7 ABSENT")))
+                .andExpect(content().string(containsString("2 of 3 reported in the last 7 days")))
+                .andExpect(content().string(containsString(">Bob Barker</a>")));
+    }
+
+    @Test
+    void homeRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/app/home"))
+                .andExpect(status().is4xxClientError());
     }
 
     /**

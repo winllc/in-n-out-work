@@ -13,6 +13,73 @@
 
 <div layout:fragment="content">
 
+    <!-- Accountability: who is accounted for, how the day splits by status, and agent health.
+         Counts only; individuals are not named on this page. -->
+    <th:block th:if="${accountability != null}"
+              th:with="af=${accountability.accountedFor()}, cov=${accountability.agentCoverage()}">
+    <div class="row row-cards mb-3" id="accountability">
+
+        <div class="col-md-6 col-xl-4">
+            <div class="card h-100" id="accounted-for">
+                <div class="card-body">
+                    <div class="subheader">Accounted for</div>
+                    <th:block th:if="${af.workingDay()}">
+                        <div class="h1 mb-1" th:text="${af.ratePercent() != null ? af.ratePercent() + '%' : '—'}">0%</div>
+                        <div class="text-secondary mb-2"
+                             th:text="${af.accounted() + ' of ' + af.expected() + ' expected users'}"></div>
+                        <div class="progress progress-sm mb-2" th:if="${af.expected() > 0}">
+                            <div class="progress-bar bg-green" role="progressbar"
+                                 th:style="${'width: ' + af.ratePercent() + '%'}"
+                                 th:attr="aria-valuenow=${af.ratePercent()}" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <div class="small text-secondary"
+                             th:text="${af.checkedIn() + ' checked in · ' + af.withStatus() + ' with a status · ' + af.unaccountedTotal() + ' unaccounted'}"></div>
+                    </th:block>
+                    <th:block th:unless="${af.workingDay()}">
+                        <div class="h1 mb-1 text-secondary">—</div>
+                        <div class="text-secondary" id="non-working-day"
+                             th:text="${'Not a working day: ' + af.nonWorkingReason()}"></div>
+                        <div class="small text-secondary mt-2"
+                             th:text="${af.checkedIn() + ' checked in · ' + af.withStatus() + ' with a status'}"></div>
+                    </th:block>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-4">
+            <div class="card h-100" id="status-mix">
+                <div class="card-body">
+                    <div class="subheader mb-2">Status mix</div>
+                    <th:block th:replace="~{fragments/accountability :: statusMix(${accountability.statusMix()}, ${af.expected()})}"></th:block>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-12 col-xl-4">
+            <div class="card h-100" id="agent-coverage">
+                <div class="card-body">
+                    <div class="subheader">Agent coverage</div>
+                    <div class="h1 mb-1"
+                         th:text="${cov.reportingPercent() != null ? cov.reportingPercent() + '%' : '—'}">0%</div>
+                    <div class="text-secondary mb-2"
+                         th:text="${cov.reporting() + ' of ' + cov.users() + ' users reported in the last ' + cov.reportingDays() + ' days'}"></div>
+                    <div class="progress progress-separated progress-sm mb-2" th:if="${cov.users() > 0}">
+                        <div class="progress-bar bg-green" th:style="${'width: ' + (cov.reporting() * 100.0 / cov.users()) + '%'}"
+                             th:title="${'Reporting: ' + cov.reporting()}"></div>
+                        <div class="progress-bar bg-orange" th:style="${'width: ' + (cov.stopped() * 100.0 / cov.users()) + '%'}"
+                             th:title="${'Stopped reporting: ' + cov.stopped()}"></div>
+                        <div class="progress-bar bg-secondary" th:style="${'width: ' + (cov.neverReported() * 100.0 / cov.users()) + '%'}"
+                             th:title="${'Never reported: ' + cov.neverReported()}"></div>
+                    </div>
+                    <div class="small text-secondary"
+                         th:text="${cov.stopped() + ' stopped reporting · ' + cov.neverReported() + ' never reported'}"></div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+    </th:block>
+
     <div class="row row-cards">
         <div class="col-lg-4">
             <div class="card">

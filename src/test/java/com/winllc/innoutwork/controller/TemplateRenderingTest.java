@@ -13,6 +13,12 @@ import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.data.UserStatus;
+import com.winllc.innoutwork.data.metrics.AccountabilityMetrics;
+import com.winllc.innoutwork.data.metrics.AccountedFor;
+import com.winllc.innoutwork.data.metrics.AgentCoverage;
+import com.winllc.innoutwork.data.metrics.StatusMixEntry;
+import com.winllc.innoutwork.data.metrics.StoppedAgent;
+import com.winllc.innoutwork.data.metrics.UserRef;
 import com.winllc.innoutwork.data.reports.DayReport;
 import com.winllc.innoutwork.data.reports.GroupReport;
 import com.winllc.innoutwork.data.reports.UserDayReport;
@@ -101,6 +107,47 @@ class TemplateRenderingTest {
     @Test
     void metricsRenders() throws Exception {
         assertRenders("/render/metrics", "card-header-tabs");
+    }
+
+    /** Without accountability data the section is left out and the rest of the page still renders. */
+    @Test
+    void metricsWithoutAccountabilityOmitsTheSection() throws Exception {
+        mockMvc.perform(get("/render/metrics").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("id=\"accountability\""))));
+    }
+
+    @Test
+    void metricsAccountabilityRenders() throws Exception {
+        String path = "/render/metrics-accountability";
+        assertRenders(path, "67%");
+        assertRenders(path, "2 of 3 expected users");
+        assertRenders(path, "1 checked in · 1 with a status · 1 unaccounted");
+        assertRenders(path, "Work From Home");
+        assertRenders(path, "width: 33.333333333333336%");
+        assertRenders(path, "75%");
+        assertRenders(path, "3 of 4 users reported in the last 7 days");
+        assertRenders(path, "1 stopped reporting · 0 never reported");
+    }
+
+    /**
+     * The metrics page is aggregate only. Even handed data that names people, it must not show
+     * them or link to their details.
+     */
+    @Test
+    void metricsAccountabilityNamesNobody() throws Exception {
+        mockMvc.perform(get("/render/metrics-accountability").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("Carol Clark"))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("/app/user/details/"))));
+    }
+
+    @Test
+    void metricsAccountabilityOnANonWorkingDayRenders() throws Exception {
+        String path = "/render/metrics-accountability-weekend";
+        assertRenders(path, "Not a working day: Saturday");
+        assertRenders(path, "Nobody expected, checked in, or given a status.");
     }
 
     @Test
@@ -297,6 +344,31 @@ class TemplateRenderingTest {
             mav.addObject("data", data);
             mav.addObject("totalLoginChartData", chartJson);
             mav.addObject("loginByTimeChartData", chartJson);
+            return mav;
+        }
+
+        @GetMapping("/render/metrics-accountability")
+        ModelAndView metricsAccountability() {
+            ModelAndView mav = metrics();
+            String carol = "cn=Carol Clark,ou=Users,dc=winllc,dc=com";
+            mav.addObject("accountability", new AccountabilityMetrics(
+                    new AccountedFor(LocalDate.of(2026, 9, 10), null, 3, 2, 1, 1,
+                            List.of(new UserRef(carol, "Carol Clark")), 1),
+                    List.of(new StatusMixEntry(StatusMixEntry.CHECKED_IN, "Checked in", 1),
+                            new StatusMixEntry("WORK_FROM_HOME", "Work From Home", 1),
+                            new StatusMixEntry(StatusMixEntry.UNACCOUNTED, "Unaccounted for", 1)),
+                    new AgentCoverage(4, 3, 1, 0, 7,
+                            List.of(new StoppedAgent(carol, "Carol Clark", LocalDate.of(2026, 9, 1))))));
+            return mav;
+        }
+
+        @GetMapping("/render/metrics-accountability-weekend")
+        ModelAndView metricsAccountabilityWeekend() {
+            ModelAndView mav = metrics();
+            mav.addObject("accountability", new AccountabilityMetrics(
+                    new AccountedFor(LocalDate.of(2026, 9, 12), "Saturday", 0, 0, 0, 0, List.of(), 0),
+                    List.of(),
+                    new AgentCoverage(0, 0, 0, 0, 7, List.of())));
             return mav;
         }
 

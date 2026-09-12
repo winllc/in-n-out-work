@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Home</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">Home</span>
+
+<div layout:fragment="content"
+     th:with="me=${home.me()}, team=${home.team()}, today=${#temporals.createToday()}">
+
+    <div class="text-secondary mb-3" id="home-day"
+         th:text="${me.day().equals(today) ? 'Today, ' + #temporals.format(me.day(), 'EEEE MMMM d') : 'Showing ' + #temporals.format(me.day(), 'EEEE MMMM d, yyyy')}"></div>
+
+    <!-- The signed-in user -->
+    <div class="row row-cards mb-3" id="my-day">
+
+        <div class="col-md-6 col-xl-4">
+            <div class="card h-100" id="my-status">
+                <div class="card-body">
+                    <div class="subheader">My status</div>
+                    <div class="my-2">
+                        <span class="badge fs-3" th:classappend="${me.statusBadge()}" th:text="${me.statusLabel()}"></span>
+                        <span class="text-secondary ms-2" th:if="${me.statusSince() != null}"
+                              th:text="${'since ' + #temporals.format(me.statusSince(), 'HH:mm')}"></span>
+                    </div>
+                    <div class="row g-3 mt-1">
+                        <div class="col-6">
+                            <div class="subheader mb-1">Checked in</div>
+                            <div th:text="${me.checkedInAt() != null ? #temporals.format(me.checkedInAt(), 'HH:mm') : '—'}"></div>
+                        </div>
+                        <div class="col-6">
+                            <div class="subheader mb-1">Checked out</div>
+                            <div th:text="${me.checkedOutAt() != null ? #temporals.format(me.checkedOutAt(), 'HH:mm') : '—'}"></div>
+                        </div>
+                        <div class="col-6">
+                            <div class="subheader mb-1">Expected in by</div>
+                            <div id="my-expected">
+                                <th:block th:if="${me.expected() != null}">
+                                    <span th:text="${#temporals.format(me.expected().time(), 'HH:mm')}"></span>
+                                    <div class="small text-secondary" th:text="${me.expected().source().getDescription()}"></div>
+                                </th:block>
+                                <span th:if="${me.expected() == null}" class="text-secondary">Not known yet</span>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="subheader mb-1">Average arrival</div>
+                            <div th:text="${me.averageLoginTime() != null ? #temporals.format(me.averageLoginTime(), 'HH:mm') : '—'}"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6 col-xl-4" th:with="att=${me.last30Days()}">
+            <div class="card h-100" id="my-attendance">
+                <div class="card-body">
+                    <div class="subheader">Last 30 days</div>
+                    <div class="h1 mb-1" th:text="${att.checkedIn() + ' of ' + att.workingDays()}">0 of 0</div>
+                    <div class="text-secondary mb-2">working days checked in</div>
+                    <div class="progress progress-separated mb-3" th:if="${att.workingDays() > 0}">
+                        <div class="progress-bar bg-green" th:style="${'width: ' + att.percentOfWorkingDays(att.checkedIn()) + '%'}"
+                             th:title="${'Checked in: ' + att.checkedIn()}"></div>
+                        <div class="progress-bar bg-blue" th:style="${'width: ' + att.percentOfWorkingDays(att.statusOnly()) + '%'}"
+                             th:title="${'Status only: ' + att.statusOnly()}"></div>
+                        <div class="progress-bar bg-secondary-lt" th:style="${'width: ' + att.percentOfWorkingDays(att.noRecord()) + '%'}"
+                             th:title="${'Nothing recorded: ' + att.noRecord()}"></div>
+                    </div>
+                    <div class="d-flex align-items-center"><span class="legend bg-green me-2"></span>Checked in<span class="ms-auto fw-bold" th:text="${att.checkedIn()}"></span></div>
+                    <div class="d-flex align-items-center"><span class="legend bg-blue me-2"></span>Covered by a status<span class="ms-auto fw-bold" th:text="${att.statusOnly()}"></span></div>
+                    <div class="d-flex align-items-center"><span class="legend bg-secondary-lt me-2"></span>Nothing recorded<span class="ms-auto fw-bold" th:text="${att.noRecord()}"></span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-12 col-xl-4">
+            <div class="card h-100" id="my-agent">
+                <div class="card-body">
+                    <div class="subheader">Workstation agent</div>
+                    <th:block th:if="${!me.agentQuiet()}">
+                        <div class="h3 mt-2 mb-1"><i class="ti ti-circle-check text-green me-1"></i>Reporting</div>
+                        <div class="text-secondary"
+                             th:text="${'Last reported ' + #temporals.format(me.lastReported(), 'MM/dd/yyyy HH:mm')}"></div>
+                    </th:block>
+                    <th:block th:if="${me.agentQuiet()}">
+                        <div class="h3 mt-2 mb-1"><i class="ti ti-alert-triangle text-orange me-1"></i>Not reporting</div>
+                        <div class="text-secondary" th:if="${me.lastReported() != null}"
+                             th:text="${'Nothing since ' + #temporals.format(me.lastReported(), 'MM/dd/yyyy HH:mm') + '.'}"></div>
+                        <div class="text-secondary" th:if="${me.lastReported() == null}">
+                            Nothing received in the last 30 days.
+                        </div>
+                        <div class="small text-secondary mt-2">
+                            Check-ins from your PC are not arriving. If you have been working, the agent on your
+                            workstation may need attention.
+                        </div>
+                    </th:block>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card" id="my-upcoming">
+                <div class="card-header">
+                    <h3 class="card-title"><i class="ti ti-calendar-event me-2"></i>Coming up</h3>
+                    <div class="card-actions"><a th:href="@{/app/profile}">Update my calendar</a></div>
+                </div>
+                <div class="list-group list-group-flush" th:if="${!me.upcoming().isEmpty()}">
+                    <div class="list-group-item d-flex" th:each="item : ${me.upcoming()}">
+                        <span class="text-secondary me-3" style="min-width: 8rem"
+                              th:text="${#temporals.format(item.date(), 'EEE MMM d')}"></span>
+                        <span th:text="${item.label()}"></span>
+                    </div>
+                </div>
+                <div class="card-body text-secondary" th:if="${me.upcoming().isEmpty()}">
+                    Nothing scheduled in the next two weeks.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Direct reports: only for people someone reports to in the directory -->
+    <th:block th:if="${home.manager()}"
+              th:with="acc=${team.accountability()}, af=${team.accountability().accountedFor()}, cov=${team.accountability().agentCoverage()}">
+        <div class="d-flex align-items-center mb-2 mt-4" id="my-team">
+            <h2 class="mb-0"><i class="ti ti-users me-2"></i>My team</h2>
+            <span class="badge bg-blue-lt ms-2" th:text="${team.reportCount() + ' direct reports'}"></span>
+            <a class="ms-auto" th:href="@{/app/user/reports}">View all reports</a>
+        </div>
+
+        <div class="row row-cards">
+
+            <div class="col-md-6 col-xl-4">
+                <div class="card h-100" id="team-accounted-for">
+                    <div class="card-body">
+                        <div class="subheader">Accounted for</div>
+                        <th:block th:if="${af.workingDay()}">
+                            <div class="h1 mb-1" th:text="${af.ratePercent() != null ? af.ratePercent() + '%' : '—'}">0%</div>
+                            <div class="text-secondary mb-3" th:text="${af.accounted() + ' of ' + af.expected() + ' reports'}"></div>
+                        </th:block>
+                        <div class="text-secondary mb-3" th:unless="${af.workingDay()}"
+                             th:text="${'Not a working day: ' + af.nonWorkingReason()}"></div>
+                        <th:block th:replace="~{fragments/accountability :: statusMix(${acc.statusMix()}, ${af.expected()})}"></th:block>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6 col-xl-4">
+                <div class="card h-100" id="team-not-in">
+                    <div class="card-header">
+                        <h3 class="card-title"><i class="ti ti-clock me-2"></i>Not in yet</h3>
+                    </div>
+                    <div class="table-responsive" style="max-height: 18rem" th:if="${!team.notInYet().isEmpty()}">
+                        <table class="table table-sm table-vcenter card-table">
+                            <tbody>
+                            <tr th:each="person : ${team.notInYet()}">
+                                <td><a th:href="@{/app/user/details/{dn}(dn=${person.dn()})}" th:text="${person.name()}"></a></td>
+                                <td class="text-secondary"
+                                    th:text="${person.expected() != null ? 'expected ' + #temporals.format(person.expected(), 'HH:mm') : 'no expected time'}"></td>
+                                <td class="text-end">
+                                    <span class="badge bg-red-lt" th:if="${person.late()}"
+                                          th:text="${me.day().equals(today) ? 'Late' : 'Missed'}"></span>
+                                </td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-body text-secondary" th:if="${team.notInYet().isEmpty()}"
+                         th:text="${af.workingDay() ? 'Everyone is accounted for.' : 'Nobody is expected today.'}"></div>
+                </div>
+            </div>
+
+            <div class="col-md-12 col-xl-4">
+                <div class="card h-100" id="team-awaiting">
+                    <div class="card-header">
+                        <h3 class="card-title"><i class="ti ti-bell-ringing me-2"></i>Awaiting your response</h3>
+                        <span class="badge bg-red text-red-fg ms-auto" th:if="${!team.awaitingResponse().isEmpty()}"
+                              th:text="${team.awaitingResponse().size()}"></span>
+                    </div>
+                    <div class="list-group list-group-flush" style="max-height: 18rem; overflow-y: auto"
+                         th:if="${!team.awaitingResponse().isEmpty()}">
+                        <a class="list-group-item list-group-item-action" th:each="n : ${team.awaitingResponse()}"
+                           th:href="@{/app/notifications/id/{id}(id=${n.id})}">
+                            <div th:text="${T(com.winllc.innoutwork.data.LdapDn).cnOf(n.aboutUserDn) + ' · ' + n.type}"></div>
+                            <div class="small text-secondary" th:if="${n.notificationDate != null}"
+                                 th:text="${#temporals.format(n.notificationDate, 'MM/dd/yyyy HH:mm')}"></div>
+                        </a>
+                    </div>
+                    <div class="card-body text-secondary" th:if="${team.awaitingResponse().isEmpty()}">
+                        Nothing needs your response.
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card h-100" id="team-agents">
+                    <div class="card-header">
+                        <h3 class="card-title"><i class="ti ti-device-desktop me-2"></i>Team agents</h3>
+                        <div class="card-actions text-secondary"
+                             th:text="${cov.reporting() + ' of ' + cov.users() + ' reported in the last ' + cov.reportingDays() + ' days'}"></div>
+                    </div>
+                    <div class="table-responsive" style="max-height: 18rem" th:if="${!cov.stoppedUsers().isEmpty()}">
+                        <table class="table table-sm table-vcenter card-table">
+                            <thead>
+                            <tr><th>Stopped reporting</th><th class="text-end">Last reported</th></tr>
+                            </thead>
+                            <tbody>
+                            <tr th:each="agent : ${cov.stoppedUsers()}">
+                                <td><a th:href="@{/app/user/details/{dn}(dn=${agent.dn()})}" th:text="${agent.name()}"></a></td>
+                                <td class="text-end text-secondary" th:text="${#temporals.format(agent.lastSeen(), 'MM/dd/yyyy')}"></td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="card-body text-secondary" th:if="${cov.stoppedUsers().isEmpty()}"
+                         th:text="${cov.neverReported() > 0 ? cov.neverReported() + ' reports have never reported; the rest are fine.' : 'Every report''s agent is reporting.'}"></div>
+                </div>
+            </div>
+
+            <div class="col-lg-6">
+                <div class="card h-100" id="team-upcoming">
+                    <div class="card-header">
+                        <h3 class="card-title"><i class="ti ti-calendar-event me-2"></i>Team coming up</h3>
+                    </div>
+                    <div class="list-group list-group-flush" style="max-height: 18rem; overflow-y: auto"
+                         th:if="${!team.upcoming().isEmpty()}">
+                        <div class="list-group-item d-flex" th:each="item : ${team.upcoming()}">
+                            <span class="text-secondary me-3" style="min-width: 7rem"
+                                  th:text="${#temporals.format(item.date(), 'EEE MMM d')}"></span>
+                            <a class="me-2" th:href="@{/app/user/details/{dn}(dn=${item.dn()})}" th:text="${item.name()}"></a>
+                            <span class="ms-auto text-secondary" th:text="${item.label()}"></span>
+                        </div>
+                    </div>
+                    <div class="card-body text-secondary" th:if="${team.upcoming().isEmpty()}">
+                        Nothing scheduled for your team in the next two weeks.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </th:block>
+
+</div>
+</body>
+</html>
