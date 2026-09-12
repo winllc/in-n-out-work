@@ -59,6 +59,9 @@ dependencies {
     testImplementation 'org.springframework.security:spring-security-test'
     // In-memory directory so LDAP mapping is tested against a real server, not mocked assumptions.
     testImplementation 'com.unboundid:unboundid-ldapsdk'
+    // Repository queries run against an in-memory database, since JPQL mistakes only surface at startup.
+    testImplementation 'org.springframework.boot:spring-boot-data-jpa-test'
+    testRuntimeOnly 'com.h2database:h2'
     testImplementation platform('org.junit:junit-bom:6.1.0-M1')
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }

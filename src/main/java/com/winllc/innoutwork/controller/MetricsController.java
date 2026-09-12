@@ -7,6 +7,7 @@ import com.winllc.innoutwork.data.MetricsData;
 import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.data.charts.LineChartDataSet;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.service.AccountabilityMetricsService;
 import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.CheckInOutService;
 import com.winllc.innoutwork.service.MetricsService;
@@ -38,13 +39,16 @@ public class MetricsController {
     private final CheckInOutService checkInOutService;
     private final ApplicationProperties properties;
     private final MetricsService metricsService;
+    private final AccountabilityMetricsService accountabilityMetricsService;
 
     public MetricsController(ApplicationProperties properties,
-                             CacheService cacheService, CheckInOutService checkInOutService, MetricsService metricsService) {
+                             CacheService cacheService, CheckInOutService checkInOutService, MetricsService metricsService,
+                             AccountabilityMetricsService accountabilityMetricsService) {
         this.properties = properties;
         this.cacheService = cacheService;
         this.checkInOutService = checkInOutService;
         this.metricsService = metricsService;
+        this.accountabilityMetricsService = accountabilityMetricsService;
     }
 
     @GetMapping
@@ -70,6 +74,8 @@ public class MetricsController {
         mv.addObject("data", data);
         mv.addObject("totalLoginChartData", jsonData);
         mv.addObject("loginByTimeChartData", jsonData2);
+        mv.addObject("accountability", accountabilityMetricsService.forDay(
+                CheckInOutService.getDateTimeFromSession(session).toLocalDate()));
 
         return mv;
     }

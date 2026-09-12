@@ -29,4 +29,8 @@ public interface UserRecordRepository extends JpaRepository<UserRecord, Long>, P
      */
     @Query("select u from UserRecord u where lower(u.dn) in :dns")
     List<UserRecord> findAllByLowercaseDnIn(@Param("dns") Collection<String> dns);
+
+    /** Every user's DN, without loading the records. */
+    @Query("select u.dn from UserRecord u")
+    List<String> findAllDns();
 }

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--
+  Status mix: a split bar and legend placing every expected user in one category.
+  mix   - List<StatusMixEntry>
+  total - the expected total the counts add up to
+-->
+<th:block th:fragment="statusMix(mix, total)">
+    <th:block th:if="${!mix.isEmpty()}">
+        <div class="progress progress-separated mb-3">
+            <div th:each="entry : ${mix}"
+                 class="progress-bar" th:classappend="${entry.colorClass()}" role="progressbar"
+                 th:style="${'width: ' + entry.percentOf(total) + '%'}"
+                 th:title="${entry.label() + ': ' + entry.count()}"></div>
+        </div>
+        <div class="row g-1">
+            <div class="col-12 d-flex align-items-center" th:each="entry : ${mix}">
+                <span class="legend me-2" th:classappend="${entry.colorClass()}"></span>
+                <span class="text-truncate" th:text="${entry.label()}"></span>
+                <span class="ms-auto fw-bold ps-2" th:text="${entry.count()}"></span>
+            </div>
+        </div>
+    </th:block>
+    <div class="text-secondary" th:if="${mix.isEmpty()}">
+        Nobody expected, checked in, or given a status.
+    </div>
+</th:block>
+
+</body>
+</html>

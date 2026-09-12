@@ -8,7 +8,9 @@ import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.CacheService;
+import com.winllc.innoutwork.service.HomeService;
 import com.winllc.innoutwork.service.PermissionService;
+import jakarta.servlet.http.HttpSession;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -31,23 +33,34 @@ public class HomeController {
     private final ApplicationProperties properties;
     private final UserRecordRepository userRecordRepository;
     private final PermissionService permissionService;
+    private final HomeService homeService;
 
     public HomeController(CacheService cacheService, ApplicationProperties properties,
-                          UserRecordRepository userRecordRepository, PermissionService permissionService) {
+                          UserRecordRepository userRecordRepository, PermissionService permissionService,
+                          HomeService homeService) {
         this.cacheService = cacheService;
         this.properties = properties;
         this.userRecordRepository = userRecordRepository;
         this.permissionService = permissionService;
+        this.homeService = homeService;
     }
 
     @GetMapping
     public String index(Model model) {
-        return "redirect:/app/groups"; // resolves to src/main/resources/templates/index.html
+        return "redirect:/app/home";
     }
 
     @GetMapping("/app")
-    public String home(Model model) {
-        return "redirect:/app/groups"; // resolves to src/main/resources/templates/index.html
+    public String app(Model model) {
+        return "redirect:/app/home";
+    }
+
+    /** The signed-in user's own day and attendance, plus their team's when people report to them. */
+    @GetMapping("/app/home")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER)")
+    public String home(Authentication authentication, HttpSession session, Model model) {
+        model.addAttribute("home", homeService.forUser(authentication.getName(), session));
+        return "home";
     }
 
     @GetMapping("/app/users/{group}")

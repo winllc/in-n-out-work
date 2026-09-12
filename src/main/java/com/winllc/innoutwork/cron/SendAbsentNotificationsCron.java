@@ -4,6 +4,7 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
+import com.winllc.innoutwork.data.ExpectedLogin;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.GlobalCalendarRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
@@ -26,7 +27,6 @@ import org.springframework.util.CollectionUtils;
 
 import java.time.*;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.atomic.AtomicInteger;
 
 @Component
@@ -149,22 +149,9 @@ public class SendAbsentNotificationsCron {
         return false;
     }
 
-    /**
-     * When the user is expected in today: a late-arrival entry for today, else the login time they
-     * chose on their profile, else their average login time. Null when none is known.
-     */
+    /** When the user is expected in today; see {@link ExpectedLogin#of}. Null when none is known. */
     static LocalTime expectedLoginTime(UserRecord user, List<UserEventRecord> todaysEvents) {
-        LocalTime lateArrivalTime = todaysEvents.stream()
-                .filter(record -> record.getStatus() == UserStatusEnum.LATE_ARRIVAL)
-                .map(UserEventRecord::getLoginByTime)
-                .filter(Objects::nonNull)
-                .findFirst()
-                .orElse(null);
-
-        if (lateArrivalTime != null) {
-            return lateArrivalTime;
-        }
-        return user.getChosenLoginTime() != null ? user.getChosenLoginTime() : user.getAverageLoginTime();
+        return ExpectedLogin.of(user, todaysEvents).map(ExpectedLogin::time).orElse(null);
     }
 
     private boolean isPastCheckinWindow(UserRecord user, List<UserEventRecord> records) {
