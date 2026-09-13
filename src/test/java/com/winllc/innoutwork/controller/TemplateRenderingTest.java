@@ -170,7 +170,7 @@ class TemplateRenderingTest {
         assertRenders(path, "id=\"help-button\"");
         assertRenders(path, "data-bs-target=\"#help-modal\"");
         assertRenders(path, "id=\"help-modal\"");
-        assertRenders(path, "How In-N-Out-Work works");
+        assertRenders(path, "How ReadyRoom works");
         assertRenders(path, "What the statuses mean");
         assertRenders(path, "id=\"help-metrics\"");
         assertRenders(path, "id=\"help-settings\"");
