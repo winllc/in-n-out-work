@@ -4,7 +4,9 @@ import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.RoleUpdateForm;
 import com.winllc.innoutwork.data.UserStatus;
+import com.winllc.innoutwork.data.team.DirectReportsSummary;
 import com.winllc.innoutwork.security.PermissionEvaluator;
+import com.winllc.innoutwork.service.DirectReportsService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
@@ -27,10 +29,13 @@ public class UserController {
 
     private final UserService userRecordService;
     private final PermissionEvaluator permissionEvaluator;
+    private final DirectReportsService directReportsService;
 
-    public UserController(UserService userRecordService, PermissionEvaluator permissionEvaluator) {
+    public UserController(UserService userRecordService, PermissionEvaluator permissionEvaluator,
+                          DirectReportsService directReportsService) {
         this.userRecordService = userRecordService;
         this.permissionEvaluator = permissionEvaluator;
+        this.directReportsService = directReportsService;
     }
 
     @GetMapping("/details/{dn}")
@@ -90,12 +95,12 @@ public class UserController {
             "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public ModelAndView myReports(HttpSession session, Authentication auth) {
-        List<UserStatus> reports = userRecordService.getDirectReports(
-                LdapDn.builder().dn(auth.getName()).build(), session);
+        DirectReportsSummary team = directReportsService.forManager(auth.getName(), session);
 
         ModelAndView mav = new ModelAndView("myreports");
-        mav.addObject("reportCount", reports.size());
+        mav.addObject("reportCount", team.reportCount());
         mav.addObject("managerCn", LdapDn.builder().dn(auth.getName()).build().getCn());
+        mav.addObject("team", team);
         return mav;
     }
 

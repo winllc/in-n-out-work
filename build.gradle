@@ -28,6 +28,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-security'
 // https://mvnrepository.com/artifact/org.springframework.security/spring-security-ldap
     implementation("org.springframework.security:spring-security-ldap:7.0.2")
+    // Windows (Kerberos) sign-in for the check-in calls; off unless application.windows-auth.enabled.
+    implementation("org.springframework.security:spring-security-kerberos-core:7.0.2")
 
     // --- LDAP Client ---
     implementation 'org.springframework.boot:spring-boot-starter-data-ldap'
@@ -62,6 +64,11 @@ dependencies {
     // Repository queries run against an in-memory database, since JPQL mistakes only surface at startup.
     testImplementation 'org.springframework.boot:spring-boot-data-jpa-test'
     testRuntimeOnly 'com.h2database:h2'
+    // The database migration scripts run against real PostgreSQL in Docker (skipped when Docker is unavailable).
+    testImplementation 'org.testcontainers:testcontainers-postgresql'
+    testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    // An in-process Kerberos server, so Windows sign-in is tested with real tickets and a real keytab.
+    testImplementation 'org.apache.kerby:kerb-simplekdc:2.1.2'
     testImplementation platform('org.junit:junit-bom:6.1.0-M1')
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }

@@ -69,10 +69,10 @@
                         <div class="progress-bar bg-orange" th:style="${'width: ' + (cov.stopped() * 100.0 / cov.users()) + '%'}"
                              th:title="${'Stopped reporting: ' + cov.stopped()}"></div>
                         <div class="progress-bar bg-secondary" th:style="${'width: ' + (cov.neverReported() * 100.0 / cov.users()) + '%'}"
-                             th:title="${'Never reported: ' + cov.neverReported()}"></div>
+                             th:title="${'No activity in ' + T(com.winllc.innoutwork.data.metrics.AgentCoverage).LOOKBACK_DAYS + ' days: ' + cov.neverReported()}"></div>
                     </div>
                     <div class="small text-secondary"
-                         th:text="${cov.stopped() + ' stopped reporting · ' + cov.neverReported() + ' never reported'}"></div>
+                         th:text="${cov.stopped() + ' stopped reporting · ' + cov.neverReported() + ' no activity in ' + T(com.winllc.innoutwork.data.metrics.AgentCoverage).LOOKBACK_DAYS + ' days'}"></div>
                 </div>
             </div>
         </div>

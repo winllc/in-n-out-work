@@ -1,20 +1,27 @@
 package com.winllc.innoutwork.service;
 
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.NotificationTypeEnum;
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.model.NotificationRecord;
 import com.winllc.innoutwork.model.UserRecord;
+import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.NotificationRepository;
+import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.util.ValueValidatorUtil;
 import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
@@ -34,16 +41,21 @@ public class NotificationService {
     private final NotificationRepository notificationRepository;
     private final UserService userService;
     private final ApplicationProperties properties;
-    private final LdapService ldapService;
+    private final LoadingCache<String, LdapUser> userCache;
+    private final UserEventRecordRepository userEventRecordRepository;
 
     public NotificationService(JavaMailSender mailSender, NotificationRepository notificationRepository,
-                               UserService userService, ApplicationProperties properties, LdapService ldapService, SpringTemplateEngine thymeleafTemplateEngine) {
+                               UserService userService, ApplicationProperties properties,
+                               @Qualifier("ldapUserLoadingCache") LoadingCache<String, LdapUser> userCache,
+                               SpringTemplateEngine thymeleafTemplateEngine,
+                               UserEventRecordRepository userEventRecordRepository) {
         this.mailSender = mailSender;
         this.notificationRepository = notificationRepository;
         this.userService = userService;
         this.properties = properties;
-        this.ldapService = ldapService;
+        this.userCache = userCache;
         this.thymeleafTemplateEngine = thymeleafTemplateEngine;
+        this.userEventRecordRepository = userEventRecordRepository;
     }
 
     public List<NotificationRecord> getNotificationsForUser(String dn){
@@ -81,13 +93,15 @@ public class NotificationService {
 
             String notificationUuid = UUID.randomUUID().toString();
 
+            // One notification per manager, saved together: either every manager gets the alert or none
+            // does, and emails only go out once the records exist.
+            List<NotificationRecord> notifications = new ArrayList<>();
+            Map<NotificationRecord, String> emails = new IdentityHashMap<>();
             for(String managerDn : managerDns){
+                // The user cache: managers are the same few people alert after alert.
+                LdapUser managerUser = userCache.get(managerDn);
 
-                Optional<LdapUser> managerOptional = ldapService.lookupUser(LdapDn.builder().dn(managerDn).build());
-
-                if(managerOptional.isPresent()){
-                    LdapUser managerUser = managerOptional.get();
-
+                if(managerUser != null){
                     NotificationRecord notificationRecord = new NotificationRecord();
                     notificationRecord.setNotificationUuid(notificationUuid);
                     notificationRecord.setType(NotificationTypeEnum.ABSENT);
@@ -95,11 +109,10 @@ public class NotificationService {
                     notificationRecord.setForUserDn(managerDn);
                     notificationRecord.setNotificationDate(ZonedDateTime.now());
                     notificationRecord.setExpectedCheckInTime(expectedCheckInTime);
-
-                    notificationRepository.save(notificationRecord);
+                    notifications.add(notificationRecord);
 
                     if(managerUser.getEmail() != null) {
-                        sendNotification(notificationRecord, managerUser.getEmail());
+                        emails.put(notificationRecord, managerUser.getEmail());
                     }else{
                         log.error("Manager does not have an email address: {}", managerDn);
                     }
@@ -108,7 +121,55 @@ public class NotificationService {
                 }
             }
 
+            if (!notifications.isEmpty()) {
+                notificationRepository.saveAll(notifications);
+                emails.forEach(this::sendNotification);
+            }
         }
+    }
+
+    /**
+     * Records a manager's response to an alert: on the notification, on the other managers' copies of the
+     * same alert, and as the user's status for that day. All or nothing.
+     *
+     * @throws AccessDeniedException if the notification was not sent to {@code responderDn}
+     */
+    @Transactional
+    public NotificationRecord recordResponse(Long notificationId, String responderDn, UserStatusEnum status) {
+        NotificationRecord notification = notificationRepository.findById(notificationId).orElseThrow();
+        if (!notification.getForUserDn().equalsIgnoreCase(responderDn)) {
+            throw new AccessDeniedException("User %s is not authorized to update notification %d"
+                    .formatted(responderDn, notificationId));
+        }
+
+        // The status this alert previously recorded, if any, is the day's status entry to replace.
+        UserStatusEnum previous = notification.getStatusResponse();
+        ZonedDateTime respondedAt = ZonedDateTime.now();
+
+        List<NotificationRecord> copies = new ArrayList<>(notificationRepository.findByNotificationUuid(notification.getNotificationUuid()));
+        if (copies.stream().noneMatch(n -> n.getId().equals(notification.getId()))) {
+            copies.add(notification);
+        }
+        for (NotificationRecord copy : copies) {
+            copy.setStatusResponse(status);
+            copy.setStatusResponseDate(respondedAt);
+            copy.setStatusResponseByDn(responderDn);
+        }
+        notificationRepository.saveAll(copies);
+
+        LocalDate day = notification.getNotificationDate().toLocalDate();
+        UserEventRecord event = previous == null ? null : userEventRecordRepository
+                .findByDnIgnoreCaseAndDateAndStatusEquals(notification.getAboutUserDn(), day, previous)
+                .orElse(null);
+        if (event == null) {
+            event = new UserEventRecord();
+            event.setDn(notification.getAboutUserDn());
+            event.setDate(day);
+        }
+        event.setStatus(status);
+        userEventRecordRepository.save(event);
+
+        return copies.stream().filter(n -> n.getId().equals(notification.getId())).findFirst().orElse(notification);
     }
 
     public void sendNotification(NotificationRecord notification, String email) {

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--
+  Application overview, opened from the help button in the top bar (layout.html).
+  Sections for pages only admins and managers can reach use the same sec:authorize rules as the
+  sidebar, so nobody is told about a page they cannot open.
+-->
+<div th:fragment="helpModal" class="modal modal-blur fade" id="help-modal" tabindex="-1"
+     aria-labelledby="help-modal-title" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable" role="document">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="help-modal-title">
+                    <i class="ti ti-help me-2"></i>How ReadyRoom works
+                </h2>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+
+            <div class="modal-body">
+                <p class="text-secondary">
+                    ReadyRoom keeps track of who is in, who is away and who hasn't been accounted for, using the
+                    sign-ins you already make on your Windows workstation.
+                </p>
+
+                <h3 class="mt-4">How check-in works</h3>
+                <p>
+                    An agent on your workstation reports when you sign in, lock or unlock the screen, and sign out.
+                    You don't need to check in yourself: your first sign-in or unlock of the day counts as arriving.
+                </p>
+
+                <h3 class="mt-4">What the statuses mean</h3>
+                <div class="table-responsive">
+                    <table class="table table-sm table-vcenter mb-2" id="help-statuses">
+                        <tbody>
+                        <tr>
+                            <td class="w-25"><span class="badge bg-green-lt">IN</span></td>
+                            <td>Checked in and at your workstation.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge bg-purple-lt">AWAY</span></td>
+                            <td>Your screen is locked.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge bg-blue-lt">OUT</span></td>
+                            <td>Checked out: you signed out for the day.</td>
+                        </tr>
+                        <tr>
+                            <td><span class="badge bg-secondary-lt">NONE</span></td>
+                            <td>No activity recorded for the day.</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-secondary">
+                    A status you set on your calendar, such as work from home, TDY, leave or a late arrival, is shown
+                    instead, so people can see where you are even when you aren't at your workstation.
+                </p>
+
+                <h3 class="mt-4">Finding your way around</h3>
+                <div class="list-group list-group-flush" id="help-pages">
+                    <div class="list-group-item px-0">
+                        <strong><i class="ti ti-home me-2"></i>Home</strong>
+                        <div class="text-secondary">
+                            Your status today, your last 30 days and anything coming up. If people report to you, it
+                            also shows your team: who is accounted for, who isn't in yet, and alerts waiting for your
+                            response.
+                        </div>
+                    </div>
+                    <div class="list-group-item px-0">
+                        <strong><i class="ti ti-users me-2"></i>Groups</strong>
+                        <div class="text-secondary">
+                            Browse the groups you can see and open one to see its members' statuses. Mark groups as
+                            favorites, then turn on <em>Favorites only</em> to see just those.
+                        </div>
+                    </div>
+                    <div class="list-group-item px-0">
+                        <strong><i class="ti ti-user me-2"></i>Users</strong>
+                        <div class="text-secondary">Search for anyone by name (at least three characters) and open their details.</div>
+                    </div>
+                    <div class="list-group-item px-0">
+                        <strong><i class="ti ti-list-check me-2"></i>My Reports</strong>
+                        <div class="text-secondary">Everyone who reports to you in the directory, in one table.</div>
+                    </div>
+                    <div class="list-group-item px-0">
+                        <strong><i class="ti ti-hierarchy-3 me-2"></i>Org Chart</strong>
+                        <div class="text-secondary">The organization's structure. Open an organization to see who is in it.</div>
+                    </div>
+                    <div class="list-group-item px-0" id="help-metrics" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                        <strong><i class="ti ti-chart-bar me-2"></i>Metrics</strong>
+                        <div class="text-secondary">
+                            Organization-wide figures: the accounted-for rate, status mix, workstation agent coverage
+                            and activity through the day. Metrics show counts only, never names.
+                        </div>
+                    </div>
+                    <div class="list-group-item px-0" id="help-settings" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                        <strong><i class="ti ti-settings me-2"></i>Settings</strong>
+                        <div class="text-secondary">
+                            The organization calendar, including holidays, and the rules that turn directory
+                            attributes into the org chart.
+                        </div>
+                    </div>
+                </div>
+
+                <h3 class="mt-4">Keep your profile up to date</h3>
+                <p class="mb-2">Open <strong>My Profile</strong> from the menu at the top right to:</p>
+                <ul>
+                    <li>set your usual <strong>login time</strong>; without one, your average arrival time is used;</li>
+                    <li>add <strong>additional managers</strong> who should be told if you're not in;</li>
+                    <li>drag across days on your <strong>calendar</strong> to set a status, such as leave or work from home, ahead of time;</li>
+                    <li>leave <strong>notes</strong> for the people who look you up.</li>
+                </ul>
+
+                <h3 class="mt-4">If you're not in on time</h3>
+                <p>
+                    If you haven't checked in by your expected time, your managers are notified. Your expected time is
+                    a late arrival you've entered for today, otherwise your login time, otherwise your average arrival,
+                    <span id="help-grace"
+                          th:text="${absenceGraceMinutes != null ? 'plus a ' + absenceGraceMinutes + ' minute grace period' : 'plus a grace period'}">plus a grace period</span>.
+                    Weekends and holidays are skipped, as are days covered by an excused status. Managers see these
+                    alerts under the <i class="ti ti-bell"></i> bell at the top left and can record what happened.
+                </p>
+
+                <th:block sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                    <h3 class="mt-4" id="help-date-picker">Looking at another day</h3>
+                    <p>
+                        Pick a date in the <strong>System Date</strong> box at the top of the page to see how things
+                        stood on that day. Every page follows the date you choose for the rest of your session, or until you
+                        pick another.
+                    </p>
+                </th:block>
+            </div>
+
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Got it</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>

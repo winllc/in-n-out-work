@@ -5,7 +5,6 @@ import com.winllc.innoutwork.data.DirectorySyncResult;
 import com.winllc.innoutwork.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -28,7 +27,8 @@ public class RefreshUserRecordsCron {
         this.properties = properties;
     }
 
-    @Async
+    // Not @Async: with it the scheduler returned at once, so the fixed delay never waited for a run to
+    // finish and a slow run could overlap the next. spring.task.scheduling.pool.size gives each job a thread.
     @Scheduled(fixedDelayString = "#{@refreshUserRecordsCronProperties.fixedRate}",
             initialDelayString = "#{@refreshUserRecordsCronProperties.initialDelay}")
     public void run() {

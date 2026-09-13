@@ -26,6 +26,20 @@ public class GroupService {
         this.groupRecordRepository = groupRecordRepository;
     }
 
+    /**
+     * {@link #getManagersForGroup(String)} for a group already read from the directory, which carries its
+     * owner, so the group is not looked up again.
+     */
+    public List<String> getManagersForGroup(LdapGroup group) {
+        List<String> managers = new ArrayList<>();
+        if (StringUtils.isNotBlank(group.getManager())) {
+            managers.add(group.getManager());
+        }
+        groupRecordRepository.findByGroupDnIgnoreCase(group.getDn())
+                .ifPresent(record -> managers.addAll(record.getAltManagerList()));
+        return managers;
+    }
+
     public List<String> getManagersForGroup(String groupDn) {
         LdapDn dn = LdapDn.builder().dn(groupDn).build();
                 

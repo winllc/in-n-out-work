@@ -1,8 +1,6 @@
 package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
-import com.winllc.innoutwork.constant.CheckInOutEnum;
-import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.ExpectedLogin;
 import com.winllc.innoutwork.data.LdapDn;
@@ -16,7 +14,6 @@ import com.winllc.innoutwork.data.home.UpcomingStatus;
 import com.winllc.innoutwork.data.metrics.AccountabilityMetrics;
 import com.winllc.innoutwork.data.metrics.UserRef;
 import com.winllc.innoutwork.model.CheckInOutRecord;
-import com.winllc.innoutwork.model.GlobalCalendarRecord;
 import com.winllc.innoutwork.model.NotificationRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.model.UserRecord;
@@ -40,8 +37,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.stream.Collectors;
 
 /**
  * Builds the home page: the signed-in user's own day and recent attendance and, when people report
@@ -159,34 +154,9 @@ public class HomeService {
     /** Each working day counted once: checked in, else covered by a status, else nothing recorded. */
     private AttendanceSummary attendance(String dn, LocalDate from, LocalDate to, List<CheckInOutRecord> history,
                                          ZoneId zone) {
-        Set<LocalDate> holidays = globalCalendarRecordRepository.findByDateBetween(from, to).stream()
-                .filter(GlobalCalendarRecord::isHoliday)
-                .map(GlobalCalendarRecord::getDate)
-                .collect(Collectors.toSet());
-        Set<LocalDate> checkedInDays = history.stream()
-                .filter(r -> r.getAction() == CheckInOutEnum.CHECK_IN && r.getTimestamp() != null)
-                .map(r -> r.getTimestamp().withZoneSameInstant(zone).toLocalDate())
-                .collect(Collectors.toSet());
-        Set<LocalDate> statusDays = userEventRecordRepository.findByDnIgnoreCaseAndDateBetween(dn, from, to).stream()
-                .filter(e -> e.getStatus() != null && e.getStatus() != UserStatusEnum.STANDARD)
-                .map(UserEventRecord::getDate)
-                .collect(Collectors.toSet());
-
-        int working = 0;
-        int checkedIn = 0;
-        int statusOnly = 0;
-        for (LocalDate date = from; !date.isAfter(to); date = date.plusDays(1)) {
-            if (DateTimeConstants.WEEKEND_DAYS.contains(date.getDayOfWeek()) || holidays.contains(date)) {
-                continue;
-            }
-            working++;
-            if (checkedInDays.contains(date)) {
-                checkedIn++;
-            } else if (statusDays.contains(date)) {
-                statusOnly++;
-            }
-        }
-        return new AttendanceSummary(working, checkedIn, statusOnly, working - checkedIn - statusOnly);
+        return AttendanceCalculator.summarize(
+                AttendanceCalculator.workingDays(from, to, globalCalendarRecordRepository.findByDateBetween(from, to)),
+                history, userEventRecordRepository.findByDnIgnoreCaseAndDateBetween(dn, from, to), zone);
     }
 
     // --- the team --------------------------------------------------------------------------------

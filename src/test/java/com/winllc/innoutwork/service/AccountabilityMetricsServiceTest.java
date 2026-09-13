@@ -32,6 +32,7 @@ import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -71,7 +72,8 @@ class AccountabilityMetricsServiceTest {
         service = new AccountabilityMetricsService(checkIns, events, users, calendar);
         when(checkIns.findDistinctDnsWithActionBetween(any(), any(), any())).thenReturn(List.of());
         when(checkIns.findDistinctDnsBetween(any(), any())).thenReturn(List.of());
-        when(checkIns.findLastSeenUpTo(any())).thenReturn(List.of());
+        when(checkIns.findLastSeenBetween(any(), any())).thenReturn(List.of());
+        when(checkIns.findLastSeenByLowercaseDnInBetween(any(), any(), any())).thenReturn(List.of());
         when(events.findByDate(any())).thenReturn(List.of());
         when(users.findAllDns()).thenReturn(List.of());
         when(calendar.findByDate(any())).thenReturn(List.of());
@@ -130,7 +132,7 @@ class AccountabilityMetricsServiceTest {
     void organisationWideFiguresNameNobody() {
         active(ALICE, BOB, CAROL);
         when(users.findAllDns()).thenReturn(List.of(ALICE, BOB, CAROL));
-        when(checkIns.findLastSeenUpTo(any())).thenReturn(List.of(seen(ALICE, DAY), seen(BOB, DAY.minusDays(10))));
+        lastSeen(List.of(seen(ALICE, DAY), seen(BOB, DAY.minusDays(10))));
 
         AccountabilityMetrics metrics = metrics();
 
@@ -382,7 +384,7 @@ class AccountabilityMetricsServiceTest {
     @Test
     void teamAgentCoverageIsOverTheMembersNotEveryUser() {
         when(users.findAllDns()).thenReturn(List.of(ALICE, BOB, CAROL, DAVE));
-        when(checkIns.findLastSeenUpTo(any())).thenReturn(List.of(seen(ALICE, DAY), seen(BOB, DAY.minusDays(12))));
+        lastSeen(List.of(seen(ALICE, DAY), seen(BOB, DAY.minusDays(12))));
 
         AgentCoverage coverage = service.forTeam(DAY, List.of(ALICE.toUpperCase(), BOB, CAROL)).agentCoverage();
 
@@ -395,6 +397,12 @@ class AccountabilityMetricsServiceTest {
 
     // --- agent coverage ---------------------------------------------------------------------------------
 
+    /** The same last-seen rows whether the service reads them organisation-wide or for a team. */
+    private void lastSeen(List<LastSeen> seen) {
+        when(checkIns.findLastSeenBetween(any(), any())).thenReturn(seen);
+        when(checkIns.findLastSeenByLowercaseDnInBetween(any(), any(), any())).thenReturn(seen);
+    }
+
     private static LastSeen seen(String dn, LocalDate day) {
         return new LastSeen(dn.toLowerCase(), day.atTime(9, 0).atZone(ZONE));
     }
@@ -402,7 +410,7 @@ class AccountabilityMetricsServiceTest {
     @Test
     void usersAreReportingStoppedOrNever() {
         when(users.findAllDns()).thenReturn(List.of(ALICE, BOB, CAROL, DAVE));
-        when(checkIns.findLastSeenUpTo(any())).thenReturn(List.of(
+        lastSeen(List.of(
                 seen(ALICE, DAY),
                 seen(BOB, DAY.minusDays(6)),     // first day of the 7-day window
                 seen(CAROL, DAY.minusDays(7))));  // one day before it
@@ -419,7 +427,7 @@ class AccountabilityMetricsServiceTest {
 
     @Test
     void teamFiguresListTheAgentsThatStopped() {
-        when(checkIns.findLastSeenUpTo(any())).thenReturn(List.of(seen(ALICE, DAY), seen(CAROL, DAY.minusDays(7))));
+        lastSeen(List.of(seen(ALICE, DAY), seen(CAROL, DAY.minusDays(7))));
 
         AgentCoverage coverage = service.forTeam(DAY, List.of(ALICE, CAROL)).agentCoverage();
 
@@ -428,7 +436,7 @@ class AccountabilityMetricsServiceTest {
 
     @Test
     void theAgentsThatStoppedMostRecentlyAreListedFirst() {
-        when(checkIns.findLastSeenUpTo(any())).thenReturn(List.of(
+        lastSeen(List.of(
                 seen(ALICE, DAY.minusDays(20)), seen(BOB, DAY.minusDays(9)), seen(CAROL, DAY.minusDays(9))));
 
         List<String> stopped = service.forTeam(DAY, List.of(ALICE, BOB, CAROL)).agentCoverage()
@@ -441,7 +449,7 @@ class AccountabilityMetricsServiceTest {
     @Test
     void lastSeenMatchesUsersIgnoringCase() {
         when(users.findAllDns()).thenReturn(List.of(ALICE, ALICE.toUpperCase()));
-        when(checkIns.findLastSeenUpTo(any())).thenReturn(List.of(seen(ALICE.toUpperCase(), DAY.minusDays(10))));
+        lastSeen(List.of(seen(ALICE.toUpperCase(), DAY.minusDays(10))));
 
         assertEquals(1, metrics().agentCoverage().users());
         AgentCoverage team = service.forTeam(DAY, List.of(ALICE, ALICE.toUpperCase())).agentCoverage();
@@ -453,17 +461,41 @@ class AccountabilityMetricsServiceTest {
     void lastSeenIsReadUpToTheEndOfTheDayMeasured() {
         metrics();
 
-        verify(checkIns).findLastSeenUpTo(DAY.plusDays(1).atStartOfDay(ZONE).minusNanos(1));
+        verify(checkIns).findLastSeenBetween(DAY.minusDays(89).atStartOfDay(ZONE),
+                DAY.plusDays(1).atStartOfDay(ZONE).minusNanos(1));
     }
 
     @Test
     void theLastReportedDayIsTheLocalDay() {
         // 01:30 UTC on the 1st is still the evening of Aug 31 in New York.
         ZonedDateTime utc = ZonedDateTime.of(2026, 9, 1, 1, 30, 0, 0, ZoneId.of("UTC"));
-        when(checkIns.findLastSeenUpTo(any())).thenReturn(List.of(new LastSeen(ALICE.toLowerCase(), utc)));
+        lastSeen(List.of(new LastSeen(ALICE.toLowerCase(), utc)));
 
         assertEquals(utc.withZoneSameInstant(ZONE).toLocalDate(),
                 service.forTeam(DAY, List.of(ALICE)).agentCoverage().stoppedUsers().getFirst().lastSeen());
+    }
+
+    /** Only the last 90 days are read; activity before that counts as none. */
+    @Test
+    void agentCoverageLooksBack90DaysOrganisationWideAndOnlyAtMembersForATeam() {
+        when(users.findAllDns()).thenReturn(List.of(ALICE));
+
+        metrics();
+        service.forTeam(DAY, List.of(BOB.toUpperCase(), CAROL));
+
+        ZonedDateTime from = DAY.minusDays(89).atStartOfDay(ZONE);
+        ZonedDateTime to = DAY.plusDays(1).atStartOfDay(ZONE).minusNanos(1);
+        verify(checkIns).findLastSeenBetween(from, to);
+        verify(checkIns).findLastSeenByLowercaseDnInBetween(
+                argThat((java.util.Collection<String> dns) -> new java.util.HashSet<>(dns).equals(java.util.Set.of(BOB.toLowerCase(), CAROL.toLowerCase()))),
+                eq(from), eq(to));
+    }
+
+    @Test
+    void anEmptyTeamDoesNotQueryLastSeen() {
+        service.forTeam(DAY, List.of());
+
+        verify(checkIns, never()).findLastSeenByLowercaseDnInBetween(any(), any(), any());
     }
 
     @Test

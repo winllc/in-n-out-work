@@ -13,7 +13,12 @@ import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.data.PieChartData;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.data.UserStatus;
+import com.winllc.innoutwork.data.home.AttendanceSummary;
 import com.winllc.innoutwork.data.metrics.AccountabilityMetrics;
+import com.winllc.innoutwork.data.team.AbsenceAlerts;
+import com.winllc.innoutwork.data.team.DailyAttendance;
+import com.winllc.innoutwork.data.team.DirectReportsSummary;
+import com.winllc.innoutwork.data.team.ReportAttendance;
 import com.winllc.innoutwork.data.metrics.AccountedFor;
 import com.winllc.innoutwork.data.metrics.AgentCoverage;
 import com.winllc.innoutwork.data.metrics.StatusMixEntry;
@@ -44,6 +49,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.servlet.ModelAndView;
 
 import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -93,15 +99,84 @@ class TemplateRenderingTest {
         assertRenders("/render/myreports", "Direct reports");
     }
 
+    @Test
+    void myReportsShowsTheTeamMetrics() throws Exception {
+        String path = "/render/myreports";
+        assertRenders(path, "id=\"team-metrics\"");
+        assertRenders(path, "1 of 2 reports");
+        assertRenders(path, "75%");
+        assertRenders(path, "3 of 4 working days checked in");
+        assertRenders(path, "1 covered by a status · 0 with nothing recorded");
+        assertRenders(path, "08:45");
+        assertRenders(path, "1 answered · 1 unanswered");
+        assertRenders(path, "Absent Excused 1");
+        assertRenders(path, "id=\"team-daily-chart\"");
+        // The chart's series inline as plain arrays.
+        assertRenders(path, "const dates = [\"2026-09-09\",\"2026-09-10\"];");
+        assertRenders(path, "checkedIn: [1,2]");
+        assertRenders(path, "statusOnly: [1,0]");
+        assertRenders(path, "Show as a table");
+    }
+
+    @Test
+    void myReportsListsEachReportsLast30Days() throws Exception {
+        String path = "/render/myreports";
+        assertRenders(path, "Attendance by report, last 30 days");
+        assertRenders(path, "href=\"/app/user/details/cn=Bob%20Barker,ou=Users,dc=winllc,dc=com\"");
+        assertRenders(path, "2 of 2");
+        assertRenders(path, "08:30");
+        assertRenders(path, "Not in 30 days");
+        assertRenders(path, ">Quiet</span>");
+    }
+
     /** The empty state is a separate branch of the template, so it is rendered too. */
     @Test
     void myReportsEmptyStateRenders() throws Exception {
         assertRenders("/render/myreports-empty", "No direct reports");
+        mockMvc.perform(get("/render/myreports-empty").with(x509(mockCert(USER_DN))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("id=\"team-metrics\""))))
+                .andExpect(content().string(org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("team-daily-chart"))));
+    }
+
+    /** Two reports over a two-working-day window; shared with UserControllerTest. */
+    static DirectReportsSummary sampleTeam() {
+        LocalDate day = LocalDate.of(2026, 9, 10);
+        String bob = "cn=Bob Barker,ou=Users,dc=winllc,dc=com";
+        String carol = "cn=Carol Clark,ou=Users,dc=winllc,dc=com";
+        AccountabilityMetrics today = new AccountabilityMetrics(
+                new AccountedFor(day, null, 2, 1, 1, 0, List.of(new UserRef(carol, "Carol Clark")), 1),
+                List.of(new StatusMixEntry(StatusMixEntry.CHECKED_IN, "Checked in", 1),
+                        new StatusMixEntry(StatusMixEntry.UNACCOUNTED, "Unaccounted for", 1)),
+                new AgentCoverage(2, 1, 0, 1, 7, List.of()));
+        return new DirectReportsSummary(day, day.minusDays(29), 2, today,
+                new AttendanceSummary(4, 3, 1, 0), LocalTime.of(8, 45),
+                new AbsenceAlerts(2, 1, List.of(new AbsenceAlerts.AlertOutcome("Absent Excused", 1))),
+                List.of(new DailyAttendance(day.minusDays(1), 1, 1, 0), new DailyAttendance(day, 2, 0, 0)),
+                List.of(new ReportAttendance(bob, "Bob Barker", new AttendanceSummary(2, 2, 0, 0), LocalTime.of(8, 30),
+                                day.atTime(8, 30).atZone(java.time.ZoneId.systemDefault()), false),
+                        new ReportAttendance(carol, "Carol Clark", new AttendanceSummary(2, 1, 1, 0), LocalTime.of(9, 0),
+                                null, true)));
     }
 
     @Test
     void groupReportRenders() throws Exception {
         assertRenders("/render/groupreport", "User Reports");
+    }
+
+    /** The layout puts the help button and overview on every page; an admin sees every section. */
+    @Test
+    void theHelpOverviewIsOnEveryPageWithTheAdminSections() throws Exception {
+        String path = "/render/settings";
+        assertRenders(path, "id=\"help-button\"");
+        assertRenders(path, "data-bs-target=\"#help-modal\"");
+        assertRenders(path, "id=\"help-modal\"");
+        assertRenders(path, "How In-N-Out-Work works");
+        assertRenders(path, "What the statuses mean");
+        assertRenders(path, "id=\"help-metrics\"");
+        assertRenders(path, "id=\"help-settings\"");
+        assertRenders(path, "id=\"help-date-picker\"");
+        // No model advice in this slice, so the configured grace period is unknown.
+        assertRenders(path, "plus a grace period");
     }
 
     @Test
@@ -128,7 +203,7 @@ class TemplateRenderingTest {
         assertRenders(path, "width: 33.333333333333336%");
         assertRenders(path, "75%");
         assertRenders(path, "3 of 4 users reported in the last 7 days");
-        assertRenders(path, "1 stopped reporting · 0 never reported");
+        assertRenders(path, "1 stopped reporting · 0 no activity in 90 days");
     }
 
     /**
@@ -274,9 +349,11 @@ class TemplateRenderingTest {
 
         @GetMapping("/render/myreports")
         ModelAndView myReports() {
+            DirectReportsSummary team = sampleTeam();
             ModelAndView mav = new ModelAndView("myreports");
-            mav.addObject("reportCount", 3);
+            mav.addObject("reportCount", team.reportCount());
             mav.addObject("managerCn", "alice");
+            mav.addObject("team", team);
             return mav;
         }
 
@@ -285,6 +362,7 @@ class TemplateRenderingTest {
             ModelAndView mav = new ModelAndView("myreports");
             mav.addObject("reportCount", 0);
             mav.addObject("managerCn", "alice");
+            mav.addObject("team", DirectReportsSummary.none(LocalDate.of(2026, 9, 10)));
             return mav;
         }
 

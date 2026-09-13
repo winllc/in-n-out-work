@@ -29,21 +29,6 @@ public class MetricsService {
     }
 
 
-    public Map<CheckInOutEnum, Long> getTodaysStatistics(HttpSession session){
-        ZonedDateTime beginning = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
-        ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
-
-        List<CheckInOutEnum> totalCurrentStatuses = checkInOutRecordRepository
-                .findTotalCurrentStatuses(beginning, ending);
-
-        Map<CheckInOutEnum, Long> counts = totalCurrentStatuses.stream()
-                .collect(Collectors.groupingBy(s -> s, Collectors.counting()));
-
-        log.debug("Today's statuses for {}: {}", beginning.toLocalDate(), counts);
-
-        return counts;
-    }
-
     public MetricsData getCombinedStatistics(HttpSession session){
         long start = System.currentTimeMillis();
 

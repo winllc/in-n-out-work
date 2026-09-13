@@ -83,7 +83,7 @@ class CheckInOutServiceTest {
         when(recordRepository.findByDnIgnoreCaseAndTimestampIsBetweenAndActionEqualsOrderByTimestampDesc(
                 anyString(), any(), any(), any()))
                 .thenAnswer(inv -> query(inv.getArgument(1), inv.getArgument(2), inv.getArgument(0), inv.getArgument(3)));
-        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRecordRepository.findByDnForUpdate(anyString())).thenReturn(Optional.empty());
         when(userRecordRepository.save(any(UserRecord.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
@@ -121,7 +121,7 @@ class CheckInOutServiceTest {
     private UserRecord userRecord(String dn) {
         UserRecord user = new UserRecord();
         user.setDn(dn);
-        when(userRecordRepository.findByDnIgnoreCase(dn)).thenReturn(Optional.of(user));
+        when(userRecordRepository.findByDnForUpdate(dn)).thenReturn(Optional.of(user));
         return user;
     }
 
@@ -212,7 +212,7 @@ class CheckInOutServiceTest {
         assertEquals(CheckInOutEnum.CHECK_OUT, save(BOB, CheckInOutEnum.CHECK_OUT, SEP_10.withHour(17)).getAction());
 
         verify(recordRepository, never()).findByTimestampBetweenAndDnIgnoreCaseOrderByTimestampDesc(any(), any(), anyString());
-        verify(userRecordRepository, never()).findByDnIgnoreCase(anyString());
+        verify(userRecordRepository, never()).findByDnForUpdate(anyString());
     }
 
     @Test
@@ -511,6 +511,27 @@ class CheckInOutServiceTest {
 
         assertEquals(List.of(CheckInOutEnum.CHECK_OUT, CheckInOutEnum.CHECK_IN),
                 records.stream().map(CheckInOutRecord::getAction).toList());
+    }
+
+    /** The batch lookup: the same day window, one query for the set, rows grouped by lower-cased DN. */
+    @Test
+    void recordsForManyUsersAreGroupedByLowercaseDnInOneQuery() {
+        existing(BOB.toUpperCase(), CheckInOutEnum.CHECK_IN, SEP_10.withHour(8));
+        existing(BOB, CheckInOutEnum.CHECK_OUT, SEP_10.withHour(17));
+        existing(CAROL, CheckInOutEnum.CHECK_IN, SEP_10.withHour(9));
+        when(recordRepository.findByLowercaseDnInAndTimestampBetween(any(), any(), any())).thenAnswer(inv -> {
+            java.util.Collection<String> dns = inv.getArgument(0);
+            return stored.stream().filter(r -> dns.contains(r.getDn().toLowerCase())).toList();
+        });
+
+        java.util.Map<String, List<CheckInOutRecord>> byDn =
+                service.findRecordsForUsers(List.of(BOB, BOB.toUpperCase(), CAROL, "cn=Nobody"), viewing(SEP_10.withHour(12)));
+
+        assertEquals(java.util.Set.of(BOB.toLowerCase(), CAROL.toLowerCase()), byDn.keySet());
+        assertEquals(2, byDn.get(BOB.toLowerCase()).size());
+        verify(recordRepository).findByLowercaseDnInAndTimestampBetween(
+                eq(List.of(BOB.toLowerCase(), CAROL.toLowerCase(), "cn=nobody")),
+                eq(SEP_10), eq(SEP_10.plusDays(1).minusNanos(1)));
     }
 
     // --- pass-throughs -------------------------------------------------------------------------

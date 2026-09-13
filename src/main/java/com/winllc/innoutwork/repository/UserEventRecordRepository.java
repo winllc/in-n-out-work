@@ -15,8 +15,14 @@ import java.util.Optional;
 
 @Repository
 public interface UserEventRecordRepository  extends JpaRepository<UserEventRecord, Long>, PagingAndSortingRepository<UserEventRecord, Long> {
-    List<UserEventRecord> findByDnIgnoreCaseAndDateBetween(String dn, LocalDate start, LocalDate end);
-    List<UserEventRecord> findByDnIgnoreCaseAndDate(String dn, LocalDate date);
+    // DN lookups compare lower(dn) so they can use the lower(dn) indexes from
+    // db/migrations/001_indexes_and_unique_user_dn.sql. Spring Data's derived ...IgnoreCase methods
+    // compare upper(dn), which those indexes cannot serve.
+    @Query("select e from UserEventRecord e where lower(e.dn) = lower(:dn) and e.date >= :start and e.date <= :end")
+    List<UserEventRecord> findByDnIgnoreCaseAndDateBetween(@Param("dn") String dn, @Param("start") LocalDate start,
+                                                           @Param("end") LocalDate end);
+    @Query("select e from UserEventRecord e where lower(e.dn) = lower(:dn) and e.date = :date")
+    List<UserEventRecord> findByDnIgnoreCaseAndDate(@Param("dn") String dn, @Param("date") LocalDate date);
 
     List<UserEventRecord> findByDate(LocalDate date);
 
@@ -25,5 +31,7 @@ public interface UserEventRecordRepository  extends JpaRepository<UserEventRecor
     List<UserEventRecord> findByLowercaseDnInAndDateBetween(@Param("dns") Collection<String> dns,
                                                            @Param("from") LocalDate from,
                                                            @Param("to") LocalDate to);
-    Optional<UserEventRecord> findByDnIgnoreCaseAndDateAndStatusEquals(String dn, LocalDate date, UserStatusEnum status);
+    @Query("select e from UserEventRecord e where lower(e.dn) = lower(:dn) and e.date = :date and e.status = :status")
+    Optional<UserEventRecord> findByDnIgnoreCaseAndDateAndStatusEquals(@Param("dn") String dn, @Param("date") LocalDate date,
+                                                                        @Param("status") UserStatusEnum status);
 }

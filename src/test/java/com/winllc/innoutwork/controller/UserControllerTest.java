@@ -5,6 +5,8 @@ import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.security.PermissionEvaluator;
+import com.winllc.innoutwork.data.team.DirectReportsSummary;
+import com.winllc.innoutwork.service.DirectReportsService;
 import com.winllc.innoutwork.service.UserService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -24,10 +26,12 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import javax.security.auth.x500.X500Principal;
 import java.security.cert.X509Certificate;
+import java.time.LocalDate;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -59,6 +63,8 @@ class UserControllerTest {
     UserService userRecordService;
     @MockitoBean
     PermissionEvaluator permissionEvaluator;
+    @MockitoBean
+    DirectReportsService directReportsService;
 
     @Configuration
     @EnableWebSecurity
@@ -170,20 +176,21 @@ class UserControllerTest {
      *  directory rather than the application role. */
     @Test
     void theReportsPageRendersForAPlainUser() throws Exception {
-        when(userRecordService.getDirectReports(any(), any())).thenReturn(List.of(
-                UserStatus.builder().dn("cn=bob,ou=Users,dc=winllc,dc=com").status("IN").build()));
+        DirectReportsSummary team = TemplateRenderingTest.sampleTeam();
+        when(directReportsService.forManager(eq(TARGET_DN), any())).thenReturn(team);
 
         mockMvc.perform(get("/app/user/reports").with(x509(cert(TARGET_DN))))
                 .andExpect(status().isOk())
                 .andExpect(view().name("myreports"))
-                .andExpect(model().attribute("reportCount", 1))
-                .andExpect(model().attribute("managerCn", "user1"));
+                .andExpect(model().attribute("reportCount", 2))
+                .andExpect(model().attribute("managerCn", "user1"))
+                .andExpect(model().attribute("team", team));
     }
 
     /** A user with nobody reporting to them still gets the page, with the empty state. */
     @Test
     void theReportsPageRendersWhenThereAreNoReports() throws Exception {
-        when(userRecordService.getDirectReports(any(), any())).thenReturn(List.of());
+        when(directReportsService.forManager(eq(ADMIN_DN), any())).thenReturn(DirectReportsSummary.none(LocalDate.now()));
 
         mockMvc.perform(get("/app/user/reports").with(x509(cert(ADMIN_DN))))
                 .andExpect(status().isOk())

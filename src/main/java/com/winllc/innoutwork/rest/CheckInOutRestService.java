@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.kerberos.authentication.KerberosServiceRequestToken;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.ZoneId;
@@ -52,9 +53,15 @@ public class CheckInOutRestService {
                 dn = LdapDn.normalize(optionalRecord.get().getDn());
             }
 
+            // After Windows sign-in the account name comes from the verified ticket, not the request body.
+            String windowsUserId = checkInOut.getWindowsUserId();
+            if (auth instanceof KerberosServiceRequestToken kerberos && kerberos.getTicketValidation() != null) {
+                windowsUserId = kerberos.getTicketValidation().username();
+            }
+
             CheckInOutRecord.CheckInOutRecordBuilder recordBuilder = CheckInOutRecord.builder()
                     .dn(dn)
-                    .windowsUserId(checkInOut.getWindowsUserId())
+                    .windowsUserId(windowsUserId)
                     .timestamp(ZonedDateTime.now(ZoneId.systemDefault()));
 
             CheckInOutRecord record = switch (action) {

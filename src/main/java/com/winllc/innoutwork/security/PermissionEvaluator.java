@@ -75,7 +75,7 @@ public class PermissionEvaluator {
 
         for(LdapGroup group : groupsForUser){
 
-            isUserManager = groupService.getManagersForGroup(group.getDn()).stream()
+            isUserManager = groupService.getManagersForGroup(group).stream()
                     .anyMatch(m -> m.equalsIgnoreCase(managerLdapDn.dn()));
 
             if(isUserManager){

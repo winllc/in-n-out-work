@@ -242,3 +242,8 @@ body {
     border-radius: var(--tblr-border-radius);
 }
 
+/* Direct reports page: the daily attendance chart sizes to this box (Chart.js maintainAspectRatio: false). */
+.team-daily-chart {
+    position: relative;
+    height: 16rem;
+}

@@ -5,6 +5,7 @@
 <head>
     <meta charset="UTF-8">
     <title>My Reports</title>
+    <script th:src="@{/libs/chartjs/chart.js}"></script>
 </head>
 <body>
 
@@ -18,7 +19,7 @@
         <div class="card-body">
             <div class="empty">
                 <div class="empty-icon">
-                    <i class="ti ti-users-group fs-1"></i>
+                    <i class="ti ti-users fs-1"></i>
                 </div>
                 <p class="empty-title">No direct reports</p>
                 <p class="empty-subtitle text-secondary">
@@ -30,6 +31,115 @@
             </div>
         </div>
     </div>
+
+    <!-- Team metrics. "Today" follows the date picker; history is the 30 days ending on that day. -->
+    <th:block th:if="${team != null and team.reportCount() > 0}"
+              th:with="af=${team.today().accountedFor()}, att=${team.attendance()}, alerts=${team.alerts()}">
+
+        <div class="row row-cards mb-3" id="team-metrics">
+            <div class="col-sm-6 col-xl-3">
+                <div class="card h-100" id="team-today">
+                    <div class="card-body">
+                        <div class="subheader">Accounted for today</div>
+                        <th:block th:if="${af.workingDay()}">
+                            <div class="h1 mb-1" th:text="${af.ratePercent() != null ? af.ratePercent() + '%' : '—'}">0%</div>
+                            <div class="text-secondary" th:text="${af.accounted() + ' of ' + af.expected() + ' reports'}"></div>
+                        </th:block>
+                        <th:block th:unless="${af.workingDay()}">
+                            <div class="h1 mb-1 text-secondary">—</div>
+                            <div class="text-secondary" th:text="${'Not a working day: ' + af.nonWorkingReason()}"></div>
+                        </th:block>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card h-100" id="team-attendance">
+                    <div class="card-body">
+                        <div class="subheader">Attendance, last 30 days</div>
+                        <div class="h1 mb-1" th:text="${att.checkedInPercent() != null ? att.checkedInPercent() + '%' : '—'}">0%</div>
+                        <div class="text-secondary"
+                             th:text="${att.checkedIn() + ' of ' + att.workingDays() + ' working days checked in'}"></div>
+                        <div class="small text-secondary"
+                             th:text="${att.statusOnly() + ' covered by a status · ' + att.noRecord() + ' with nothing recorded'}"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card h-100" id="team-arrival">
+                    <div class="card-body">
+                        <div class="subheader">Average arrival, last 30 days</div>
+                        <div class="h1 mb-1"
+                             th:text="${team.averageArrival() != null ? #temporals.format(team.averageArrival(), 'HH:mm') : '—'}">—</div>
+                        <div class="text-secondary">first check-in on working days</div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="card h-100" id="team-alerts">
+                    <div class="card-body">
+                        <div class="subheader">Absence alerts, last 30 days</div>
+                        <div class="h1 mb-1" th:text="${alerts.raised()}">0</div>
+                        <div class="text-secondary"
+                             th:text="${alerts.answered() + ' answered · ' + alerts.unanswered() + ' unanswered'}"></div>
+                        <div class="small text-secondary" th:if="${!alerts.outcomes().isEmpty()}">
+                            <span th:each="outcome, it : ${alerts.outcomes()}"
+                                  th:text="${outcome.label() + ' ' + outcome.count() + (it.last ? '' : ' · ')}"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-8">
+                <div class="card h-100" id="team-daily">
+                    <div class="card-header">
+                        <h3 class="card-title">Daily attendance, last 30 days</h3>
+                    </div>
+                    <div class="card-body">
+                        <th:block th:if="${!team.daily().isEmpty()}">
+                            <div class="team-daily-chart">
+                                <canvas id="team-daily-chart" role="img"
+                                        th:attr="aria-label=${'Stacked columns of reports checked in and covered by a status on each of the '
+                                            + team.daily().size() + ' working days, out of ' + team.reportCount() + ' reports'}"></canvas>
+                            </div>
+                            <details class="mt-3" id="team-daily-table">
+                                <summary class="text-secondary">Show as a table</summary>
+                                <div class="table-responsive mt-2">
+                                    <table class="table table-sm table-vcenter">
+                                        <thead>
+                                        <tr><th>Day</th><th class="text-end">Checked in</th>
+                                            <th class="text-end">Status only</th><th class="text-end">Nothing recorded</th></tr>
+                                        </thead>
+                                        <tbody>
+                                        <tr th:each="d : ${team.daily()}">
+                                            <td th:text="${#temporals.format(d.date(), 'EEE MMM d')}"></td>
+                                            <td class="text-end" th:text="${d.checkedIn()}"></td>
+                                            <td class="text-end" th:text="${d.statusOnly()}"></td>
+                                            <td class="text-end" th:text="${d.noRecord()}"></td>
+                                        </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+                        </th:block>
+                        <div class="text-secondary" th:if="${team.daily().isEmpty()}">
+                            No working days in the last 30 days.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card h-100" id="team-mix">
+                    <div class="card-header">
+                        <h3 class="card-title">Status today</h3>
+                    </div>
+                    <div class="card-body">
+                        <th:block th:replace="~{fragments/accountability :: statusMix(${team.today().statusMix()}, ${af.expected()})}"></th:block>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </th:block>
 
     <div class="card" th:unless="${reportCount == 0}">
         <div class="card-header">
@@ -48,6 +158,107 @@
             <div id="reports-table"></div>
         </div>
     </div>
+
+
+    <div class="card mt-3" id="report-attendance" th:if="${team != null and !team.reports().isEmpty()}">
+        <div class="card-header">
+            <h3 class="card-title">Attendance by report, last 30 days</h3>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-vcenter card-table">
+                <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Checked in</th>
+                    <th class="text-end">Status only</th>
+                    <th class="text-end">Nothing recorded</th>
+                    <th class="text-end">Average arrival</th>
+                    <th class="text-end">Agent last reported</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="r : ${team.reports()}">
+                    <td><a th:href="@{/app/user/details/{dn}(dn=${r.dn()})}" th:text="${r.name()}"></a></td>
+                    <td class="w-25">
+                        <div class="d-flex align-items-center">
+                            <span class="me-2 text-nowrap"
+                                  th:text="${r.attendance().checkedIn() + ' of ' + r.attendance().workingDays()}"></span>
+                            <div class="progress progress-sm flex-grow-1" th:if="${r.attendance().workingDays() > 0}">
+                                <div class="progress-bar bg-green" role="progressbar"
+                                     th:style="${'width: ' + r.attendance().percentOfWorkingDays(r.attendance().checkedIn()) + '%'}"
+                                     th:attr="aria-valuenow=${r.attendance().checkedInPercent()}" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="text-end" th:text="${r.attendance().statusOnly()}"></td>
+                    <td class="text-end" th:text="${r.attendance().noRecord()}"></td>
+                    <td class="text-end"
+                        th:text="${r.averageArrival() != null ? #temporals.format(r.averageArrival(), 'HH:mm') : '—'}"></td>
+                    <td class="text-end text-nowrap">
+                        <span th:if="${r.lastReported() != null}"
+                              th:text="${#temporals.format(r.lastReported(), 'MM/dd/yyyy HH:mm')}"></span>
+                        <span th:if="${r.lastReported() == null}" class="text-secondary">Not in 30 days</span>
+                        <span th:if="${r.agentQuiet()}" class="badge bg-orange-lt ms-1" title="Nothing received for a week or more">Quiet</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script th:inline="javascript" th:if="${team != null and !team.daily().isEmpty()}">
+        (function () {
+            const dates = /*[[${team.dailyDates()}]]*/ [];
+            const series = {
+                checkedIn: /*[[${team.dailyCheckedIn()}]]*/ [],
+                statusOnly: /*[[${team.dailyStatusOnly()}]]*/ [],
+                noRecord: /*[[${team.dailyNoRecord()}]]*/ []
+            };
+            const reportCount = /*[[${team.reportCount()}]]*/ 0;
+            const yStep = reportCount <= 10 ? 1 : Math.ceil(reportCount / 5);
+            const labels = dates.map(d => new Date(d + "T00:00:00")
+                .toLocaleDateString(undefined, {weekday: "short", month: "short", day: "numeric"}));
+
+            // Checked in keeps the app's green; status keeps its blue. The axis stops at the team size, so
+            // the space above a column is the reports with nothing recorded, which the tooltip spells out.
+            const segment = (label, color, key) => ({
+                label, data: series[key], backgroundColor: color,
+                borderColor: "#ffffff", borderWidth: {top: 2}, borderSkipped: false,
+                borderRadius: {topLeft: 4, topRight: 4}, maxBarThickness: 22
+            });
+
+            new Chart(document.getElementById("team-daily-chart"), {
+                type: "bar",
+                data: {
+                    labels,
+                    datasets: [segment("Checked in", "#2fb344", "checkedIn"), segment("Status only", "#066fd1", "statusOnly")]
+                },
+                options: {
+                    maintainAspectRatio: false,
+                    interaction: {mode: "index", intersect: false},
+                    scales: {
+                        x: {stacked: true, grid: {display: false}, ticks: {color: "#667382", maxRotation: 0, autoSkipPadding: 12}},
+                        // The axis stops at the team size. Small teams get a tick per person; larger ones a
+                        // coarser step, with any tick crowding the top one dropped so labels never overlap.
+                        y: {stacked: true, min: 0, max: reportCount, grid: {color: "#eef1f5"}, border: {display: false},
+                            ticks: {color: "#667382", precision: 0, stepSize: yStep},
+                            afterBuildTicks: axis => {
+                                axis.ticks = axis.ticks.filter(t => t.value === axis.max || axis.max - t.value >= yStep / 2);
+                                if (!axis.ticks.some(t => t.value === axis.max)) axis.ticks.push({value: axis.max});
+                            }}
+                    },
+                    plugins: {
+                        legend: {position: "top", align: "start", labels: {boxWidth: 10, boxHeight: 10, color: "#1d273b"}},
+                        tooltip: {
+                            callbacks: {
+                                footer: items => "Nothing recorded: " + series.noRecord[items[0].dataIndex]
+                            }
+                        }
+                    }
+                }
+            });
+        })();
+    </script>
 
     <script th:inline="javascript">
         // Status colours come from Tabler's badge palette so the table matches the rest of the UI.

@@ -6,7 +6,6 @@ import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -26,7 +25,8 @@ public class MarkInactiveCron {
         this.properties = properties;
     }
 
-    @Async
+    // Not @Async: with it the scheduler returned at once, so the fixed delay never waited for a run to
+    // finish and a slow run could overlap the next. spring.task.scheduling.pool.size gives each job a thread.
     @Scheduled(fixedDelayString = "#{@inactiveCronProperties.fixedRate}",
             initialDelayString = "#{@inactiveCronProperties.initialDelay}")
     public void run(){

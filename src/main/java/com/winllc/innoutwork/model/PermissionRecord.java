@@ -16,9 +16,12 @@ public class PermissionRecord {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
+    // Excluded from equals/hashCode as from toString: UserRecord's permissions list points back here,
+    // so including it would recurse.
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private UserRecord user;
     private String groupDn;
 }

@@ -21,6 +21,14 @@ RUN sed -i 's/\r$//' gradlew && chmod +x gradlew \
 
 # ---- runtime stage -----------------------------------------------------------
 FROM registry.access.redhat.com/ubi9/openjdk-21-runtime
+
+# krb5-workstation: Kerberos configuration and the klist/kinit tools for checking the keytab used by Windows
+# sign-in (application.windows-auth). The JVM validates tickets itself. /etc/in-n-out is where the keytab is
+# mounted; group 0 is the image's default user's group, so it can read it.
+USER root
+RUN microdnf install -y --nodocs krb5-workstation  && microdnf clean all  && mkdir -p /etc/in-n-out  && chgrp 0 /etc/in-n-out  && chmod 0750 /etc/in-n-out
+USER 185
+
 WORKDIR /app
 
 COPY --from=build /workspace/app.jar app.jar

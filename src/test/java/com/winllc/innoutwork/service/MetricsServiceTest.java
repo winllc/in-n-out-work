@@ -32,21 +32,6 @@ class MetricsServiceTest {
     @InjectMocks
     private MetricsService metricsService;
 
-    @Test
-    void getTodaysStatisticsCountsEachStatus() {
-        when(checkInOutRecordRepository.findTotalCurrentStatuses(any(), any()))
-                .thenReturn(List.of(
-                        CheckInOutEnum.CHECK_IN,
-                        CheckInOutEnum.CHECK_IN,
-                        CheckInOutEnum.CHECK_OUT));
-
-        Map<CheckInOutEnum, Long> stats = metricsService.getTodaysStatistics(session);
-
-        assertEquals(2L, stats.get(CheckInOutEnum.CHECK_IN));
-        assertEquals(1L, stats.get(CheckInOutEnum.CHECK_OUT));
-        assertNull(stats.get(CheckInOutEnum.LOCK));
-    }
-
     /**
      * The combined view buckets the same records four ways (org, employee type, location,
      * branch) and also keeps an overall count by action.

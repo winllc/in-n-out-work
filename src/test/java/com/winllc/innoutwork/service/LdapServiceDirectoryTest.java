@@ -87,8 +87,9 @@ class LdapServiceDirectoryTest {
         // The endpoints enrich each hit through UserService; echo the DN so the tests see exactly
         // what the directory handed over.
         userService = mock(UserService.class);
-        when(userService.getUserStatus(anyString(), any()))
-                .thenAnswer(inv -> UserStatus.builder().dn(inv.getArgument(0)).build());
+        when(userService.getUserStatuses(any(), any()))
+                .thenAnswer(inv -> ((java.util.Collection<String>) inv.getArgument(0)).stream()
+                        .map(dn -> UserStatus.builder().dn(dn).build()).toList());
     }
 
     private UserRestService userRestService() {

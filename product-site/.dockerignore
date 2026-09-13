@@ -1,0 +1,4 @@
+# Only the site and the nginx template go into the image.
+*
+!site/
+!nginx/

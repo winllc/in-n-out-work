@@ -87,18 +87,20 @@ public class HomeController {
     public String groups(Authentication authentication, Model model) {
         List<LdapGroup> topLevelGroups = new ArrayList<>();
 
+        boolean isAdmin = authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equalsIgnoreCase(UserRoleEnum.ADMIN.toString())
+                || a.getAuthority().equalsIgnoreCase(UserRoleEnum.MANAGER.toString()));
+        // The same for every top-level group, so read once.
+        List<LdapDn> groupWhitelist = isAdmin ? List.of()
+                : permissionService.getUserGroupPermissions(new LdapDn(authentication.getName()));
+
         for(TopLevelGroupProperties topProps: properties.getGroups()) {
             LdapGroup groupHierarchy = cacheService.getGroup(topProps.getGroupsBaseDn());
             //topLevelGroups.add(groupHierarchy);
 
-            boolean isAdmin = authentication.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equalsIgnoreCase(UserRoleEnum.ADMIN.toString())
-                    || a.getAuthority().equalsIgnoreCase(UserRoleEnum.MANAGER.toString()));
-
             if(isAdmin) {
                 topLevelGroups.add(groupHierarchy);
             }else {
-                List<LdapDn> groupWhitelist = permissionService.getUserGroupPermissions(new LdapDn(authentication.getName()));
 
                 LdapGroup whitelistedGroup = groupHierarchy.filterByWhitelist(groupWhitelist);
                 if (whitelistedGroup != null) {

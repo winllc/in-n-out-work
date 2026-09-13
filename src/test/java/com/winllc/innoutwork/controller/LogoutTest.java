@@ -95,6 +95,14 @@ class LogoutTest {
                 .andExpect(content().string(containsString("method=\"post\"")));
     }
 
+    /** The overview quotes the same grace period the absence notifications use (60 minutes by default). */
+    @Test
+    void theHelpOverviewStatesTheConfiguredGracePeriod() throws Exception {
+        mockMvc.perform(get("/render/page").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("plus a 60 minute grace period")));
+    }
+
     @Test
     void aCertificateSessionHasNoLogout() throws Exception {
         mockMvc.perform(get("/render/page").with(x509(mockCert(USER_DN))))

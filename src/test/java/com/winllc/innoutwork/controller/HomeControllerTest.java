@@ -54,6 +54,8 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -174,6 +176,20 @@ class HomeControllerTest {
                 .andExpect(content().string(not(containsString("id=\"my-team\""))));
     }
 
+    /** A plain user gets the overview, but not the sections for pages only admins and managers can open. */
+    @Test
+    void aPlainUsersHelpLeavesOutAdminAndManagerPages() throws Exception {
+        when(homeService.forUser(eq(USER_DN), any())).thenReturn(new HomeDashboard(me(false), null));
+
+        mockMvc.perform(get("/app/home").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("id=\"help-modal\"")))
+                .andExpect(content().string(containsString("Finding your way around")))
+                .andExpect(content().string(not(containsString("id=\"help-metrics\""))))
+                .andExpect(content().string(not(containsString("id=\"help-settings\""))))
+                .andExpect(content().string(not(containsString("id=\"help-date-picker\""))));
+    }
+
     @Test
     void homeWarnsWhenTheUsersAgentIsQuiet() throws Exception {
         when(homeService.forUser(eq(USER_DN), any())).thenReturn(new HomeDashboard(me(true), null));
@@ -247,6 +263,25 @@ class HomeControllerTest {
         mockMvc.perform(get("/app/groups").with(x509(mockCert(USER_DN))))
                 .andExpect(status().isOk())
                 .andExpect(model().attributeExists("favoriteMap"));
+    }
+
+    /** The user's permissions are the same for every top-level group, so they are read once per page. */
+    @Test
+    void groupsReadsTheUsersPermissionsOnceHoweverManyTopLevelGroups() throws Exception {
+        TopLevelGroupProperties groups = new TopLevelGroupProperties();
+        groups.setGroupsBaseDn(GROUPS_BASE_DN);
+        TopLevelGroupProperties companies = new TopLevelGroupProperties();
+        companies.setGroupsBaseDn("ou=Companies,dc=winllc,dc=com");
+
+        when(properties.getGroups()).thenReturn(List.of(groups, companies));
+        when(cacheService.getGroup(anyString())).thenAnswer(inv -> new LdapGroup(inv.getArgument(0), "Top"));
+        when(permissionService.getUserGroupPermissions(any())).thenReturn(List.of());
+        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/app/groups").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk());
+
+        verify(permissionService, times(1)).getUserGroupPermissions(any());
     }
 
     /**

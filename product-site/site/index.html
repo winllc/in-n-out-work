@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>ReadyRoom — attendance and accountability</title>
+    <meta name="description" content="ReadyRoom turns workstation sign-ins into daily attendance, accountability and absence alerts, straight from your directory.">
+    <link rel="icon" type="image/png" href="assets/favicon.png">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="site-header">
+    <div class="container header-inner">
+        <a class="brand" href="#top" aria-label="ReadyRoom home">
+            <img src="assets/logo-light.svg" alt="ReadyRoom" style="height: 5rem;">
+        </a>
+        <nav class="site-nav" aria-label="Sections">
+            <a href="#how-it-works">How it works</a>
+            <a href="#features">Features</a>
+            <a href="#security">Security</a>
+        </nav>
+        <a class="button button-small" href="/launch">Open the app</a>
+    </div>
+</header>
+
+<main id="main">
+
+    <section class="hero" id="top">
+        <div class="container hero-inner">
+            <div class="hero-copy">
+                <p class="eyebrow">Attendance and accountability</p>
+                <h1>Know who’s in, without a sign-in sheet.</h1>
+                <p class="lead">
+                    ReadyRoom turns the Windows sign-ins your people already make into a daily picture of
+                    who is in, who is away, and who hasn’t been accounted for, organized by the directory you
+                    already run.
+                </p>
+                <div class="hero-actions">
+                    <a class="button" href="/launch">Open ReadyRoom</a>
+                    <a class="button button-ghost" href="#how-it-works">See how it works</a>
+                </div>
+            </div>
+
+            <!-- Illustration of the team view, not live data. -->
+            <div class="hero-card" aria-hidden="true">
+                <div class="mock-header">
+                    <span class="mock-title">My team</span>
+                    <span class="mock-badge">12 direct reports</span>
+                </div>
+                <div class="mock-label">Accounted for</div>
+                <div class="mock-figure">92%</div>
+                <div class="mock-bar">
+                    <span class="seg seg-in"></span><span class="seg seg-wfh"></span><span class="seg seg-tdy"></span><span class="seg seg-none"></span>
+                </div>
+                <ul class="mock-legend">
+                    <li><span class="dot dot-in"></span>Checked in<b>8</b></li>
+                    <li><span class="dot dot-wfh"></span>Work from home<b>2</b></li>
+                    <li><span class="dot dot-tdy"></span>TDY<b>1</b></li>
+                    <li><span class="dot dot-none"></span>Unaccounted for<b>1</b></li>
+                </ul>
+                <div class="mock-row">
+                    <span>Not in yet</span><span class="mock-late">Late</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="how-it-works">
+        <div class="container">
+            <p class="eyebrow eyebrow-dark">How it works</p>
+            <h2>Nobody has to remember to check in.</h2>
+            <ol class="steps">
+                <li class="step">
+                    <span class="step-number">1</span>
+                    <h3>People sign in to Windows as usual</h3>
+                    <p>
+                        A lightweight agent on each workstation reports sign-in, screen lock, unlock and sign-out
+                        to the server. Once IT has installed it, there is nothing for people to open or click.
+                    </p>
+                </li>
+                <li class="step">
+                    <span class="step-number">2</span>
+                    <h3>Events become a working day</h3>
+                    <p>
+                        The first sign-in or unlock of the day counts as arrival. Locks, returns and departures fill
+                        in the rest, alongside any status people have set, such as work from home or leave.
+                    </p>
+                </li>
+                <li class="step">
+                    <span class="step-number">3</span>
+                    <h3>Everyone sees what they need</h3>
+                    <p>
+                        Individuals see their own day, managers see the team that reports to them in your directory,
+                        and leadership sees organization-wide figures.
+                    </p>
+                </li>
+            </ol>
+        </div>
+    </section>
+
+    <section class="section section-tinted" id="features">
+        <div class="container">
+            <p class="eyebrow eyebrow-dark">Features</p>
+            <h2>Built for the whole chain of accountability.</h2>
+            <div class="features">
+                <article class="feature">
+                    <h3>Automatic check-in</h3>
+                    <p>
+                        Status is recorded from real workstation activity: checked in, away while locked, checked out.
+                        There’s no app to open and no button to forget.
+                    </p>
+                </article>
+                <article class="feature">
+                    <h3>Statuses and calendar</h3>
+                    <p>
+                        People mark work from home, TDY, scheduled leave or a late arrival on a calendar, so the
+                        people they report to know where they are.
+                    </p>
+                </article>
+                <article class="feature">
+                    <h3>Absence alerts</h3>
+                    <p>
+                        If someone hasn’t arrived by their expected time (their preferred time or their usual
+                        arrival) plus a grace period, their managers are notified and can record what happened.
+                    </p>
+                </article>
+                <article class="feature">
+                    <h3>A home page for everyone</h3>
+                    <p>
+                        Your status, the last 30 days and what’s coming up. Managers also get who’s accounted for,
+                        who’s not in yet, and the alerts waiting for their response.
+                    </p>
+                </article>
+                <article class="feature">
+                    <h3>Metrics for leadership</h3>
+                    <p>
+                        Accounted-for rate, status mix and workstation agent coverage across the organization,
+                        plus status breakdowns by organization, employee type, location and branch.
+                    </p>
+                </article>
+                <article class="feature">
+                    <h3>Your directory, your structure</h3>
+                    <p>
+                        Groups, the org chart and reporting lines come straight from LDAP. People are found
+                        through user search, and nothing about your org has to be entered twice.
+                    </p>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="security">
+        <div class="container security">
+            <div>
+                <p class="eyebrow eyebrow-dark">Security and privacy</p>
+                <h2>Designed for environments that take identity seriously.</h2>
+            </div>
+            <ul class="checklist">
+                <li>
+                    <strong>Certificate sign-in.</strong>
+                    Mutual TLS with X.509 client certificates, with directory username and password as a fallback.
+                </li>
+                <li>
+                    <strong>Role-based access.</strong>
+                    User, manager and administrator roles, plus per-group permissions for who can see whom.
+                </li>
+                <li>
+                    <strong>Counts, not names, in organization metrics.</strong>
+                    Organization-wide figures are aggregates and never list individuals.
+                </li>
+                <li>
+                    <strong>Your data stays yours.</strong>
+                    The directory remains the source of truth, and attendance records live in your own database.
+                </li>
+            </ul>
+        </div>
+    </section>
+
+    <section class="cta">
+        <div class="container cta-inner">
+            <h2>Ready to see today’s picture?</h2>
+            <a class="button" href="/launch">Open ReadyRoom</a>
+        </div>
+    </section>
+
+</main>
+
+<footer class="site-footer">
+    <div class="container footer-inner">
+        <span>ReadyRoom</span>
+        <span>Designed and developed by ENS Solutions, LLC</span>
+    </div>
+</footer>
+</body>
+</html>
