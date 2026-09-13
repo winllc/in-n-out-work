@@ -8,6 +8,10 @@ import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.data.UserStatus;
+import com.winllc.innoutwork.model.UserEventRecord;
+import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.constant.UserStatusEnum;
+import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
@@ -26,11 +30,17 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalTime;
 import java.util.List;
+import java.util.stream.IntStream;
+import java.util.Collection;
+import java.time.ZonedDateTime;
+import java.time.LocalDate;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -306,6 +316,87 @@ class UserServiceTest {
     }
 
     // ----------------------------------------------------------------------
+    // Status lookups, one user and many
+    // ----------------------------------------------------------------------
+
+    private static final String BOB_DN = "cn=Bob,ou=Users,dc=winllc,dc=com";
+    private static final String CAROL_DN = "cn=Carol,ou=Users,dc=winllc,dc=com";
+
+    private static CheckInOutRecord checkIn(String dn, CheckInOutEnum action, ZonedDateTime at) {
+        return CheckInOutRecord.builder().dn(dn).action(action).timestamp(at).build();
+    }
+
+    /**
+     * The page tables use the batch lookup and the user details page the single one; given the same rows
+     * they must describe each user identically, whatever case the DNs were stored in.
+     */
+    @Test
+    void theBatchLookupDescribesEachUserExactlyAsTheSingleLookupDoes() {
+        ZonedDateTime day = CheckInOutService.getDateTimeFromSession(session).truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+        LocalDate date = day.toLocalDate();
+
+        List<CheckInOutRecord> bobRecords = List.of(
+                checkIn(BOB_DN.toUpperCase(), CheckInOutEnum.CHECK_IN, day.plusHours(8)),
+                checkIn(BOB_DN, CheckInOutEnum.LOCK, day.plusHours(12)));
+        List<CheckInOutRecord> carolRecords = List.of(
+                checkIn(CAROL_DN, CheckInOutEnum.CHECK_IN, day.plusHours(9)),
+                checkIn(CAROL_DN, CheckInOutEnum.CHECK_OUT, day.plusHours(17)));
+        UserRecord bobRecord = UserRecord.builder().dn(BOB_DN.toUpperCase()).notes("n").organization("Org").employeeType("FT").build();
+        UserEventRecord carolTdy = UserEventRecord.builder().dn(CAROL_DN).date(date).status(UserStatusEnum.TDY).build();
+
+        when(checkInOutService.findRecordsForUser(BOB_DN, session)).thenReturn(bobRecords);
+        when(checkInOutService.findRecordsForUser(CAROL_DN, session)).thenReturn(carolRecords);
+        when(checkInOutService.findRecordsForUser(USER_DN, session)).thenReturn(List.of());
+        when(userRecordRepository.findByDnIgnoreCase(BOB_DN)).thenReturn(Optional.of(bobRecord));
+        when(userRecordRepository.findByDnIgnoreCase(CAROL_DN)).thenReturn(Optional.empty());
+        when(userRecordRepository.findByDnIgnoreCase(USER_DN)).thenReturn(Optional.empty());
+        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), eq(date))).thenReturn(List.of());
+        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(CAROL_DN, date)).thenReturn(List.of(carolTdy));
+
+        when(checkInOutService.findRecordsForUsers(any(), eq(session))).thenReturn(Map.of(
+                BOB_DN.toLowerCase(), bobRecords, CAROL_DN.toLowerCase(), carolRecords));
+        when(userRecordRepository.findAllByLowercaseDnIn(any())).thenReturn(List.of(bobRecord));
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), eq(date), eq(date))).thenReturn(List.of(carolTdy));
+
+        List<String> dns = List.of(CAROL_DN, USER_DN, BOB_DN);
+        List<UserStatus> single = dns.stream().map(dn -> userService.getUserStatus(dn, session)).toList();
+        List<UserStatus> batch = userService.getUserStatuses(dns, session);
+
+        assertEquals(single, batch);
+        assertEquals(List.of("TDY", "NONE", "AWAY"), batch.stream().map(UserStatus::getStatus).toList());
+        assertEquals("Org", batch.get(2).getOrganization());
+    }
+
+    @Test
+    void noUsersMeansNoQueries() {
+        assertTrue(userService.getUserStatuses(List.of(), session).isEmpty());
+
+        verifyNoInteractions(checkInOutService, userEventRecordRepository);
+        verify(userRecordRepository, never()).findAllByLowercaseDnIn(any());
+    }
+
+    /** A long list is looked up in IN lists of at most 1,000 DNs, not one query per user. */
+    @Test
+    @SuppressWarnings("unchecked")
+    void manyUsersAreLookedUpInChunks() {
+        List<String> dns = IntStream.range(0, 2500).mapToObj(i -> "cn=User" + i + ",ou=Users,dc=winllc,dc=com").toList();
+        when(checkInOutService.findRecordsForUsers(any(), any())).thenReturn(Map.of());
+        when(userRecordRepository.findAllByLowercaseDnIn(any())).thenReturn(List.of());
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any())).thenReturn(List.of());
+
+        List<UserStatus> statuses = userService.getUserStatuses(dns, session);
+
+        assertEquals(2500, statuses.size());
+        assertEquals(dns, statuses.stream().map(UserStatus::getDn).toList());
+        ArgumentCaptor<Collection<String>> chunks = ArgumentCaptor.forClass(Collection.class);
+        verify(userRecordRepository, times(3)).findAllByLowercaseDnIn(chunks.capture());
+        assertEquals(List.of(1000, 1000, 500), chunks.getAllValues().stream().map(Collection::size).toList());
+        verify(userEventRecordRepository, times(3)).findByLowercaseDnInAndDateBetween(any(), any(), any());
+        verify(checkInOutService).findRecordsForUsers(any(), eq(session));
+        verify(userRecordRepository, never()).findByDnIgnoreCase(anyString());
+    }
+
+    // ----------------------------------------------------------------------
     // Direct reports
     //
     // The directory pairs two attributes: a manager holds their own id in
@@ -321,9 +412,9 @@ class UserServiceTest {
         when(ldapService.findUsersReportingTo("MGR-100")).thenReturn(List.of(
                 LdapUser.builder().dn("cn=bob,ou=Users,dc=winllc,dc=com").build(),
                 LdapUser.builder().dn("cn=carol,ou=Users,dc=winllc,dc=com").build()));
-        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
-        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
-        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(checkInOutService.findRecordsForUsers(any(), any())).thenReturn(Map.of());
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any())).thenReturn(List.of());
+        when(userRecordRepository.findAllByLowercaseDnIn(any())).thenReturn(List.of());
 
         List<UserStatus> reports = userService.getDirectReports(managerDn, session);
 
@@ -340,9 +431,9 @@ class UserServiceTest {
                 LdapUser.builder().dn("cn=zoe,ou=Users,dc=winllc,dc=com").build(),
                 LdapUser.builder().dn("cn=adam,ou=Users,dc=winllc,dc=com").build(),
                 LdapUser.builder().dn("cn=Mia,ou=Users,dc=winllc,dc=com").build()));
-        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
-        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
-        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(checkInOutService.findRecordsForUsers(any(), any())).thenReturn(Map.of());
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any())).thenReturn(List.of());
+        when(userRecordRepository.findAllByLowercaseDnIn(any())).thenReturn(List.of());
 
         List<UserStatus> reports = userService.getDirectReports(
                 LdapDn.builder().dn(USER_DN).build(), session);
@@ -376,6 +467,20 @@ class UserServiceTest {
     }
 
     /** Guards against a self-referencing entry putting the manager in their own report list. */
+    /** The directory lookup alone: no attendance is read for anyone. */
+    @Test
+    void findDirectReportsReturnsTheDirectoryEntriesWithoutReadingStatuses() {
+        LdapUser manager = LdapUser.builder().dn(USER_DN).managerLdapId("MGR-1").build();
+        LdapUser bob = LdapUser.builder().dn("cn=bob,ou=Users,dc=winllc,dc=com").build();
+        when(ldapService.lookupUser(any(LdapDn.class))).thenReturn(Optional.of(manager));
+        when(ldapService.findUsersReportingTo("MGR-1")).thenReturn(List.of(bob, manager));
+
+        List<LdapUser> reports = userService.findDirectReports(new LdapDn(USER_DN));
+
+        assertEquals(List.of(bob), reports);
+        verify(checkInOutService, never()).findRecordsForUsers(any(), any());
+    }
+
     @Test
     void aManagerIsNeverListedAmongTheirOwnReports() {
         when(ldapService.lookupUser(any(LdapDn.class)))
@@ -383,9 +488,9 @@ class UserServiceTest {
         when(ldapService.findUsersReportingTo(anyString())).thenReturn(List.of(
                 LdapUser.builder().dn(USER_DN).build(),
                 LdapUser.builder().dn("cn=bob,ou=Users,dc=winllc,dc=com").build()));
-        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
-        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
-        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(checkInOutService.findRecordsForUsers(any(), any())).thenReturn(Map.of());
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any())).thenReturn(List.of());
+        when(userRecordRepository.findAllByLowercaseDnIn(any())).thenReturn(List.of());
 
         List<UserStatus> reports = userService.getDirectReports(
                 LdapDn.builder().dn(USER_DN).build(), session);
@@ -408,10 +513,10 @@ class UserServiceTest {
                         .employeeType("FT")
                         .location("New York")
                         .build()));
-        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
-        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
+        when(checkInOutService.findRecordsForUsers(any(), any())).thenReturn(Map.of());
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any())).thenReturn(List.of());
         // no local record for the report
-        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRecordRepository.findAllByLowercaseDnIn(any())).thenReturn(List.of());
 
         UserStatus bob = userService.getDirectReports(
                 LdapDn.builder().dn(USER_DN).build(), session).getFirst();
@@ -431,10 +536,10 @@ class UserServiceTest {
                         .dn("cn=bob,ou=Users,dc=winllc,dc=com")
                         .organization("StaleOrgFromLdap")
                         .build()));
-        when(checkInOutService.findRecordsForUser(anyString(), any())).thenReturn(List.of());
-        when(userEventRecordRepository.findByDnIgnoreCaseAndDate(anyString(), any())).thenReturn(List.of());
-        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(
-                Optional.of(UserRecord.builder().dn("cn=bob").organization("CurrentOrg").build()));
+        when(checkInOutService.findRecordsForUsers(any(), any())).thenReturn(Map.of());
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any())).thenReturn(List.of());
+        when(userRecordRepository.findAllByLowercaseDnIn(any())).thenReturn(List.of(
+                UserRecord.builder().dn("CN=Bob,OU=Users,DC=winllc,DC=com").organization("CurrentOrg").build()));
 
         UserStatus bob = userService.getDirectReports(
                 LdapDn.builder().dn(USER_DN).build(), session).getFirst();

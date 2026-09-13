@@ -73,7 +73,15 @@ public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
                 top.getName(), orgNodes.size(), top.getTotalChildren(),
                 System.currentTimeMillis() - start);
 
-        loadOrgStats(top);
+        // One directory scan for every node's counts, rather than a search per node.
+        Map<String, Map<String, Integer>> countsByOrg = Collections.emptyMap();
+        try {
+            countsByOrg = ldapService.countByAttributeValueSplitOnAttribute(props.getUserBaseDn(),
+                    props.getUserLdapDutySubOrganizationAttribute(), props.getUserLdapEmployeeTypeAttribute());
+        } catch (Exception e) {
+            log.error("Failed to count directory entries for the org chart", e);
+        }
+        loadOrgStats(top, countsByOrg);
 
         return top;
     }
@@ -205,7 +213,7 @@ public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
         return null;
     }
 
-    private void loadOrgStats(OrgNode orgNode){
+    private void loadOrgStats(OrgNode orgNode, Map<String, Map<String, Integer>> countsByOrg){
         if(orgNode == null || StringUtils.isBlank(orgNode.getFullName())) {
             // Nodes without a full name cannot be matched to records or directory entries.
             log.debug("Skipping org node with no full name: {}", orgNode != null ? orgNode.getName() : null);
@@ -214,8 +222,8 @@ public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
 
         // Isolate each node so a single node's failure doesn't skip the rest of the subtree.
         try {
-            Map<String, Integer> totalEntriesByEmployeeType = ldapService.getTotalEntriesWithAttributeValueSplitOnAttribute(props.getUserBaseDn(), props.getUserLdapDutySubOrganizationAttribute(),
-                    orgNode.getFullName(), props.getUserLdapEmployeeTypeAttribute());
+            Map<String, Integer> totalEntriesByEmployeeType = new HashMap<>(
+                    countsByOrg.getOrDefault(orgNode.getFullName(), Map.of()));
 
             orgNode.getData().setTotalMembersByEmployeeType(totalEntriesByEmployeeType);
 
@@ -226,7 +234,7 @@ public class LdapOrgLoader implements CacheLoader<String, OrgNode> {
 
         if(orgNode.getChildren() != null && !orgNode.getChildren().isEmpty()){
             for(OrgNode child : orgNode.getChildren()){
-                loadOrgStats(child);
+                loadOrgStats(child, countsByOrg);
             }
         }
     }

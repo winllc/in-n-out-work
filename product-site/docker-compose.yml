@@ -1,0 +1,28 @@
+# Product page, on the same host as the application:
+#
+#     cd product-site
+#     docker compose up -d --build
+#
+# Then browse to http://<host>/ ; "Open the app" goes to https://<host>:8444/.
+#
+#   PRODUCT_SITE_PORT  host port for the product page (default 80)
+#   APP_URL            where "Open the app" leads (default: same host, port 8444).
+#                      In this file "$$host" is a literal "$host", which nginx fills in per request.
+
+services:
+  product-site:
+    build: .
+    image: in-n-out-work/product-site
+    container_name: innout-product-site
+    restart: unless-stopped
+    ports:
+      - "${PRODUCT_SITE_PORT:-80}:8080"
+    environment:
+      APP_URL: "${APP_URL:-https://$$host:8444/}"
+    read_only: true
+    tmpfs:
+      # nginx renders its config into conf.d at start-up and keeps its pid and temp files in /tmp.
+      # It runs as the unprivileged nginx user (uid 101), which must own the config mount: if it
+      # cannot write there, nginx still starts but serves nothing.
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
+      - /tmp:uid=101,gid=101,mode=1777

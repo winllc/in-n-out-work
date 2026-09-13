@@ -65,12 +65,7 @@ public class OrgNodeRestService {
                 .and(new EqualsFilter(props.getUserLdapDutySubOrganizationAttribute(), orgName));
 
         List<UserStatus> result = ldapService.search(filter.encode());
-        List<UserStatus> users = new ArrayList<>();
-
-        for(UserStatus user : result){
-            users.add(userService.getUserStatus(user.getDn(), session));
-        }
-        return users;
+        return userService.getUserStatuses(result.stream().map(UserStatus::getDn).toList(), session);
     }
 
 }

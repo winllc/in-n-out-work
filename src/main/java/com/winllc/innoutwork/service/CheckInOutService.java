@@ -6,18 +6,27 @@ import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.util.Chunks;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
@@ -38,7 +47,20 @@ public class CheckInOutService {
         return checkinInOutRecordRepository.count();
     }
 
+    /**
+     * Stores a status event, first turning the day's first unlock into a check-in, and keeps the user's
+     * average login time current.
+     * <p>
+     * One transaction, holding a lock on the user's record for check-ins and unlocks: both read before
+     * they write (is this the first event today? what is the average now?), so two events for the same
+     * user arriving together would otherwise both be promoted, or overwrite each other's average.
+     */
+    @Transactional
     public CheckInOutRecord saveCheckInOutRecord(CheckInOutRecord record) {
+        boolean readsBeforeWriting = record.getAction() == CheckInOutEnum.UNLOCK || record.getAction() == CheckInOutEnum.CHECK_IN;
+        Optional<UserRecord> lockedUser = readsBeforeWriting && record.getDn() != null
+                ? userRecordRepository.findByDnForUpdate(record.getDn())
+                : Optional.empty();
 
         //if first record of day and is unlock, mark is as check_in;
 
@@ -68,7 +90,7 @@ public class CheckInOutService {
         log.debug("Recorded {} for {} at {}", saved.getAction(), saved.getDn(), saved.getTimestamp());
 
         if(record.getAction() == CheckInOutEnum.CHECK_IN){
-            Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(record.getDn());
+            Optional<UserRecord> recordOptional = lockedUser;
             if (recordOptional.isEmpty()) {
                 // No stored record means no rolling average to maintain for this user.
                 log.debug("No user record for {}; skipping average login update", record.getDn());
@@ -168,6 +190,26 @@ public class CheckInOutService {
         ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
 
         return checkinInOutRecordRepository.findByTimestampBetween(beginning, ending, pageable);
+    }
+
+    /**
+     * {@link #findRecordsForUser} for many users at once: the viewed day's records keyed by lower-cased DN,
+     * in one query per {@link Chunks#IN_LIST_SIZE} DNs. Users with no records are absent from the map.
+     */
+    public Map<String, List<CheckInOutRecord>> findRecordsForUsers(Collection<String> dns, HttpSession session) {
+        ZonedDateTime beginning = getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
+        ZonedDateTime ending = beginning.plusDays(1).minusNanos(1);
+
+        Set<String> lower = new LinkedHashSet<>();
+        dns.stream().filter(Objects::nonNull).forEach(dn -> lower.add(dn.toLowerCase()));
+
+        Map<String, List<CheckInOutRecord>> byDn = new HashMap<>();
+        for (List<String> chunk : Chunks.of(lower)) {
+            for (CheckInOutRecord record : checkinInOutRecordRepository.findByLowercaseDnInAndTimestampBetween(chunk, beginning, ending)) {
+                byDn.computeIfAbsent(record.getDn().toLowerCase(), k -> new ArrayList<>()).add(record);
+            }
+        }
+        return byDn;
     }
 
     public List<CheckInOutRecord> findRecordsForUser(String dn, HttpSession session) {

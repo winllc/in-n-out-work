@@ -39,9 +39,8 @@ public class NotificationRestService {
         List<NotificationRecord> records = notificationRepository.findByForUserDnIgnoreCaseAndStatusResponseDateNull(
                 authentication.getName());
 
-        for(NotificationRecord record : records){
-            record.setStatusResponseDate(java.time.ZonedDateTime.now());
-            notificationRepository.save(record);
-        }
+        java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
+        records.forEach(record -> record.setStatusResponseDate(now));
+        notificationRepository.saveAll(records);
     }
 }

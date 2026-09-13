@@ -10,7 +10,6 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.TimeZone;
@@ -18,7 +17,6 @@ import java.util.TimeZone;
 @SpringBootApplication(scanBasePackages = "com.winllc.innoutwork")
 @EntityScan(basePackages = "com.winllc.innoutwork.model")
 @EnableJpaRepositories(basePackages = "com.winllc.innoutwork.repository")
-@EnableAsync
 @EnableCaching
 @EnableScheduling
 @ConfigurationPropertiesScan
@@ -30,6 +28,8 @@ public class InOutWorkApplication {
     private String applicationTimeZone;
 
     public static void main(String[] args) {
+        // Before anything can open an LDAP connection: the JDK reads its pool settings only once.
+        LdapConnectionConfig.applyPoolDefaults();
         SpringApplication.run(InOutWorkApplication.class, args);
     }
 

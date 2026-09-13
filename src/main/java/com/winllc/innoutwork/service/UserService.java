@@ -8,30 +8,38 @@ import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.*;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.util.Chunks;
 import io.micrometer.common.util.StringUtils;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalTime;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -46,6 +54,8 @@ public class UserService {
     private final LoadingCache<String, LdapUser> userCache;
     private final CheckInOutService checkInOutService;
     private final UserEventRecordRepository  userEventRecordRepository;
+    /** Creates user records without duplicating one when two requests race; see {@link UserRecordStore}. */
+    private final UserRecordStore userRecords;
 
     public UserService(UserRecordRepository userRecordRepository,
                        LdapService ldapService, ApplicationProperties properties,
@@ -57,6 +67,7 @@ public class UserService {
         this.userCache = userCache;
         this.checkInOutService = checkInOutService;
         this.userEventRecordRepository = userEventRecordRepository;
+        this.userRecords = new UserRecordStore(userRecordRepository);
     }
 
     public Optional<UserRecord> getUserByDn(LdapDn dn) {
@@ -68,9 +79,7 @@ public class UserService {
 
             if(userOptional.isPresent()){
                 LdapUser ldapUser = userOptional.get();
-                UserRecord userRecord = new UserRecord(ldapUser);
-
-                return Optional.of(userRecordRepository.save(userRecord));
+                return Optional.of(userRecords.insertOrFind(dn.dn(), () -> new UserRecord(ldapUser)).record());
             }
 
         }
@@ -79,65 +88,75 @@ public class UserService {
 
     public UserRecord updateProfile(Authentication authentication, ProfileForm form) {
         log.debug("Update Notes {}",  authentication.getName());
-        UserRecord userRecord = new UserRecord();
 
-        Optional<UserRecord> optionalRecord = userRecordRepository.findByDnIgnoreCase(authentication.getName());
-        if(optionalRecord.isPresent()) {
-            userRecord = optionalRecord.get();
-        }else{
-            userRecord.setDn(authentication.getName());
-        }
-
-        userRecord.setNotes(form.getNotes());
-        if(StringUtils.isNotBlank(form.getLoginTime())) {
-            userRecord.setChosenLoginTime(LocalTime.parse(form.getLoginTime(), DateTimeFormatter.ISO_TIME));
-        }
-
-        return userRecordRepository.save(userRecord);
+        return userRecords.update(authentication.getName(), userRecord -> {
+            userRecord.setNotes(form.getNotes());
+            if(StringUtils.isNotBlank(form.getLoginTime())) {
+                userRecord.setChosenLoginTime(LocalTime.parse(form.getLoginTime(), DateTimeFormatter.ISO_TIME));
+            }
+        });
     }
 
     public UserRecord updateRole(LdapDn dn, UserRoleEnum role) {
-        UserRecord userRecord = new UserRecord();
-
-        Optional<UserRecord> optionalRecord = userRecordRepository.findByDnIgnoreCase(dn.dn());
-        if(optionalRecord.isPresent()) {
-            userRecord = optionalRecord.get();
-        }else{
-            userRecord.setDn(dn.dn());
-        }
-
-        userRecord.setUserRole(role);
-
-        return userRecordRepository.save(userRecord);
+        return userRecords.update(dn.dn(), userRecord -> userRecord.setUserRole(role));
     }
 
     public UserRecord updateGroupFavorite(Authentication authentication, GroupFavorite groupFavorite) {
         log.debug("Update favorite groups {}: {}",  authentication.getName(), groupFavorite);
-        UserRecord userRecord = new UserRecord();
 
-        Optional<UserRecord> optionalRecord = userRecordRepository.findByDnIgnoreCase(authentication.getName());
-        if(optionalRecord.isPresent()) {
-            userRecord = optionalRecord.get();
-        }else{
-            userRecord.setDn(authentication.getName());
-        }
-
-        if(groupFavorite.isSelected()){
-            userRecord.addGroup(groupFavorite.getGroupDn());
-        }else{
-            userRecord.removeGroup(groupFavorite.getGroupDn());
-        }
-
-        return userRecordRepository.save(userRecord);
+        return userRecords.update(authentication.getName(), userRecord -> {
+            if(groupFavorite.isSelected()){
+                userRecord.addGroup(groupFavorite.getGroupDn());
+            }else{
+                userRecord.removeGroup(groupFavorite.getGroupDn());
+            }
+        });
     }
 
     public UserStatus getUserStatus(String dn, HttpSession session){
+        LocalDate day = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS).toLocalDate();
+
+        return buildStatus(dn, checkInOutService.findRecordsForUser(dn, session),
+                userRecordRepository.findByDnIgnoreCase(dn),
+                userEventRecordRepository.findByDnIgnoreCaseAndDate(dn, day));
+    }
+
+    /**
+     * {@link #getUserStatus} for many users, in the order given, with three queries per
+     * {@link Chunks#IN_LIST_SIZE} users rather than three per user.
+     */
+    public List<UserStatus> getUserStatuses(Collection<String> dns, HttpSession session) {
+        List<String> given = dns.stream().filter(Objects::nonNull).toList();
+        if (given.isEmpty()) {
+            return List.of();
+        }
+        LocalDate day = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS).toLocalDate();
+        Set<String> lower = new LinkedHashSet<>();
+        given.forEach(dn -> lower.add(dn.toLowerCase()));
+
+        Map<String, List<CheckInOutRecord>> records = checkInOutService.findRecordsForUsers(lower, session);
+        Map<String, UserRecord> userRecords = new HashMap<>();
+        Map<String, List<UserEventRecord>> events = new HashMap<>();
+        for (List<String> chunk : Chunks.of(lower)) {
+            userRecordRepository.findAllByLowercaseDnIn(chunk)
+                    .forEach(r -> userRecords.putIfAbsent(r.getDn().toLowerCase(), r));
+            userEventRecordRepository.findByLowercaseDnInAndDateBetween(chunk, day, day)
+                    .forEach(e -> events.computeIfAbsent(e.getDn().toLowerCase(), k -> new ArrayList<>()).add(e));
+        }
+
+        return given.stream()
+                .map(dn -> buildStatus(dn, records.getOrDefault(dn.toLowerCase(), List.of()),
+                        Optional.ofNullable(userRecords.get(dn.toLowerCase())),
+                        events.getOrDefault(dn.toLowerCase(), List.of())))
+                .toList();
+    }
+
+    /** A user's status for a day from that day's records, their user record and their status entries. */
+    private static UserStatus buildStatus(String dn, List<CheckInOutRecord> todaysRecordsForUser,
+                                          Optional<UserRecord> recordOptional, List<UserEventRecord> todaysEvents) {
         UserStatus status = UserStatus.builder()
                 .dn(dn).build();
 
-        ZonedDateTime selectedDate = CheckInOutService.getDateTimeFromSession(session).truncatedTo(ChronoUnit.DAYS);
-
-        List<CheckInOutRecord> todaysRecordsForUser = checkInOutService.findRecordsForUser(dn, session);
         if(todaysRecordsForUser != null && !todaysRecordsForUser.isEmpty()){
 
             Optional<CheckInOutRecord> mostRecent = todaysRecordsForUser.stream()
@@ -170,7 +189,6 @@ public class UserService {
             status.setStatus("NONE");
         }
 
-        Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(status.getDn());
         if(recordOptional.isPresent()){
             UserRecord record = recordOptional.get();
             status.setNotes(record.getNotes());
@@ -178,8 +196,7 @@ public class UserService {
             status.setEmployeeType(record.getEmployeeType());
         }
 
-        userEventRecordRepository.findByDnIgnoreCaseAndDate(dn, selectedDate.toLocalDate())
-                .stream()
+        todaysEvents.stream()
                 .filter(r -> r.getStatus() != UserStatusEnum.STANDARD)
                 .findFirst()
                 .ifPresent(userEventRecord -> {
@@ -255,6 +272,22 @@ public class UserService {
      * @return the direct reports sorted by common name, never {@code null}
      */
     public List<UserStatus> getDirectReports(LdapDn managerDn, HttpSession session) {
+        List<LdapUser> reports = findDirectReports(managerDn);
+        List<UserStatus> statuses = getUserStatuses(reports.stream().map(LdapUser::getDn).toList(), session);
+
+        List<UserStatus> described = new ArrayList<>();
+        for (int i = 0; i < reports.size(); i++) {
+            described.add(describeReport(reports.get(i), statuses.get(i)));
+        }
+        described.sort(Comparator.comparing(UserStatus::getCn, String.CASE_INSENSITIVE_ORDER));
+        return described;
+    }
+
+    /**
+     * The directory entries of the users who report directly to {@code managerDn}, without looking
+     * up anyone's attendance. Empty when the manager is not in the directory or carries no manager id.
+     */
+    public List<LdapUser> findDirectReports(LdapDn managerDn) {
         Optional<LdapUser> managerOptional = ldapService.lookupUser(managerDn);
         if (managerOptional.isEmpty()) {
             log.debug("No directory entry for {}, so no reports", managerDn.dn());
@@ -275,8 +308,6 @@ public class UserService {
                 .filter(u -> StringUtils.isNotBlank(u.getDn()))
                 // A manager whose own entry somehow points at their id must not list themselves.
                 .filter(u -> !u.getDn().equalsIgnoreCase(managerDn.dn()))
-                .map(u -> describeReport(u, session))
-                .sorted(Comparator.comparing(UserStatus::getCn, String.CASE_INSENSITIVE_ORDER))
                 .toList();
     }
 
@@ -289,8 +320,7 @@ public class UserService {
      * the app therefore have no record yet, and those columns would otherwise all be blank even
      * though the directory knows the values.
      */
-    private UserStatus describeReport(LdapUser ldapUser, HttpSession session) {
-        UserStatus status = getUserStatus(ldapUser.getDn(), session);
+    private UserStatus describeReport(LdapUser ldapUser, UserStatus status) {
 
         if (StringUtils.isBlank(status.getOrganization())) {
             status.setOrganization(ldapUser.getOrganization());
@@ -312,8 +342,9 @@ public class UserService {
         LdapUser ldapUser = userCache.get(dn.dn());
 
         Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(dn.toString());
+        UserRecordStore.Result created = null;
         if(byDnIgnoreCase.isEmpty()){
-            UserRecord userRecord = UserRecord.builder()
+            created = userRecords.insertOrFind(dn.toString(), () -> UserRecord.builder()
                     .dn(dn.toString())
                     .employeeType(ldapUser.getEmployeeType())
                     .organization(ldapUser.getOrganization())
@@ -321,10 +352,13 @@ public class UserService {
                     .branch(ldapUser.getBranch())
                     .dutySubOrganization(ldapUser.getDutySubOrganization())
                     .userRole(UserRoleEnum.USER)
-                    .build();
-            return userRecordRepository.save(userRecord);
+                    .build());
+        }
+        if(created != null && created.inserted()){
+            return created.record();
         }else{
-            UserRecord userRecord = byDnIgnoreCase.get();
+            // Existing already, or created by a concurrent request a moment ago: bring it up to date.
+            UserRecord userRecord = created != null ? created.record() : byDnIgnoreCase.get();
             boolean updated = false;
             if(!Objects.equals(ldapUser.getEmployeeType(), userRecord.getEmployeeType())){
                 userRecord.setEmployeeType(ldapUser.getEmployeeType());
@@ -450,6 +484,7 @@ public class UserService {
         }
 
         List<UserRecord> toSave = new ArrayList<>();
+        Map<UserRecord, LdapUser> fresh = new IdentityHashMap<>();
         int created = 0;
         int updated = 0;
         int unchanged = 0;
@@ -458,12 +493,13 @@ public class UserService {
             UserRecord record = existing.get(user.getDn().toLowerCase());
 
             if (record == null) {
-                UserRecord fresh = UserRecord.builder()
+                UserRecord freshRecord = UserRecord.builder()
                         .dn(user.getDn())
                         .userRole(UserRoleEnum.USER)
                         .build();
-                applyDirectoryMetadata(user, fresh);
-                toSave.add(fresh);
+                applyDirectoryMetadata(user, freshRecord);
+                toSave.add(freshRecord);
+                fresh.put(freshRecord, user);
                 created++;
                 log.debug("Directory refresh: creating record for {}", user.getDn());
             } else if (applyDirectoryMetadata(user, record)) {
@@ -475,7 +511,25 @@ public class UserService {
         }
 
         if (!toSave.isEmpty()) {
-            userRecordRepository.saveAll(toSave);
+            try {
+                userRecordRepository.saveAll(toSave);
+            } catch (DataIntegrityViolationException e) {
+                // Someone signed in and got a record between this batch's lookup and its insert, and the
+                // one-record-per-DN index rejected the whole batch. Retry it a record at a time.
+                log.debug("Directory refresh: batch hit a record created concurrently; saving one by one");
+                for (UserRecord record : toSave) {
+                    LdapUser user = fresh.get(record);
+                    if (user == null) {
+                        userRecordRepository.save(record);
+                        continue;
+                    }
+                    record.setId(null); // assigned by the rolled-back insert
+                    UserRecordStore.Result result = userRecords.insertOrFind(record.getDn(), () -> record);
+                    if (!result.inserted() && applyDirectoryMetadata(user, result.record())) {
+                        userRecordRepository.save(result.record());
+                    }
+                }
+            }
         }
 
         return new int[]{created, updated, unchanged};

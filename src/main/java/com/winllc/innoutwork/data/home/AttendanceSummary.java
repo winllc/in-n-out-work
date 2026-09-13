@@ -14,4 +14,15 @@ public record AttendanceSummary(int workingDays, int checkedIn, int statusOnly, 
     public double percentOfWorkingDays(int days) {
         return workingDays == 0 ? 0 : days * 100.0 / workingDays;
     }
+
+    /** Whole percent of working days checked in; null with no working days. */
+    public Integer checkedInPercent() {
+        return workingDays == 0 ? null : (int) Math.round(checkedIn * 100.0 / workingDays);
+    }
+
+    /** Adds another run of days, e.g. to total several people's attendance. */
+    public AttendanceSummary plus(AttendanceSummary other) {
+        return new AttendanceSummary(workingDays + other.workingDays, checkedIn + other.checkedIn,
+                statusOnly + other.statusOnly, noRecord + other.noRecord);
+    }
 }

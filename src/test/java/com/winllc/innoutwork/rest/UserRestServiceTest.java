@@ -43,6 +43,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -103,11 +104,13 @@ class UserRestServiceTest {
     }
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         when(properties.getUserBaseDn()).thenReturn("dc=winllc,dc=com");
         when(ldapService.search(anyString())).thenReturn(List.of(UserStatus.builder().dn(BOB).build()));
-        when(userService.getUserStatus(anyString(), any()))
-                .thenAnswer(inv -> UserStatus.builder().dn(inv.getArgument(0)).status("IN").build());
+        when(userService.getUserStatuses(any(), any()))
+                .thenAnswer(inv -> ((java.util.Collection<String>) inv.getArgument(0)).stream()
+                        .map(dn -> UserStatus.builder().dn(dn).status("IN").build()).toList());
     }
 
     private String filterSentFor(String search) throws Exception {
@@ -160,7 +163,7 @@ class UserRestServiceTest {
     void eachHitIsEnrichedByItsDn() throws Exception {
         searchJson();
 
-        verify(userService).getUserStatus(eq(BOB), any());
+        verify(userService).getUserStatuses(eq(List.of(BOB)), any());
     }
 
     @Test
@@ -190,7 +193,7 @@ class UserRestServiceTest {
                 .checkedInAt(ZonedDateTime.now()).checkedOutAt(ZonedDateTime.now())
                 .lastStatusChangeAt(ZonedDateTime.now())
                 .build();
-        when(userService.getUserStatus(anyString(), any())).thenReturn(full);
+        doReturn(List.of(full)).when(userService).getUserStatuses(any(), any());
 
         JsonNode row = searchJson().get(0);
 
@@ -207,9 +210,9 @@ class UserRestServiceTest {
     /** Dates are shown as sent, so they must arrive formatted rather than as epoch numbers. */
     @Test
     void datesAreSerialisedAsFormattedStrings() throws Exception {
-        when(userService.getUserStatus(anyString(), any())).thenReturn(UserStatus.builder()
+        doReturn(List.of(UserStatus.builder()
                 .dn(BOB).lastStatusChangeAt(ZonedDateTime.parse("2026-09-10T08:30:00-04:00[America/New_York]"))
-                .build());
+                .build())).when(userService).getUserStatuses(any(), any());
 
         JsonNode changed = searchJson().get(0).get("lastStatusChangeAt");
 

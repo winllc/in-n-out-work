@@ -9,16 +9,23 @@
 
   Transport model (mirrors SecurityConfig on the server):
 
-    Action   Endpoint             Auth            Runs as
-    ------   ------------------   -------------   ---------------------------
-    login    POST /api/check/in       mTLS cert   the user (interactive)
-    lock     POST /api/check/lock     mTLS cert   the user (session change)
-    unlock   POST /api/check/unlock   mTLS cert   the user (session change)
-    logout   POST /api/check/out      anonymous   SYSTEM / S4U, profile gone
+    Action   Endpoint                 Auth                    Runs as
+    ------   ----------------------   ---------------------   ---------------------------
+    login    POST /api/check/in       certificate or Windows  the user (interactive)
+    lock     POST /api/check/lock     certificate or Windows  the user (session change)
+    unlock   POST /api/check/unlock   certificate or Windows  the user (session change)
+    logout   POST /api/check/out      anonymous               SYSTEM / S4U, profile gone
 
-  Only /api/check/out is permitAll on the server; every other action is
-  .anyRequest().authenticated() and therefore MUST present the client
-  certificate or it will be rejected with 401.
+  Only /api/check/out is permitAll on the server; every other action must sign
+  in. How is set by Authentication:
+
+    Certificate  the user's client certificate (the default, as before)
+    Windows      the user's Windows logon (Kerberos). Needs a domain-joined PC,
+                 a domain account, BaseUrl using the server's registered host
+                 name (not an IP address), and application.windows-auth
+                 enabled on the server.
+    Auto         Windows first; the certificate if that fails, e.g. on a
+                 laptop that cannot reach a domain controller.
 
   Because the logoff task runs after the user profile has unloaded, the user's
   certificate store is not reachable at that point. To keep the record tied to
@@ -31,6 +38,10 @@
 
 .PARAMETER BaseUrl
   Base API URL, e.g. https://host:8444/api/check. Overrides the config file.
+
+.PARAMETER Authentication
+  How login, lock and unlock sign in: Certificate (default), Windows or Auto.
+  Overrides the config file.
 
 .PARAMETER CertificateThumbprint
   Thumbprint of the client certificate to use. Overrides the config file.
@@ -61,6 +72,8 @@ param(
     [string]$Action,
 
     [string]$BaseUrl,
+    [ValidateSet('Certificate', 'Windows', 'Auto')]
+    [string]$Authentication,
     [string]$CertificateThumbprint,
     [string]$CertificateSubjectContains,
     [string]$ConfigPath,
@@ -79,6 +92,7 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 $Defaults = @{
     BaseUrl                    = 'https://192.168.1.29:8444/api/check'
+    Authentication             = 'Certificate'
     CertificateThumbprint      = ''
     CertificateSubjectContains = ''
     SkipCertificateCheck       = $false
@@ -88,10 +102,10 @@ $Defaults = @{
 
 # login/lock/unlock are authenticated; only logout is anonymous.
 $ActionMap = @{
-    login  = @{ Endpoint = 'in';     RequiresCertificate = $true;  WaitForProfile = $true  }
-    lock   = @{ Endpoint = 'lock';   RequiresCertificate = $true;  WaitForProfile = $false }
-    unlock = @{ Endpoint = 'unlock'; RequiresCertificate = $true;  WaitForProfile = $true  }
-    logout = @{ Endpoint = 'out';    RequiresCertificate = $false; WaitForProfile = $false }
+    login  = @{ Endpoint = 'in';     Authenticated = $true;  WaitForProfile = $true  }
+    lock   = @{ Endpoint = 'lock';   Authenticated = $true;  WaitForProfile = $false }
+    unlock = @{ Endpoint = 'unlock'; Authenticated = $true;  WaitForProfile = $true  }
+    logout = @{ Endpoint = 'out';    Authenticated = $false; WaitForProfile = $false }
 }
 
 $BaseDir  = Join-Path $env:ProgramData $Defaults.Subfolder
@@ -160,6 +174,7 @@ function Resolve-Configuration {
 
     # Explicit parameters win over the file.
     if ($BaseUrl)                    { $config.BaseUrl                    = $BaseUrl }
+    if ($Authentication)             { $config.Authentication             = $Authentication }
     if ($CertificateThumbprint)      { $config.CertificateThumbprint      = $CertificateThumbprint }
     if ($CertificateSubjectContains) { $config.CertificateSubjectContains = $CertificateSubjectContains }
     if ($PSBoundParameters.ContainsKey('SkipCertificateCheck')) {
@@ -173,6 +188,19 @@ function Resolve-Configuration {
     }
     if ($config.BaseUrl -notmatch '^https?://') {
         throw "BaseUrl '$($config.BaseUrl)' is not a valid URL."
+    }
+
+    $valid = @('Certificate', 'Windows', 'Auto')
+    $match = @($valid | Where-Object { $_ -eq [string]$config.Authentication })
+    if ($match.Count -eq 0) {
+        throw "Authentication '$($config.Authentication)' is not one of: $($valid -join ', ')."
+    }
+    $config.Authentication = $match[0]
+
+    if ($config.Authentication -ne 'Certificate' -and ([uri]$config.BaseUrl).HostNameType -ne 'Dns') {
+        # Kerberos tickets are issued for host names. With an IP address Windows
+        # falls back to NTLM, which the server does not accept.
+        Write-Log "BaseUrl uses an IP address; Windows sign-in needs the server's host name." 'WARN'
     }
 
     return $config
@@ -392,6 +420,7 @@ function Send-StatusPost {
         [string]$Url,
         [hashtable]$Body,
         [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
+        [switch]$WindowsSignIn,
         [int]$TimeoutSeconds
     )
 
@@ -406,9 +435,40 @@ function Send-StatusPost {
         TimeoutSec  = $TimeoutSeconds
     }
     if ($Certificate) { $requestArgs.Certificate = $Certificate }
+    if ($WindowsSignIn) {
+        # Answers the server's "WWW-Authenticate: Negotiate" with the logged-on
+        # user's Kerberos ticket.
+        $requestArgs.UseDefaultCredentials = $true
+        # A server without Windows sign-in redirects to its login page; following
+        # that would look like success.
+        $requestArgs.MaximumRedirection = 0
+    }
 
     Write-Log "POST $Url body=$json"
-    return Invoke-RestMethod @requestArgs
+    try {
+        $response = Invoke-RestMethod @requestArgs
+    } catch [System.InvalidOperationException] {
+        # Windows PowerShell 5.1's way of reporting a redirect it was told not to follow.
+        if ($WindowsSignIn) {
+            throw 'The server redirected instead of accepting Windows sign-in (is application.windows-auth enabled on the server?).'
+        }
+        throw
+    }
+
+    if ($WindowsSignIn -and -not ($response -and $response.PSObject.Properties.Name -contains 'action')) {
+        throw 'The server did not accept Windows sign-in (is application.windows-auth enabled on the server?).'
+    }
+    return $response
+}
+
+function Get-HttpStatus {
+    param([System.Management.Automation.ErrorRecord]$ErrorRecord)
+    try {
+        if ($ErrorRecord.Exception.Response) {
+            return " (HTTP $([int]$ErrorRecord.Exception.Response.StatusCode))"
+        }
+    } catch { }
+    return ''
 }
 
 # ---------------------------------------------------------------------------
@@ -435,13 +495,26 @@ if ($plan.WaitForProfile) {
     }
 }
 
-if ($plan.RequiresCertificate) {
-    $certificate = Find-UserCertificate -Thumbprint $config.CertificateThumbprint `
-                                        -SubjectContains $config.CertificateSubjectContains
-    if (-not $certificate) {
-        Write-Log "'$Action' posts to an authenticated endpoint and no client certificate is available." 'ERROR'
-        exit 2
+# How to sign in, in order of preference. Logout is anonymous.
+$attempts = @()
+if ($plan.Authenticated) {
+    if ($config.Authentication -ne 'Certificate') {
+        $attempts += 'Windows'
     }
+    if ($config.Authentication -ne 'Windows') {
+        $certificate = Find-UserCertificate -Thumbprint $config.CertificateThumbprint `
+                                            -SubjectContains $config.CertificateSubjectContains
+        if ($certificate) {
+            $attempts += 'Certificate'
+        } elseif ($config.Authentication -eq 'Certificate') {
+            Write-Log "'$Action' posts to an authenticated endpoint and no client certificate is available." 'ERROR'
+            exit 2
+        } else {
+            Write-Log 'No client certificate to fall back on if Windows sign-in fails.' 'WARN'
+        }
+    }
+} else {
+    $attempts += 'Anonymous'
 }
 
 # Build the body. CheckInOut on the server binds exactly two fields.
@@ -461,21 +534,29 @@ if ($Action -eq 'logout') {
 }
 
 if (-not $PSCmdlet.ShouldProcess($url, "POST $Action")) {
-    Write-Log "WhatIf: would POST to $url as user '$($body.windowsUserId)'."
+    Write-Log "WhatIf: would POST to $url as user '$($body.windowsUserId)' signing in with: $($attempts -join ', then ')."
     exit 0
 }
 
-try {
-    $response = Send-StatusPost -Url $url -Body $body -Certificate $certificate -TimeoutSeconds $TimeoutSec
-    Write-Log "Server accepted '$Action'."
-} catch {
-    $status = ''
+$response = $null
+$accepted = $false
+foreach ($attempt in $attempts) {
     try {
-        if ($_.Exception.Response) {
-            $status = " (HTTP $([int]$_.Exception.Response.StatusCode))"
+        switch ($attempt) {
+            'Windows'     { $response = Send-StatusPost -Url $url -Body $body -WindowsSignIn -TimeoutSeconds $TimeoutSec }
+            'Certificate' { $response = Send-StatusPost -Url $url -Body $body -Certificate $certificate -TimeoutSeconds $TimeoutSec }
+            default       { $response = Send-StatusPost -Url $url -Body $body -TimeoutSeconds $TimeoutSec }
         }
-    } catch { }
-    Write-Log "POST to $url failed${status}: $($_.Exception.Message)" 'ERROR'
+        Write-Log "Server accepted '$Action' ($attempt sign-in)."
+        $accepted = $true
+        break
+    } catch {
+        $status = Get-HttpStatus -ErrorRecord $_
+        $level = if ($attempt -eq $attempts[-1]) { 'ERROR' } else { 'WARN' }
+        Write-Log "POST to $url with $attempt sign-in failed${status}: $($_.Exception.Message)" $level
+    }
+}
+if (-not $accepted) {
     exit 3
 }
 

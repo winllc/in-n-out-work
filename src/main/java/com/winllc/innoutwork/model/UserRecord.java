@@ -6,7 +6,9 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
+import lombok.ToString;
 
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -48,7 +50,11 @@ public class UserRecord {
     private LocalTime averageLoginTime;
     private LocalTime chosenLoginTime;
 
+    // Lazy, so it must stay out of toString/equals/hashCode: those run on detached records (logging,
+    // comparisons) where touching it would throw, and PermissionRecord points back here.
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    @ToString.Exclude
+    @EqualsAndHashCode.Exclude
     private List<PermissionRecord> permissions = new ArrayList<>();
 
     public UserRecord(LdapUser user){

@@ -52,6 +52,11 @@ public class AccountabilityMetricsService {
     static final int ACTIVE_WINDOW_DAYS = 30;
     /** An agent that has sent nothing for this many days, counting the day measured, has stopped. */
     static final int REPORTING_WINDOW_DAYS = 7;
+    /**
+     * How far back agent coverage looks for a user's last event. Someone with nothing in this window counts
+     * as not reporting; reading only this window keeps the query off the table's full history.
+     */
+    static final int AGENT_LOOKBACK_DAYS = AgentCoverage.LOOKBACK_DAYS;
     /** The page lists at most this many unaccounted users and stopped agents. */
     static final int LIST_LIMIT = 100;
 
@@ -216,9 +221,20 @@ public class AccountabilityMetricsService {
     private AgentCoverage agentCoverage(LocalDate day, ZoneId zone, ZonedDateTime dayEnd, Map<String, String> users,
                                         boolean nameIndividuals) {
         ZonedDateTime reportingSince = day.minusDays(REPORTING_WINDOW_DAYS - 1L).atStartOfDay(zone);
+        ZonedDateTime lookbackStart = day.minusDays(AGENT_LOOKBACK_DAYS - 1L).atStartOfDay(zone);
+
+        // Organisation-wide, everyone active in the window; for a team, just its members.
+        List<LastSeen> latest;
+        if (!nameIndividuals) {
+            latest = checkInOutRecordRepository.findLastSeenBetween(lookbackStart, dayEnd);
+        } else if (users.isEmpty()) {
+            latest = List.of();
+        } else {
+            latest = checkInOutRecordRepository.findLastSeenByLowercaseDnInBetween(users.keySet(), lookbackStart, dayEnd);
+        }
 
         Map<String, ZonedDateTime> lastSeen = new HashMap<>();
-        for (LastSeen seen : checkInOutRecordRepository.findLastSeenUpTo(dayEnd)) {
+        for (LastSeen seen : latest) {
             lastSeen.merge(seen.dn().toLowerCase(), seen.lastSeen(), (a, b) -> a.isAfter(b) ? a : b);
         }
 

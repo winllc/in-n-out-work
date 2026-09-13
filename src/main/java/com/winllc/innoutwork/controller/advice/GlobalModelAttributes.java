@@ -20,6 +20,10 @@ public class GlobalModelAttributes {
     @Value("${application.update-profile-url:test.com}")
     private String defaultUserProfileUpdateUrl;
 
+    /** Shown in the help overview; the same setting the absence notifications use. */
+    @Value("${application.extra-time-before-absent-notification-minutes:60}")
+    private int absenceGraceMinutes;
+
     @ModelAttribute
     public void addGlobalAttributes(Model model, HttpSession session, Authentication authentication) {
 
@@ -29,6 +33,7 @@ public class GlobalModelAttributes {
         model.addAttribute("profileUpdateUrl", defaultUserProfileUpdateUrl);
         model.addAttribute("systemTimeZone", ZoneId.systemDefault().getId());
         model.addAttribute("passwordLogin", isPasswordLogin(authentication));
+        model.addAttribute("absenceGraceMinutes", absenceGraceMinutes);
     }
 
     /**

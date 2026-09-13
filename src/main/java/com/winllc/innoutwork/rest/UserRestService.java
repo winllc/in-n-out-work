@@ -56,10 +56,7 @@ public class UserRestService {
 
         List<String> dns = ldapService.getGroupMembers(LdapDn.builder().dn(groupName).build());
 
-        List<UserStatus> users = new ArrayList<>();
-        for(String dn : dns){
-            users.add(userService.getUserStatus(dn, session));
-        }
+        List<UserStatus> users = userService.getUserStatuses(dns, session);
 
         Map<String, Object> response = new HashMap<>();
         response.put("data", users);
@@ -111,11 +108,7 @@ public class UserRestService {
         }
 
         List<UserStatus> pageResult = ldapService.search(filter);
-        List<UserStatus> users = new ArrayList<>();
-
-        for(UserStatus user : pageResult){
-            users.add(userService.getUserStatus(user.getDn(), session));
-        }
+        List<UserStatus> users = userService.getUserStatuses(pageResult.stream().map(UserStatus::getDn).toList(), session);
 
         //PagedModel<UserStatus> response = new PagedModel<>(pageResult);
         return users;

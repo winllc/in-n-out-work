@@ -50,6 +50,34 @@ class UserDirectorySyncTest {
         userService = new UserService(userRecordRepository, ldapService, null, null, null, null);
     }
 
+    /**
+     * A user signed in and got a record between the batch's lookup and its insert, so the one-record-per-DN
+     * index rejects the batch. The sync retries record by record, reusing the record that now exists.
+     */
+    @Test
+    void aBatchRejectedByAConcurrentlyCreatedRecordIsRetriedOneByOne() {
+        LdapUser alice = user("cn=alice", "ORG1", "FT");
+        LdapUser bob = user("cn=bob", "ORG2", "PT");
+        when(ldapService.findAllUsers()).thenReturn(List.of(alice, bob));
+        when(userRecordRepository.findAllByLowercaseDnIn(anyCollection())).thenReturn(List.of());
+        when(userRecordRepository.saveAll(any())).thenThrow(new org.springframework.dao.DataIntegrityViolationException("duplicate"));
+        UserRecord aliceSignedIn = UserRecord.builder().id(5L).dn("cn=alice").organization("OLD").build();
+        when(userRecordRepository.save(any(UserRecord.class))).thenAnswer(inv -> {
+            UserRecord record = inv.getArgument(0);
+            if (record != aliceSignedIn && "cn=alice".equals(record.getDn())) {
+                throw new org.springframework.dao.DataIntegrityViolationException("duplicate");
+            }
+            return record;
+        });
+        when(userRecordRepository.findByDnIgnoreCase("cn=alice")).thenReturn(java.util.Optional.of(aliceSignedIn));
+
+        userService.syncUserRecordsFromDirectory();
+
+        assertEquals("ORG1", aliceSignedIn.getOrganization(), "the existing record gets the directory's values");
+        verify(userRecordRepository).save(aliceSignedIn);
+        verify(userRecordRepository).save(org.mockito.ArgumentMatchers.argThat((UserRecord r) -> "cn=bob".equals(r.getDn())));
+    }
+
     @Test
     void createsARecordForADirectoryUserThatHasNone() {
         when(ldapService.findAllUsers()).thenReturn(List.of(user("cn=alice", "ORG1", "FT")));

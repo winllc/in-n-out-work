@@ -79,8 +79,14 @@ services:
       # Use the mounted test/application.yml as the config source. Additional-location
       # takes precedence over the application.yml packaged in the jar.
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/application.yml
+      # Windows sign-in for the check-in calls (see the README). Needs an AD domain, so it is off here.
+      # APPLICATION_WINDOWSAUTH_ENABLED: "true"
+      # APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL: HTTP/inout.winllc.com@WINLLC.COM
+      # APPLICATION_WINDOWSAUTH_KEYTABLOCATION: /etc/in-n-out/http.keytab
     volumes:
       - ./application.yml:/app/config/application.yml:ro
+      # - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      # - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro
     ports:
       - "8444:8444"
     networks:

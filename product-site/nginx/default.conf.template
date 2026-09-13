@@ -1,0 +1,33 @@
+server {
+    listen 8080;
+    server_name _;
+    server_tokens off;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # The page loads nothing from other origins and runs no scripts.
+    add_header Content-Security-Policy "default-src 'self'; img-src 'self'; style-src 'self'; script-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # "Open the app": hand off to the application. APP_URL is substituted when the container
+    # starts; by default it is https://$host:8444/, the app on the same host the visitor used.
+    location = /launch {
+        return 302 ${APP_URL};
+    }
+
+    location = /healthz {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location /assets/ {
+        expires 7d;
+    }
+}

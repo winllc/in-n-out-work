@@ -34,12 +34,9 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AppUserDetailsService appUserDetailsService,
                                                    LdapAuthenticationProvider ldapAuthenticationProvider) throws Exception {
+        // Preferred: HTTPS with a client certificate (X.509).
+        configureX509(http, appUserDetailsService);
         http
-                // Preferred: HTTPS with a client certificate (X.509).
-                .x509(x509 -> x509
-                        .subjectPrincipalRegex("(.*)") // full subject DN is used as the username
-                        .userDetailsService(appUserDetailsService)
-                )
                 // Fallback when no client certificate is presented: username/password
                 // validated against LDAP (see ldapAuthenticationProvider below).
                 .authenticationProvider(ldapAuthenticationProvider)
@@ -61,6 +58,17 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable());
 
         return http.build();
+    }
+
+    /**
+     * Client certificate sign-in. Shared with WindowsAuthSecurityConfig, so certificates are accepted the same
+     * way on the check-in calls when Windows sign-in is turned on.
+     */
+    public static void configureX509(HttpSecurity http, AppUserDetailsService appUserDetailsService) throws Exception {
+        http.x509(x509 -> x509
+                .subjectPrincipalRegex("(.*)") // full subject DN is used as the username
+                .userDetailsService(appUserDetailsService)
+        );
     }
 
     /**

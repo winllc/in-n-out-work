@@ -5,7 +5,9 @@ import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.metrics.AccountabilityMetrics;
 import com.winllc.innoutwork.data.metrics.LastSeen;
 import com.winllc.innoutwork.data.metrics.StatusMixEntry;
+import com.winllc.innoutwork.constant.NotificationTypeEnum;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.model.NotificationRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.service.AccountabilityMetricsService;
@@ -67,6 +69,8 @@ class AccountabilityQueriesTest {
     private UserRecordRepository users;
     @Autowired
     private GlobalCalendarRecordRepository calendar;
+    @Autowired
+    private NotificationRepository notifications;
 
     private void event(String dn, CheckInOutEnum action, ZonedDateTime at) {
         checkIns.save(CheckInOutRecord.builder().dn(dn).action(action).timestamp(at).build());
@@ -103,12 +107,34 @@ class AccountabilityQueriesTest {
         event(BOB, CheckInOutEnum.CHECK_IN, START.minusDays(10));
         event(null, CheckInOutEnum.CHECK_OUT, START);
 
-        Map<String, ZonedDateTime> lastSeen = checkIns.findLastSeenUpTo(END).stream()
+        Map<String, ZonedDateTime> lastSeen = checkIns.findLastSeenBetween(START.minusDays(30), END).stream()
                 .collect(Collectors.toMap(LastSeen::dn, LastSeen::lastSeen));
 
         assertEquals(2, lastSeen.size(), lastSeen.toString());
         assertEquals(START.minusDays(1).toInstant(), lastSeen.get(ALICE.toLowerCase()).toInstant());
         assertEquals(START.minusDays(10).toInstant(), lastSeen.get(BOB.toLowerCase()).toInstant());
+    }
+
+    @Test
+    void lastSeenIsOnlyReadInsideTheWindow() {
+        event(ALICE, CheckInOutEnum.CHECK_IN, START.minusDays(100));   // before the window
+        event(BOB, CheckInOutEnum.CHECK_IN, START.minusDays(10));
+
+        List<String> seen = checkIns.findLastSeenBetween(START.minusDays(89), END).stream().map(LastSeen::dn).toList();
+
+        assertEquals(List.of(BOB.toLowerCase()), seen);
+    }
+
+    @Test
+    void lastSeenForASetOfUsersIgnoresEveryoneElse() {
+        event(ALICE.toUpperCase(), CheckInOutEnum.CHECK_IN, START.minusDays(2));
+        event(ALICE, CheckInOutEnum.LOCK, START.minusDays(1));
+        event(BOB, CheckInOutEnum.CHECK_IN, START.minusDays(1));
+
+        List<LastSeen> seen = checkIns.findLastSeenByLowercaseDnInBetween(List.of(ALICE.toLowerCase()), START.minusDays(30), END);
+
+        assertEquals(1, seen.size());
+        assertEquals(START.minusDays(1).toInstant(), seen.getFirst().lastSeen().toInstant());
     }
 
     @Test
@@ -130,6 +156,36 @@ class AccountabilityQueriesTest {
                 List.of(ALICE.toLowerCase(), BOB.toLowerCase()), DAY, DAY.plusDays(14));
 
         assertEquals(List.of(ALICE.toUpperCase(), BOB), found.stream().map(UserEventRecord::getDn).sorted().toList());
+    }
+
+    @Test
+    void recordsForASetOfUsersAreFoundByLowercaseDnWithinTheWindow() {
+        event(ALICE.toUpperCase(), CheckInOutEnum.CHECK_IN, START.plusHours(8));
+        event(BOB, CheckInOutEnum.LOCK, LAST_SECOND);
+        event(BOB, CheckInOutEnum.CHECK_IN, START.minusSeconds(1));   // before the window
+        event(CAROL, CheckInOutEnum.CHECK_IN, START.plusHours(9));    // not in the set
+
+        List<CheckInOutRecord> found = checkIns.findByLowercaseDnInAndTimestampBetween(
+                List.of(ALICE.toLowerCase(), BOB.toLowerCase()), START, END);
+
+        assertEquals(List.of(ALICE.toUpperCase(), BOB), found.stream().map(CheckInOutRecord::getDn).sorted().toList());
+    }
+
+    @Test
+    void notificationsAboutASetOfUsersAreFoundByLowercaseDnWithinTheWindow() {
+        notifications.save(notification(ALICE.toUpperCase(), START.plusHours(10)));
+        notifications.save(notification(BOB, START.minusSeconds(1)));          // before the window
+        notifications.save(notification(CAROL, START.plusHours(10)));          // not in the set
+
+        List<NotificationRecord> found = notifications.findAboutLowercaseDnInBetween(
+                List.of(ALICE.toLowerCase(), BOB.toLowerCase()), START, END);
+
+        assertEquals(List.of(ALICE.toUpperCase()), found.stream().map(NotificationRecord::getAboutUserDn).toList());
+    }
+
+    private static NotificationRecord notification(String aboutDn, ZonedDateTime at) {
+        return NotificationRecord.builder().aboutUserDn(aboutDn).forUserDn(BOB)
+                .type(NotificationTypeEnum.ABSENT).notificationDate(at).build();
     }
 
     @Test

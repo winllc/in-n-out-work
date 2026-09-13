@@ -27,6 +27,9 @@ spring:
     password: secret123
     driver-class-name: org.postgresql.Driver
   jpa:
+    # Off: otherwise a web request holds its database connection until it finishes, including while it
+    # waits on LDAP, and a slow directory can exhaust the connection pool.
+    open-in-view: false
     hibernate:
       ddl-auto: update
     show-sql: false
@@ -37,6 +40,16 @@ spring:
     urls: ldap://openldap:389
     username: cn=admin,dc=winllc,dc=com
     password: adminpassword
+    # Timeouts in milliseconds; without them an unresponsive directory holds requests indefinitely.
+    # Pooling is on by default (application.ldap.pooled); see LdapConnectionConfig.
+    base-environment:
+      "[com.sun.jndi.ldap.connect.timeout]": 5000
+      "[com.sun.jndi.ldap.read.timeout]": 30000
+  task:
+    scheduling:
+      # One thread per scheduled job, so a slow run of one does not delay the others.
+      pool:
+        size: 3
   jackson:
     time-zone: America/New_York
     date-format: yyyy-MM-dd HH:mm a z
@@ -90,3 +103,13 @@ application:
   application-base-url: https://localhost:8444
   duty-sub-org-groups-base-dn: ou=Groups,dc=winllc,dc=com
   user-ldap-duty-sub-organization-attribute: departmentNumber
+  windows-auth:
+    # Windows (Kerberos) sign-in for the Windows client's check-in, lock and unlock calls, alongside client
+    # certificates. Off: nothing about sign-in changes. See the README before turning it on.
+    enabled: false
+    # service-principal: HTTP/inout.winllc.com@WINLLC.COM
+    # keytab-location: /etc/in-n-out/http.keytab
+    # Directory attribute holding the Windows account name. Active Directory: sAMAccountName (default), or
+    # userPrincipalName with strip-realm: false.
+    account-attribute: uid
+    strip-realm: true

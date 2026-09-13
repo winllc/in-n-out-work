@@ -26,6 +26,10 @@
   .\Install-InOutWorker.ps1 -BaseUrl "https://timeserver.example.com:8444/api/check"
 
 .EXAMPLE
+  # Sign in with the Windows logon, falling back to the certificate.
+  .\Install-InOutWorker.ps1 -BaseUrl "https://timeserver.example.com:8444/api/check" -Authentication Auto
+
+.EXAMPLE
   .\Install-InOutWorker.ps1 -Uninstall
 #>
 
@@ -33,6 +37,8 @@
 param(
     [string]$InstallDir = "$env:ProgramFiles\InOutWorker",
     [string]$BaseUrl,
+    [ValidateSet('Certificate', 'Windows', 'Auto')]
+    [string]$Authentication,
     [string]$CertificateThumbprint,
     [switch]$SkipCertificateCheck,
     [switch]$Uninstall
@@ -101,9 +107,10 @@ if ($PSCmdlet.ShouldProcess($InstallDir, 'Copy Update-WorkStatus.ps1')) {
 
 # Write the config only when something was actually specified, so re-running the
 # installer without arguments does not blank an existing configuration.
-if ($BaseUrl -or $CertificateThumbprint -or $PSBoundParameters.ContainsKey('SkipCertificateCheck')) {
+if ($BaseUrl -or $Authentication -or $CertificateThumbprint -or $PSBoundParameters.ContainsKey('SkipCertificateCheck')) {
     $config = [ordered]@{}
     if ($BaseUrl)               { $config.BaseUrl               = $BaseUrl }
+    if ($Authentication)        { $config.Authentication        = $Authentication }
     if ($CertificateThumbprint) { $config.CertificateThumbprint = $CertificateThumbprint }
     $config.SkipCertificateCheck = [bool]$SkipCertificateCheck
 

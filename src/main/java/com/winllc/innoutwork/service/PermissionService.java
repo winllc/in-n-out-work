@@ -40,47 +40,33 @@ public class PermissionService {
                 .toList();
     }
 
+    /**
+     * The groups a user may see: those they are a member of. Permissions are currently the same directory
+     * lookup, so this reads it once instead of twice and removes duplicates.
+     */
     public List<LdapDn> getUserGroupPermissionsAndMemberOfGroups(LdapDn userDn){
-        List<LdapDn> permissionGroups = getUserGroupPermissions(userDn);
-
-        List<LdapGroup> groupsForUser = ldapService.findGroupsForUser(userDn.dn());
-        List<LdapDn> memberOf = groupsForUser.stream()
-                .map(g -> new LdapDn(g.getDn()))
-                .toList();
-
-        Set<LdapDn> memberOfGroups = new HashSet<>(permissionGroups);
-        memberOfGroups.addAll(memberOf);
-
-        return new ArrayList<>(memberOfGroups);
+        return new ArrayList<>(new LinkedHashSet<>(getUserGroupPermissions(userDn)));
     }
 
     public void addGroupToUser(LdapDn groupDn, LdapDn userDn) {
 
         UserRecord userRecord = getOrCreateUserRecord(userDn);
 
-        PermissionRecord permissionRecord = PermissionRecord.builder()
+        // Saved directly rather than added to the user's lazy permissions list and cascaded: that needs the
+        // list loaded inside a transaction, and saving the whole user could overwrite a concurrent change.
+        permissionRecordRepository.save(PermissionRecord.builder()
                 .user(userRecord)
                 .groupDn(groupDn.dn())
-                .build();
-
-        userRecord.getPermissions().add(permissionRecord);
-
-        userRecordRepository.save(userRecord);
+                .build());
 
         // Access changes are audit-worthy, so they stay at info.
         log.info("Granted group permission {} to {}", groupDn.dn(), userDn.dn());
     }
 
     public void removeGroupFromUser(LdapDn groupDn, LdapDn userDn) {
-        UserRecord userRecord = getOrCreateUserRecord(userDn);
-
         Optional<PermissionRecord> recordOptional = permissionRecordRepository.findFirstByGroupDnIgnoreCaseAndUser_DnIgnoreCase(groupDn.dn(), userDn.dn());
         if(recordOptional.isPresent()){
-            PermissionRecord permissionRecord = recordOptional.get();
-            userRecord.getPermissions().remove(permissionRecord);
-            userRecordRepository.save(userRecord);
-
-            permissionRecordRepository.delete(permissionRecord);
+            permissionRecordRepository.delete(recordOptional.get());
 
             log.info("Revoked group permission {} from {}", groupDn.dn(), userDn.dn());
         } else {
@@ -92,18 +78,10 @@ public class PermissionService {
     }
 
     private UserRecord getOrCreateUserRecord(LdapDn userDn){
-        UserRecord userRecord;
-        Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(userDn.dn());
-        if (recordOptional.isEmpty()) {
-            // Incidental to the grant/revoke, which is logged at info by the caller.
+        return new UserRecordStore(userRecordRepository).findOrCreate(userDn.dn(), () -> {
+            // Incidental to the grant, which is logged at info by the caller.
             log.debug("Creating user record for {} on first permission change", userDn.dn());
-            userRecord = userRecordRepository.save(UserRecord.builder()
-                    .dn(userDn.dn())
-                    .build()
-            );
-        }else  {
-            userRecord = recordOptional.get();
-        }
-        return userRecord;
+            return UserRecord.builder().dn(userDn.dn()).build();
+        });
     }
 }

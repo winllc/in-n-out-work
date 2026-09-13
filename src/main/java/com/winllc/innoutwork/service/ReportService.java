@@ -12,8 +12,11 @@ import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
+import com.winllc.innoutwork.util.Chunks;
+import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
@@ -31,12 +34,15 @@ public class ReportService {
     private final LdapService ldapService;
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final UserEventRecordRepository userEventRecordRepository;
+    private final LoadingCache<String, LdapUser> userCache;
 
     public ReportService(LdapService ldapService, CheckInOutRecordRepository checkInOutRecordRepository,
-                         UserEventRecordRepository userEventRecordRepository) {
+                         UserEventRecordRepository userEventRecordRepository,
+                         @Qualifier("ldapUserLoadingCache") LoadingCache<String, LdapUser> userCache) {
         this.ldapService = ldapService;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.userEventRecordRepository = userEventRecordRepository;
+        this.userCache = userCache;
     }
 
     public GroupReport generateGroupReport(LdapDn groupDn, ZonedDateTime from, ZonedDateTime to){
@@ -61,23 +67,38 @@ public class ReportService {
 
             List<UserReport> userReports = new ArrayList<>();
 
+            // Every member's records and status entries for the whole range, a few queries in total rather
+            // than one per member plus one per member per day.
+            Set<String> lowerDns = new LinkedHashSet<>();
+            groupMembers.stream().filter(Objects::nonNull).forEach(dn -> lowerDns.add(dn.toLowerCase()));
+            Map<String, List<CheckInOutRecord>> recordsByDn = new HashMap<>();
+            Map<String, Map<LocalDate, List<UserEventRecord>>> eventsByDn = new HashMap<>();
+            for (List<String> chunk : Chunks.of(lowerDns)) {
+                checkInOutRecordRepository.findByLowercaseDnInAndTimestampBetween(chunk, fromAtStartOfDay, toAtEndOfDay)
+                        .forEach(r -> recordsByDn.computeIfAbsent(r.getDn().toLowerCase(), k -> new ArrayList<>()).add(r));
+                userEventRecordRepository.findByLowercaseDnInAndDateBetween(chunk, fromAtStartOfDay.toLocalDate(), toAtEndOfDay.toLocalDate())
+                        .forEach(e -> eventsByDn.computeIfAbsent(e.getDn().toLowerCase(), k -> new HashMap<>())
+                                .computeIfAbsent(e.getDate(), k -> new ArrayList<>()).add(e));
+            }
+
             for(String groupMember : groupMembers){
-                Optional<LdapUser> userOptional = ldapService.lookupUser(LdapDn.builder().dn(groupMember).build());
+                // Through the user cache: the same people appear in reports, tables and notifications.
+                LdapUser user = groupMember == null ? null : userCache.get(groupMember);
 
-                if(userOptional.isPresent()) {
-                    LdapUser user = userOptional.get();
+                if(user != null) {
+                    List<CheckInOutRecord> memberRecords = new ArrayList<>(
+                            recordsByDn.getOrDefault(groupMember.toLowerCase(), List.of()));
+                    memberRecords.sort(Comparator.comparing(CheckInOutRecord::getTimestamp).reversed());
+                    Map<LocalDate, List<UserEventRecord>> memberEvents =
+                            eventsByDn.getOrDefault(groupMember.toLowerCase(), Map.of());
 
-                    List<CheckInOutRecord> byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc =
-                            checkInOutRecordRepository
-                                    .findByDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc(groupMember, fromAtStartOfDay, toAtEndOfDay);
-
-                    Map<LocalDate, List<CheckInOutRecord>> dateMap = createDateMap(byDnIgnoreCaseAndTimestampIsBetweenOrderByTimestampDesc, fromAtStartOfDay, toAtEndOfDay);
+                    Map<LocalDate, List<CheckInOutRecord>> dateMap = createDateMap(memberRecords, fromAtStartOfDay, toAtEndOfDay);
 
                     List<UserDayReport> dayReports = new ArrayList<>();
 
                     dateMap.forEach((date, checkInOutRecords) -> {
 
-                        Optional<UserEventRecord> eventRecordOptional = userEventRecordRepository.findByDnIgnoreCaseAndDate(groupMember, date)
+                        Optional<UserEventRecord> eventRecordOptional = memberEvents.getOrDefault(date, List.of())
                                 .stream()
                                 .filter(r -> r.getStatus() != UserStatusEnum.STANDARD)
                                 .findFirst();

@@ -60,7 +60,7 @@ public class MetricsController {
         MetricsData data = metricsService.getCombinedStatistics(session);
         data.setTotalUsers(cacheService.getLdapCount(properties.getUserBaseDn()));
 
-        PieChartData<CheckInOutEnum> totalLoginChartData = getTotalLoginChartData(session);
+        PieChartData<CheckInOutEnum> totalLoginChartData = getTotalLoginChartData(data);
         LoginByTimeChartData loginByTimeChart = getLoginByTimeChart(session);
 
         ObjectMapper objectMapper = new ObjectMapper();
@@ -80,10 +80,11 @@ public class MetricsController {
         return mv;
     }
 
-    private PieChartData<CheckInOutEnum> getTotalLoginChartData(HttpSession session){
+    /** Counts come from the combined statistics already built, rather than querying the same records again. */
+    private PieChartData<CheckInOutEnum> getTotalLoginChartData(MetricsData data){
 
         Long totalUsers = cacheService.getLdapCount(properties.getUserBaseDn());
-        Map<CheckInOutEnum, Long> todaysStatistics = metricsService.getTodaysStatistics(session);
+        Map<CheckInOutEnum, Long> todaysStatistics = data.getStatusCounts();
 
         PieChartData<CheckInOutEnum> chartData = PieChartData.build("Total Users", totalUsers, todaysStatistics);
 

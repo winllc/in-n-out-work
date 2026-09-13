@@ -40,6 +40,8 @@ class LdapServiceReportsTest {
     @BeforeEach
     void setUp() {
         ApplicationProperties props = new ApplicationProperties();
+        // A mocked template has no context source to page on; paging runs against a real directory in LdapServiceDirectoryTest.
+        props.getLdap().setPageSize(0);
         props.setUserBaseDn("dc=winllc,dc=com");
         props.setUserLdapFilter("objectclass=inetOrgPerson");
         // Matches the shipped application.yml: reports carry the manager id in 'title'.

@@ -289,6 +289,30 @@ class LdapOrgLoaderTest {
         assertEquals(List.of("RYS", "abc"), top.getChildren().stream().map(OrgNode::getName).toList());
     }
 
+    /** Every node's head count comes from one directory scan, not a search per node. */
+    @Test
+    void orgStatsForEveryNodeComeFromOneDirectoryScan() {
+        when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), any()))
+                .thenReturn(List.of("RYS34B"));
+        when(orgParseRuleRecordRepository.findAll()).thenReturn(List.of());
+        java.util.Map<String, java.util.Map<String, Integer>> counts = new java.util.TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        counts.put("RYS34B", java.util.Map.of("FT", 2, "PT", 1));
+        when(ldapService.countByAttributeValueSplitOnAttribute(any(), eq(ORG_ATTRIBUTE), any())).thenReturn(counts);
+
+        OrgNode top = loader.generateTopLevelOrgChart();
+
+        OrgNode leaf = top;
+        while (!leaf.getChildren().isEmpty()) {
+            leaf = leaf.getChildren().getFirst();
+        }
+        assertEquals("RYS34B", leaf.getFullName());
+        assertEquals(java.util.Map.of("FT", 2, "PT", 1), leaf.getData().getTotalMembersByEmployeeType());
+        assertTrue(top.getChildren().getFirst().getData().getTotalMembersByEmployeeType().isEmpty(),
+                "no entry has the bare value RYS");
+        verify(ldapService, times(1)).countByAttributeValueSplitOnAttribute(any(), any(), any());
+        verify(ldapService, never()).getTotalEntriesWithAttributeValueSplitOnAttribute(any(), any(), any(), any());
+    }
+
     @Test
     void loadReturnsTheTopLevelChart() {
         when(ldapService.getAllUniqueValuesForAttributes(eq(ORG_ATTRIBUTE), any()))

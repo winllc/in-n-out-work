@@ -4,7 +4,9 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title layout:title-pattern="In-N-Out-Work">In-N-Out-Work</title>
+    <title layout:title-pattern="ReadyRoom">ReadyRoom</title>
+
+    <link rel="icon" type="image/x-icon" th:href="@{/favicon.ico}">
 
     <!-- Tabler is the app's UI framework; the icon font ships with it. -->
     <link rel="stylesheet" th:href="@{/libs/tabler/tabler.min.css}"/>
@@ -46,8 +48,8 @@
             -->
             <div class="navbar-brand">
                 <a th:href="@{/app}">
-                    <img style="height: 4rem;" th:src="${@environment.getProperty('application.logofile', '/images/logos/in-n-out-light.svg')}"
-                         alt="In-N-Out-Work" class="navbar-brand-image"/>
+                    <img style="height: 7rem;" th:src="${@environment.getProperty('application.logofile', '/images/logos/readyroom_logo_inverse_1.svg')}"
+                         alt="ReadyRoom" class="navbar-brand-image"/>
                 </a>
             </div>
             <div class="collapse navbar-collapse" id="sidebar-menu">
@@ -144,6 +146,14 @@
                     </div>
                 </div>
 
+                <div class="nav-item me-2">
+                    <button type="button" class="nav-link btn btn-ghost-secondary btn-icon px-2" id="help-button"
+                            data-bs-toggle="modal" data-bs-target="#help-modal"
+                            aria-label="How ReadyRoom works" title="Help">
+                        <i class="ti ti-help fs-2"></i>
+                    </button>
+                </div>
+
                 <div class="nav-item dropdown">
                     <a href="#" class="nav-link d-flex lh-1 p-0 px-2" data-bs-toggle="dropdown" id="drop2"
                        aria-label="Open user menu" aria-expanded="false">
@@ -176,7 +186,7 @@
                 <div class="row g-2 align-items-center">
                     <div class="col">
                         <h2 class="page-title">
-                            <span layout:fragment="page-title">In-N-Out-Work</span>
+                            <span layout:fragment="page-title">ReadyRoom</span>
                         </h2>
                     </div>
                     <div class="col-auto ms-auto d-print-none">
@@ -209,6 +219,9 @@
 </div>
 
 <div id="toastContainer" class="toast-container position-fixed top-0 end-0 p-3"></div>
+
+<!-- Application overview, opened by the help button in the top bar. -->
+<div th:replace="~{fragments/help :: helpModal}"></div>
 
 <div class="classification-bar classification-bar-bottom"
      th:style="'background-color: ' + ${T(com.winllc.innoutwork.config.GlobalProperties).BANNER_COLOR}">

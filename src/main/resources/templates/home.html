@@ -216,7 +216,7 @@
                         </table>
                     </div>
                     <div class="card-body text-secondary" th:if="${cov.stoppedUsers().isEmpty()}"
-                         th:text="${cov.neverReported() > 0 ? cov.neverReported() + ' reports have never reported; the rest are fine.' : 'Every report''s agent is reporting.'}"></div>
+                         th:text="${cov.neverReported() > 0 ? cov.neverReported() + ' reports have no activity in ' + T(com.winllc.innoutwork.data.metrics.AgentCoverage).LOOKBACK_DAYS + ' days; the rest are fine.' : 'Every report''s agent is reporting.'}"></div>
                 </div>
             </div>
 
