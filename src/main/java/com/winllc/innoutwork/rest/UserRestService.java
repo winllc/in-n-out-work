@@ -15,7 +15,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
-import org.springframework.ldap.filter.LikeFilter;
 import org.springframework.ldap.query.LdapQuery;
 import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -181,13 +180,12 @@ public class UserRestService {
 
     @GetMapping("/usersearch")
     public List<LdapUser> searchUsers(@RequestParam String search) {
-        // Escape LDAP special characters to prevent LDAP injection
-        String escapedSearch = escapeLdapFilter(search);
-        LikeFilter likeFilter = new LikeFilter("cn", "*" + escapedSearch + "*");
-
+        // escapeLdapFilter is the only escaping applied: LikeFilter encodes the value again, so a
+        // pre-escaped term reached the server as \5c-prefixed text and a name holding a bracket
+        // matched nothing. A raw filter also keeps a typed asterisk literal, as /search does.
         LdapQuery query = LdapQueryBuilder.query()
-                        .base(properties.getUserBaseDn())
-                                .filter(likeFilter);
+                .base(properties.getUserBaseDn())
+                .filter("(cn=*%s*)".formatted(escapeLdapFilter(search)));
 
         List<LdapUser> ldapUsers = ldapService.searchUsers(query);
 

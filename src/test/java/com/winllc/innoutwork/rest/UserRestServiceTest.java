@@ -17,6 +17,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.ldap.query.LdapQuery;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -146,6 +147,40 @@ class UserRestServiceTest {
         assertEquals("(objectClass=inetOrgPerson)", filterSentFor(""));
     }
 
+
+    /**
+     * The autocomplete endpoint behind the group-managers picker. Its term must be escaped exactly
+     * once: it previously ran through escapeLdapFilter and then a LikeFilter, which encodes the
+     * value again, so every backslash arrived as \5c and a name holding a bracket matched nothing.
+     */
+    @Test
+    void theAutocompleteTermIsEscapedExactlyOnce() throws Exception {
+        mockMvc.perform(get("/api/users/usersearch").param("search", "Smith (Contractor)")
+                        .with(x509(cert(USER_DN))))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<LdapQuery> query = ArgumentCaptor.forClass(LdapQuery.class);
+        verify(ldapService).searchUsers(query.capture());
+
+        String esc = String.valueOf((char) 92); // backslash, avoiding source-level escaping
+        String filter = query.getValue().filter().toString();
+        assertEquals("(cn=*Smith " + esc + "28Contractor" + esc + "29*)", filter);
+        assertFalse(filter.contains(esc + "5c"), "term must not be escaped twice");
+    }
+
+    /** A typed asterisk is a literal, matching the behaviour of the main search. */
+    @Test
+    void theAutocompleteTreatsAnAsteriskLiterally() throws Exception {
+        mockMvc.perform(get("/api/users/usersearch").param("search", "Star*Man")
+                        .with(x509(cert(USER_DN))))
+                .andExpect(status().isOk());
+
+        ArgumentCaptor<LdapQuery> query = ArgumentCaptor.forClass(LdapQuery.class);
+        verify(ldapService).searchUsers(query.capture());
+
+        String esc = String.valueOf((char) 92);
+        assertEquals("(cn=*Star" + esc + "2aMan*)", query.getValue().filter().toString());
+    }
     /** usersearch.html reads a bare array, not a {data: [...]} wrapper. */
     @Test
     void theResponseIsABareArrayOfRows() throws Exception {
