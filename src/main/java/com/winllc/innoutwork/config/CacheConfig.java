@@ -13,9 +13,31 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.time.Duration;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ForkJoinPool;
 
 @Configuration
 public class CacheConfig {
+
+    /**
+     * Where refreshAfterWrite reloads run. Caffeine's default is ForkJoinPool.commonPool(), whose threads'
+     * context class loader cannot see the application's jars when it runs as a Boot jar. JNDI loads Spring
+     * LDAP's DirObjectFactory through that loader, skips it silently when it can't, and search results then
+     * reach the context mappers as raw LdapCtx instead of DirContextAdapter (a ClassCastException in LdapService).
+     */
+    static final Executor REFRESH_EXECUTOR = task -> {
+        ClassLoader appClassLoader = CacheConfig.class.getClassLoader();
+        ForkJoinPool.commonPool().execute(() -> {
+            Thread thread = Thread.currentThread();
+            ClassLoader previous = thread.getContextClassLoader();
+            thread.setContextClassLoader(appClassLoader);
+            try {
+                task.run();
+            } finally {
+                thread.setContextClassLoader(previous);
+            }
+        });
+    };
 
     @Bean
     public Caffeine<Object, Object> caffeineConfig(ApplicationProperties properties) {
@@ -30,6 +52,7 @@ public class CacheConfig {
                                                                  LdapGroupLoader loader) {
         return Caffeine.newBuilder()
                 .maximumSize(5000)
+                .executor(REFRESH_EXECUTOR)
                 .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))
                 .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationExpirationMinutes()))  // default expiration
                 .build(loader);
@@ -40,6 +63,7 @@ public class CacheConfig {
                                                                LdapUserLoader loader) {
         return Caffeine.newBuilder()
                 .maximumSize(5000)
+                .executor(REFRESH_EXECUTOR)
                 .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))
                 .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationExpirationMinutes()))  // default expiration
                 .build(loader);
@@ -50,6 +74,7 @@ public class CacheConfig {
                                                                  LdapTotalCountLoader loader) {
         return Caffeine.newBuilder()
                 .maximumSize(5000)
+                .executor(REFRESH_EXECUTOR)
                 .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))
                 .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationExpirationMinutes()))  // default expiration
                 .build(loader);
@@ -60,6 +85,7 @@ public class CacheConfig {
                                                                LdapOrgLoader loader) {
         return Caffeine.newBuilder()
                 .maximumSize(5000)
+                .executor(REFRESH_EXECUTOR)
                 .refreshAfterWrite(Duration.ofMinutes(properties.getCacheDurationRefreshMinutes()))
                 .expireAfterWrite(Duration.ofMinutes(properties.getCacheDurationExpirationMinutes()))  // default expiration
                 .build(loader);
