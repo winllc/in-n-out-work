@@ -89,6 +89,28 @@ public class LdapService {
                 .toArray(String[]::new);
     }
 
+    /**
+     * A search result's attributes. Results are DirContextAdapters when JNDI can load Spring LDAP's object
+     * factory, and raw DirContexts (LdapCtx) when it can't, e.g. on a thread whose context class loader
+     * doesn't see the application's jars; see CacheConfig.REFRESH_EXECUTOR.
+     */
+    static Attributes attributesOf(Object ctx) throws NamingException {
+        if (ctx instanceof DirContextAdapter c) {
+            return c.getAttributes();
+        } else if (ctx instanceof DirContext c) {
+            return c.getAttributes("");
+        }
+        throw new IllegalArgumentException("Unsupported: " + ctx.getClass());
+    }
+
+    /** A search result's absolute name; see {@link #attributesOf}. */
+    static String nameInNamespaceOf(Object ctx) throws NamingException {
+        if (ctx instanceof DirContext c) { // DirContextAdapter is one too
+            return c.getNameInNamespace();
+        }
+        throw new IllegalArgumentException("Unsupported: " + ctx.getClass());
+    }
+
     private static SearchControls subtree(String... attributes) {
         SearchControls controls = new SearchControls();
         controls.setSearchScope(SearchControls.SUBTREE_SCOPE);
@@ -173,7 +195,7 @@ public class LdapService {
         SearchControls controls = StringUtils.isBlank(splitByAttribute) ? subtree(attribute) : subtree(attribute, splitByAttribute);
         List<Map.Entry<List<String>, String>> rows = pagedSearch(baseDn, new PresentFilter(attribute).encode(), controls,
                 (ContextMapper<Map.Entry<List<String>, String>>) ctx -> {
-                    Attributes attrs = ((DirContextAdapter) ctx).getAttributes();
+                    Attributes attrs = attributesOf(ctx);
                     List<String> values = new ArrayList<>();
                     Attribute valueAttr = attrs.get(attribute);
                     if (valueAttr != null) {
@@ -212,13 +234,12 @@ public class LdapService {
                 filter,
                 subtree(NO_ATTRIBUTES),
                 (ContextMapper<UserStatus>) ctx -> {
-                    DirContextAdapter context = (DirContextAdapter) ctx;
                     // getDn() is relative to the context source's base (spring.ldap.base), so it
                     // is only absolute while that base is unset. Callers re-read every row by DN
                     // for its status, notes and details link, so take the absolute name, matching
                     // how LdapUserContextMapper maps a DN.
                     UserStatus user = UserStatus.builder()
-                            .dn(LdapDn.normalize(context.getNameInNamespace()))
+                            .dn(LdapDn.normalize(nameInNamespaceOf(ctx)))
                             .build();
                     return user;
                 }
@@ -385,10 +406,9 @@ public class LdapService {
         SearchControls controls = StringUtils.isBlank(splitByAttribute) ? subtree(NO_ATTRIBUTES) : subtree(splitByAttribute);
 
         List<String> results = pagedSearch(baseDn, filter, controls, (ContextMapper<String>) ctx -> {
-            DirContextAdapter context = (DirContextAdapter) ctx;
-            if (!StringUtils.isBlank(splitByAttribute) && context.getAttributes() != null
-                    && context.getAttributes().get(splitByAttribute) != null) {
-                return context.getAttributes().get(splitByAttribute).get().toString();
+            Attributes attrs = attributesOf(ctx);
+            if (!StringUtils.isBlank(splitByAttribute) && attrs != null && attrs.get(splitByAttribute) != null) {
+                return attrs.get(splitByAttribute).get().toString();
             }else{
                 return "EMPTY";
             }
@@ -442,9 +462,9 @@ public class LdapService {
                 filter.encode(),
                 subtree(attribute),
                 (ContextMapper<String>) ctx -> {
-                    DirContextAdapter context = (DirContextAdapter) ctx;
-                    if (context.getAttributes() != null && context.getAttributes().get(attribute) != null) {
-                        return context.getAttributes().get(attribute).get().toString();
+                    Attributes attrs = attributesOf(ctx);
+                    if (attrs != null && attrs.get(attribute) != null) {
+                        return attrs.get(attribute).get().toString();
                     } else {
                         return null;
                     }
