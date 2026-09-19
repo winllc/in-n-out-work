@@ -76,6 +76,11 @@ management:
         include: health,info,metrics,env
 application:
   user-base-dn: dc=winllc,dc=com
+  # Identifies user entries. Used on its own to enumerate users and counted, and combined
+  # into a larger AND for name search, reports and the org chart. Defaults to this value;
+  # set it for a directory that models people as something else, or to narrow the set
+  # further, e.g. (&(objectclass=inetOrgPerson)(!(employeeType=CONTRACTOR))).
+  # Surrounding parentheses are added if omitted.
   user-ldap-filter: (objectclass=inetOrgPerson)
 
   # Directory -> database metadata refresh. Values are milliseconds; set enabled to

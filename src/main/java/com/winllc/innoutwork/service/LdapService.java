@@ -162,7 +162,9 @@ public class LdapService {
             return new ArrayList<>();
         }
 
-        String filter = "(&(%s)(%s=%s))".formatted(
+        // The configured filter already carries its own parentheses (ApplicationProperties
+        // normalises it), so this only supplies the ones the AND itself needs.
+        String filter = "(&%s(%s=%s))".formatted(
                 properties.getUserLdapFilter(),
                 properties.getUserLdapManagerIdAttribute(),
                 escapeLdapFilter(managerId));
