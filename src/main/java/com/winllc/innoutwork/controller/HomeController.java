@@ -11,6 +11,9 @@ import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.HomeService;
 import com.winllc.innoutwork.service.PermissionService;
 import jakarta.servlet.http.HttpSession;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
@@ -18,6 +21,7 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +32,8 @@ import java.util.stream.Collectors;
 @Controller
 @RequestMapping("/")
 public class HomeController {
+
+    private static final Logger log = LoggerFactory.getLogger(HomeController.class);
 
     private final CacheService cacheService;
     private final ApplicationProperties properties;
@@ -68,6 +74,12 @@ public class HomeController {
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) or @permissionEvaluator.groupCheck(#group, #authentication)")
     public String users(Authentication authentication, Model model, @PathVariable String group) {
         LdapGroup ldapGroup = cacheService.getGroup(group);
+        if (ldapGroup == null) {
+            // Null means the directory could not resolve the DN - either it is gone or the
+            // lookup failed. Both used to reach the next line as an NPE and a stack trace.
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No group in the directory for " + group);
+        }
+
         model.addAttribute("group", ldapGroup.getName());
         model.addAttribute("groupDn", ldapGroup.getDn());
 
@@ -89,7 +101,13 @@ public class HomeController {
 
         for(TopLevelGroupProperties topProps: properties.getGroups()) {
             LdapGroup groupHierarchy = cacheService.getGroup(topProps.getGroupsBaseDn());
-            //topLevelGroups.add(groupHierarchy);
+            if (groupHierarchy == null) {
+                // One unresolvable base DN should cost its own tree, not the whole page -
+                // the admin branch below used to add the null and the other dereference it.
+                log.warn("Skipping top level group {}: the directory returned nothing for it",
+                        topProps.getGroupsBaseDn());
+                continue;
+            }
 
             boolean isAdmin = authentication.getAuthorities().stream()
                     .anyMatch(a -> a.getAuthority().equalsIgnoreCase(UserRoleEnum.ADMIN.toString())
