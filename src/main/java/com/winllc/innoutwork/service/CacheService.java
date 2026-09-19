@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.service;
 
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -10,6 +11,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CompletionException;
 
 /**
@@ -72,6 +74,51 @@ public class CacheService {
         return group;
     }
 
+    /**
+     * Drops a group from the cache so the next request rebuilds it from the directory.
+     *
+     * <p>Evicts more than the one entry, because one entry on its own would not take
+     * effect. Groups below the DN are cached under their own keys and would stay behind
+     * as the versions they were when the tree was walked; groups above it hold the very
+     * same child objects inside their own trees, so a stale copy would go on being served
+     * from every ancestor. Both directions go.
+     *
+     * @return how many cache entries were dropped
+     */
+    public int evictGroup(String dn) {
+        String target = comparable(dn);
+
+        if (target == null || target.isBlank()) {
+            return 0;
+        }
+
+        List<String> doomed = cache.asMap().keySet().stream()
+                .filter(key -> related(comparable(key), target))
+                .toList();
+
+        doomed.forEach(cache::invalidate);
+
+        log.info("Evicted {} cached group entr{} for {}", doomed.size(), doomed.size() == 1 ? "y" : "ies", dn);
+
+        return doomed.size();
+    }
+
+    /** Drops every cached group tree. The next request for each walks the directory again. */
+    public int evictAllGroups() {
+        int evicted = cache.asMap().size();
+
+        cache.invalidateAll();
+
+        log.info("Evicted all {} cached group entries", evicted);
+
+        return evicted;
+    }
+
+    /** How many group trees are cached right now, for the settings page to report. */
+    public int cachedGroupCount() {
+        return cache.asMap().size();
+    }
+
     public Long getLdapCount(String dn) {
         Long count = ldapCountLoadingCache.get(dn);
 
@@ -113,6 +160,29 @@ public class CacheService {
         log.warn("Serving an uncached partial group tree for {}: {}", dn, e.getMessage());
 
         return e.getPartial();
+    }
+
+    /**
+     * Whether a cached key is the target, sits under it, or is a tree that contains it.
+     *
+     * <p>Both DNs are already normalised and upper-cased, so the containment test is a
+     * plain suffix match on RDN boundaries.
+     */
+    private static boolean related(String key, String target) {
+        if (key == null) {
+            return false;
+        }
+
+        return key.equals(target)
+                || key.endsWith("," + target)   // key sits under the target
+                || target.endsWith("," + key);  // key is a tree the target sits under
+    }
+
+    /** DNs in the form this compares them in: normalised, then upper-cased as LdapDn does. */
+    private static String comparable(String dn) {
+        String normalized = LdapDn.normalize(dn);
+
+        return normalized == null ? null : normalized.toUpperCase(Locale.ROOT);
     }
 
     private static List<LdapGroup> childrenOf(LdapGroup group) {

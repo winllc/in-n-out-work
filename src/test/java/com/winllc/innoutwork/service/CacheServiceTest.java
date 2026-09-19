@@ -143,6 +143,104 @@ class CacheServiceTest {
     }
 
     @Test
+    void evictingAGroupTakesTheGroupsUnderneathItToo() {
+        when(ldapService.buildGroupRecursiveInternal(ROOT)).thenReturn(tree());
+        cacheService.getGroup(ROOT);
+
+        int evicted = cacheService.evictGroup(CHILD);
+
+        // All three: the grandchild is cached under its own key and would otherwise be
+        // served as it was before the change, and the root's tree embeds both.
+        assertEquals(3, evicted);
+        assertNull(groupCache.getIfPresent(CHILD));
+        assertNull(groupCache.getIfPresent(GRANDCHILD));
+    }
+
+    @Test
+    void evictingAGroupTakesTheTreesThatContainItToo() {
+        when(ldapService.buildGroupRecursiveInternal(ROOT)).thenReturn(tree());
+        cacheService.getGroup(ROOT);
+
+        cacheService.evictGroup(GRANDCHILD);
+
+        // The root and the child hold the very same grandchild object inside their trees,
+        // so keeping them would go on serving the stale copy from every ancestor.
+        assertNull(groupCache.getIfPresent(ROOT));
+        assertNull(groupCache.getIfPresent(CHILD));
+        assertNull(groupCache.getIfPresent(GRANDCHILD));
+    }
+
+    @Test
+    void evictingAGroupLeavesUnrelatedTreesAlone() {
+        String otherRoot = "ou=departments,dc=example,dc=com";
+        when(ldapService.buildGroupRecursiveInternal(ROOT)).thenReturn(tree());
+        cacheService.getGroup(ROOT);
+        groupCache.put(otherRoot, new LdapGroup(otherRoot, "departments"));
+
+        cacheService.evictGroup(CHILD);
+
+        assertNotNull(groupCache.getIfPresent(otherRoot));
+    }
+
+    @Test
+    void aGroupWhoseNameMerelyStartsTheSameIsNotEvicted() {
+        String lookalike = "cn=engineering-archive,ou=groups,dc=example,dc=com";
+        when(ldapService.buildGroupRecursiveInternal(ROOT)).thenReturn(tree());
+        cacheService.getGroup(ROOT);
+        groupCache.put(lookalike, new LdapGroup(lookalike, "engineering-archive"));
+
+        cacheService.evictGroup(CHILD);
+
+        // "cn=engineering-archive,..." shares a prefix with "cn=engineering,..." but is a
+        // different group; matching has to land on an RDN boundary.
+        assertNotNull(groupCache.getIfPresent(lookalike));
+    }
+
+    @Test
+    void anEvictedGroupIsWalkedAgainOnTheNextRequest() {
+        when(ldapService.buildGroupRecursiveInternal(ROOT)).thenReturn(tree());
+
+        cacheService.getGroup(ROOT);
+        cacheService.evictGroup(ROOT);
+        cacheService.getGroup(ROOT);
+
+        verify(ldapService, times(2)).buildGroupRecursiveInternal(ROOT);
+    }
+
+    @Test
+    void aDnIsMatchedHoweverItIsSpacedOrCased() {
+        when(ldapService.buildGroupRecursiveInternal(ROOT)).thenReturn(tree());
+        cacheService.getGroup(ROOT);
+
+        // Same DN as CHILD, retyped the way someone would paste it out of a directory tool.
+        int evicted = cacheService.evictGroup("CN=Engineering, OU=Groups, DC=example, DC=com");
+
+        assertEquals(3, evicted);
+        assertNull(groupCache.getIfPresent(CHILD));
+    }
+
+    @Test
+    void evictingEverythingEmptiesTheCache() {
+        when(ldapService.buildGroupRecursiveInternal(ROOT)).thenReturn(tree());
+        cacheService.getGroup(ROOT);
+
+        int evicted = cacheService.evictAllGroups();
+
+        assertEquals(3, evicted);
+        assertEquals(0, cacheService.cachedGroupCount());
+    }
+
+    @Test
+    void evictingADnThatIsNotCachedIsHarmless() {
+        when(ldapService.buildGroupRecursiveInternal(ROOT)).thenReturn(tree());
+        cacheService.getGroup(ROOT);
+
+        assertEquals(0, cacheService.evictGroup("cn=nowhere,ou=other,dc=example,dc=com"));
+        assertEquals(0, cacheService.evictGroup(""));
+        assertEquals(3, cacheService.cachedGroupCount());
+    }
+
+    @Test
     void anUnresolvableDnYieldsNullRatherThanAnEmptyGroup() {
         when(ldapService.buildGroupRecursiveInternal(anyString())).thenReturn(null);
 
