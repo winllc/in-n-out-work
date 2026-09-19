@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ldap.filter.AndFilter;
 import org.springframework.ldap.filter.EqualsFilter;
 import org.springframework.ldap.filter.Filter;
+import org.springframework.ldap.filter.HardcodedFilter;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -57,11 +58,14 @@ public class OrgNodeRestService {
                             HttpSession session,
                             @PathVariable(name = "orgName") String orgName) {
 
-        // EqualsFilter.encode() already escapes the value per RFC 2254. Escaping it here as
+        // HardcodedFilter emits the configured user filter verbatim; it is already a complete,
+        // parenthesised filter, which is exactly what AndFilter expects of a term.
+        //
+        // EqualsFilter.encode() already escapes the org name per RFC 2254. Escaping it here as
         // well double-encodes the backslashes, so an org name containing a metacharacter such
         // as an asterisk or a bracket would be searched for literally and match nobody.
         Filter filter = new AndFilter()
-                .and(new EqualsFilter("objectClass", "inetOrgPerson"))
+                .and(new HardcodedFilter(props.getUserLdapFilter()))
                 .and(new EqualsFilter(props.getUserLdapDutySubOrganizationAttribute(), orgName));
 
         List<UserStatus> result = ldapService.search(filter.encode());
