@@ -9,7 +9,6 @@ import com.winllc.innoutwork.data.UserStatus;
 import io.micrometer.common.util.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.ldap.NameNotFoundException;
 import org.springframework.ldap.core.AttributesMapper;
 import org.springframework.ldap.core.ContextMapper;
@@ -403,7 +402,19 @@ public class LdapService {
 
 
 
-    @Cacheable(cacheNames = "ldapGroups", key = "#dn", unless = "#result == null")
+    /**
+     * Builds the full group tree under a DN by walking the directory.
+     *
+     * <p>Deliberately not cached here. This method recurses into itself, and a self-call
+     * does not pass through the Spring proxy, so {@code @Cacheable} on it only ever
+     * stored the DN the walk started from — every group underneath was rebuilt from
+     * scratch the first time anyone opened it. Caching is {@link CacheService}'s job:
+     * it holds the one cache and warms every descendant this walk produces.
+     *
+     * @throws GroupTreeIncompleteException if the directory fails during the walk; the
+     *         tree built so far travels on the exception so it can be rendered without
+     *         being cached.
+     */
     public LdapGroup buildGroupRecursiveInternal(String dn) {
 
         // Lookup LDAP entry for this DN
@@ -434,17 +445,39 @@ public class LdapService {
                     }
             );
         } catch (Exception e) {
-            // Couldn't enumerate children (missing subtree, referral, etc.); return this
-            // node without descendants rather than failing the whole hierarchy build.
+            // Returning the childless node here would be cached as a complete tree, and a
+            // one-off referral or timeout would then serve a group with no children until
+            // the entry expired. Carry the node out on the exception instead: still
+            // renderable, never cached.
             log.warn("Failed to enumerate child groups under {}: {}", dn, e.getMessage());
-            return node;
+            throw new GroupTreeIncompleteException(dn, node, e);
         }
 
+        boolean incomplete = false;
+        Throwable firstFailure = null;
+
         for (Name childDn : childDns) {
-            LdapGroup childNode = buildGroupRecursiveInternal(childDn.toString());
-            if (childNode != null) {
-                node.addChild(childNode);
+            try {
+                LdapGroup childNode = buildGroupRecursiveInternal(childDn.toString());
+                if (childNode != null) {
+                    node.addChild(childNode);
+                }
+            } catch (GroupTreeIncompleteException e) {
+                // Keep whatever that branch managed to build and carry on with its
+                // siblings, as this walk always has - but remember the tree is short of
+                // something, so no part of it gets cached as complete.
+                if (e.getPartial() != null) {
+                    node.addChild(e.getPartial());
+                }
+                incomplete = true;
+                if (firstFailure == null) {
+                    firstFailure = e.getCause();
+                }
             }
+        }
+
+        if (incomplete) {
+            throw new GroupTreeIncompleteException(dn, node, firstFailure);
         }
 
         return node;

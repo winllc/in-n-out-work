@@ -22,6 +22,10 @@ public class LdapGroupLoader implements CacheLoader<String, LdapGroup> {
     public LdapGroup load(String dn) {
         // A cache miss means a full recursive walk of the group subtree, so it is worth
         // knowing when one happens and how long the directory took.
+        //
+        // A GroupTreeIncompleteException from the walk is deliberately left to propagate:
+        // Caffeine caches nothing when the loader throws, which is the point - an
+        // incomplete tree must not be stored as though it were the whole thing.
         long start = System.currentTimeMillis();
         LdapGroup group = ldapGroupService.buildGroupRecursiveInternal(dn);
 
