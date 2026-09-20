@@ -90,6 +90,13 @@ class TemplateRenderingTest {
     }
 
     @Test
+    void settingsRendersTheGroupCacheControls() throws Exception {
+        assertRenders("/render/settings", "Group Cache");
+        assertRenders("/render/settings", "/app/settings/cache/groups/evict");
+        assertRenders("/render/settings", "/app/settings/cache/groups/evictall");
+    }
+
+    @Test
     void userDetailsRenders() throws Exception {
         assertRenders("/render/userdetails", "Member Of");
     }
@@ -323,6 +330,7 @@ class TemplateRenderingTest {
             mav.addObject("userDn", USER_DN);
             mav.addObject("orgParseRules", List.of(rule));
             mav.addObject("orgParseRuleForm", new OrgParseRuleRecord());
+            mav.addObject("cachedGroupCount", 12);
             return mav;
         }
 

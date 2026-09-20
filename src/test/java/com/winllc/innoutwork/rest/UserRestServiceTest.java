@@ -108,6 +108,9 @@ class UserRestServiceTest {
     @SuppressWarnings("unchecked")
     void setUp() {
         when(properties.getUserBaseDn()).thenReturn("dc=winllc,dc=com");
+        // What ApplicationProperties supplies when nothing overrides it; the search filter is
+        // built from this rather than a literal, so the stub has to stand in for it.
+        when(properties.getUserLdapFilter()).thenReturn(ApplicationProperties.DEFAULT_USER_LDAP_FILTER);
         when(ldapService.search(anyString())).thenReturn(List.of(UserStatus.builder().dn(BOB).build()));
         when(userService.getUserStatuses(any(), any()))
                 .thenAnswer(inv -> ((java.util.Collection<String>) inv.getArgument(0)).stream()
@@ -144,7 +147,23 @@ class UserRestServiceTest {
 
     @Test
     void anEmptyTermStillSendsAParenthesisedFilter() throws Exception {
-        assertEquals("(objectClass=inetOrgPerson)", filterSentFor(""));
+        assertEquals("(objectclass=inetOrgPerson)", filterSentFor(""));
+    }
+
+    @Test
+    void aConfiguredFilterReplacesTheDefaultOnItsOwn() throws Exception {
+        when(properties.getUserLdapFilter()).thenReturn("(objectclass=posixAccount)");
+
+        assertEquals("(objectclass=posixAccount)", filterSentFor(""));
+    }
+
+    @Test
+    void aConfiguredFilterIsAndedWithTheSearchTerm() throws Exception {
+        when(properties.getUserLdapFilter())
+                .thenReturn("(&(objectclass=inetOrgPerson)(!(employeeType=CONTRACTOR)))");
+
+        assertEquals("(&(&(objectclass=inetOrgPerson)(!(employeeType=CONTRACTOR)))(cn=*bob*))",
+                filterSentFor("bob"));
     }
 
 

@@ -225,7 +225,7 @@ values that most often need changing per deployment:
 | Property | Purpose |
 |---|---|
 | `user-base-dn` | Base DN for user searches |
-| `user-ldap-filter` | Filter identifying user entries |
+| `user-ldap-filter` | Filter identifying user entries; defaults to `(objectclass=inetOrgPerson)`. Used alone to enumerate and count users, and combined into an AND for search, reports and the org chart, so it applies everywhere users are looked up. Parentheses are added if omitted. |
 | `groups[].groups-base-dn` | One entry per top-level group tree shown in the UI |
 | `super-user-dns` | DNs always treated as `ADMIN` |
 | `user-ldap-*-attribute` | Maps LDAP attributes to organization, location, branch, employee type, manager, duty sub-organization |

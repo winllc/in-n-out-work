@@ -77,6 +77,61 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
+                    <h3 class="card-title">Group Cache</h3>
+                    <div class="card-actions">
+                        <span class="badge bg-secondary-lt">
+                            <span th:text="${cachedGroupCount}">0</span> cached
+                        </span>
+                    </div>
+                </div>
+                <div class="card-body">
+
+                    <p class="text-secondary">
+                        Group trees are read from the directory and cached, so a change made in
+                        LDAP is not visible until the entry expires. Evicting a group forces the
+                        next request to walk the directory again.
+                    </p>
+
+                    <form th:action="@{/app/settings/cache/groups/evict}" method="post">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-10">
+                                <label for="evictGroupDn" class="form-label">Group DN</label>
+                                <input type="text" id="evictGroupDn" name="dn"
+                                       class="form-control font-monospace"
+                                       placeholder="e.g. cn=Engineering,ou=Groups,dc=example,dc=com" required>
+                                <small class="form-hint">
+                                    Groups beneath this DN are evicted too, along with the trees
+                                    that contain it &mdash; those hold their own copy of it.
+                                </small>
+                            </div>
+                            <div class="col-md-2">
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="ti ti-trash me-1"></i>Evict
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                </div>
+                <div class="card-footer d-flex align-items-center">
+                    <span class="text-secondary">
+                        Clearing everything makes the next visit to each group re-read the
+                        directory, which is slower until the caches refill.
+                    </span>
+                    <form th:action="@{/app/settings/cache/groups/evictall}" method="post"
+                          class="ms-auto"
+                          onsubmit="return confirm('Evict every cached group tree?');">
+                        <button type="submit" class="btn btn-outline-danger">
+                            <i class="ti ti-trash me-1"></i>Evict All
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
                     <h3 class="card-title">Organization Parse Rules</h3>
                 </div>
                 <div class="card-body border-bottom">
