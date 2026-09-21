@@ -15,6 +15,7 @@ import org.springframework.ldap.NameNotFoundException;
 import org.springframework.ldap.core.AttributesMapper;
 import org.springframework.ldap.core.ContextMapper;
 import org.springframework.ldap.core.DirContextAdapter;
+import org.springframework.ldap.control.PagedResultsCookie;
 import org.springframework.ldap.control.PagedResultsDirContextProcessor;
 import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.ldap.core.support.SingleContextSource;
@@ -128,14 +129,42 @@ public class LdapService {
             return ldapTemplate.search(base, filter, controls, mapper);
         }
 
+        int maxPages = Math.max(1, properties.getLdap().getMaxPages());
+
         return SingleContextSource.doWithSingleContext(ldapTemplate.getContextSource(), operations -> {
             PagedResultsDirContextProcessor processor = new PagedResultsDirContextProcessor(pageSize);
             List<T> results = new ArrayList<>();
             int pages = 0;
+            PagedResultsCookie previousCookie = null;
+
             do {
                 results.addAll(operations.search(base, filter, controls, mapper, processor));
                 pages++;
-            } while (processor.hasMore());
+
+                if (!processor.hasMore()) {
+                    break;
+                }
+
+                // A cookie identical to the last one means the server is not advancing, so the next
+                // page would repeat this one for ever. Seen with referrals and with proxies that
+                // accept the paged results control without honouring it.
+                PagedResultsCookie cookie = processor.getCookie();
+                if (previousCookie != null && previousCookie.equals(cookie)) {
+                    log.warn("Search under {} for {} stopped after {} page(s): the directory returned the "
+                            + "same paging cookie twice, so results may be incomplete", base, filter, pages);
+                    break;
+                }
+                previousCookie = cookie;
+
+                if (pages >= maxPages) {
+                    // Bounded rather than unbounded: holding the request open indefinitely is worse
+                    // than returning a truncated answer and saying so.
+                    log.warn("Search under {} for {} hit the {}-page limit after {} entries; returning what "
+                            + "was read. Raise application.ldap.max-pages if this result set is genuinely "
+                            + "this large", base, filter, maxPages, results.size());
+                    break;
+                }
+            } while (true);
 
             log.trace("Search under {} for {} read {} entries in {} page(s)", base, filter, results.size(), pages);
             return results;
@@ -681,8 +710,26 @@ public class LdapService {
         if (groupsForUserCache == null || userDn == null) {
             return searchGroupsForUser(userDn);
         }
+
         // Permission checks ask on every request; membership changes show up within the cache period.
-        return groupsForUserCache.get(userDn.toLowerCase(), k -> searchGroupsForUser(userDn));
+        String key = userDn.toLowerCase();
+
+        List<LdapGroup> cached = groupsForUserCache.getIfPresent(key);
+        if (cached != null) {
+            return cached;
+        }
+
+        // Searched outside the cache rather than through get(key, mappingFunction). That runs under
+        // computeIfAbsent, which holds the bin for the key: while one slow search is in flight every
+        // other request for the same user blocks behind it, so reloading the page joins the stuck
+        // lookup instead of starting a new one, and the page stays dead until the first one returns.
+        // The cost of computing outside is that concurrent first-time callers may each search; a
+        // duplicated lookup is cheaper than a wedged request.
+        List<LdapGroup> groups = searchGroupsForUser(userDn);
+
+        groupsForUserCache.put(key, groups);
+
+        return groups;
     }
 
     private List<LdapGroup> searchGroupsForUser(String userDn) {
