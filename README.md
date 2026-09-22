@@ -230,6 +230,7 @@ values that most often need changing per deployment:
 | `super-user-dns` | DNs always treated as `ADMIN` |
 | `user-ldap-*-attribute` | Maps LDAP attributes to organization, location, branch, employee type, manager, duty sub-organization |
 | `duty-sub-org-groups-base-dn` | Enables the org chart; blank disables it |
+| `ldap.max-pages` | Most pages one paged search reads before returning what it has (default 1000). Bounds a directory that keeps returning a paging cookie, which would otherwise hold the request open indefinitely. |
 | `checkOutAfterMinutes` | Idle time before `MarkInactiveCron` auto-checks-out a session |
 | `application-base-url` | Used in notification emails |
 

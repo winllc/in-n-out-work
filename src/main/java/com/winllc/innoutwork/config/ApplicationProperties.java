@@ -101,6 +101,13 @@ public class ApplicationProperties {
          * checks read them on every request; 0 turns the cache off.
          */
         private int groupMembershipCacheSeconds = 300;
+        /**
+         * Most pages a single paged search will read before it gives up and returns what it has.
+         * A directory that keeps handing back a cookie - a referral, a proxy that mishandles the
+         * paged results control - would otherwise loop forever and hold the request open with it.
+         * At the default page size that is half a million entries, far past any real result set.
+         */
+        private int maxPages = 1000;
     }
 
     /**
