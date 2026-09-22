@@ -79,6 +79,26 @@ class LdapServiceEfficiencyTest {
         assertEquals(3, ldapService.getAllUniqueValuesForAttributes("departmentNumber", null).size());
     }
 
+    /**
+     * The loop is bounded. A directory that keeps returning a cookie - a referral, a proxy that takes
+     * the paged results control without honouring it - would otherwise page for ever and hold the
+     * request open with it, which is what a permanently spinning page looks like.
+     */
+    @Test
+    void pagingStopsAtTheConfiguredPageLimit() {
+        props.getLdap().setMaxPages(1);
+
+        // Five users, two per page: with one page allowed only the first page comes back, and the
+        // search returns rather than running on.
+        assertEquals(SIZE_LIMIT, ldapService.search("(objectClass=inetOrgPerson)").size());
+    }
+
+    @Test
+    void theDefaultPageLimitIsWellClearOfRealResultSets() {
+        assertEquals(1000, new ApplicationProperties().getLdap().getMaxPages());
+        assertEquals(5, ldapService.search("(objectClass=inetOrgPerson)").size());
+    }
+
     /** What paging prevents: the template ignores the size-limit error, so the rest just go missing. */
     @Test
     void withoutPagingTheSizeLimitSilentlyCutsResultsShort() {
