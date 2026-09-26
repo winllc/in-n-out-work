@@ -88,6 +88,17 @@ management:
       exposure:
         include: health,info,metrics,env
 application:
+  # Read-only, sign-in-free demo. Off here; switch it on only for an instance whose directory and
+  # database hold data that is safe for anyone who can reach the URL to read, because enabling it
+  # removes authentication from the whole application.
+  #
+  # user-dn is required when enabled and must be an entry that exists in the directory: it is the
+  # account the demo is presented as, before every role is added on top for the administrator view.
+  demo:
+    enabled: false
+    user-dn: ""
+    banner: "DEMO - read only"
+
   user-base-dn: dc=winllc,dc=com
   # Identifies user entries. Used on its own to enumerate users and counted, and combined
   # into a larger AND for name search, reports and the org chart. Defaults to this value;

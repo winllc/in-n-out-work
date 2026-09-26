@@ -248,6 +248,59 @@ define the levels.
 
 ---
 
+## Demo mode
+
+A read-only, sign-in-free view of the whole application, for showing it to people who have no
+account in the directory. **Off unless switched on**, and off in the shipped configuration.
+
+```yaml
+application:
+  demo:
+    enabled: true
+    user-dn: "cn=Demo User,ou=Users,dc=winllc,dc=com"
+    banner: "DEMO - read only"
+```
+
+`user-dn` is required when enabled and must be an entry that exists in the directory: it is the
+account the demo is presented as. The application refuses to start without it rather than serve a
+sign-in-free instance whose every page then fails on an identity that was never configured.
+
+| Setting | Meaning |
+|---|---|
+| `demo.enabled` | The only thing that turns demo mode on. Default `false`. |
+| `demo.user-dn` | The directory entry the demo is presented as. Required when enabled. |
+| `demo.banner` | Banner text shown on every page. |
+
+### What it does
+
+- **No sign-in.** `DemoSecurityConfig` replaces the normal chain entirely — the two are conditional
+  on opposite values of the same property, so exactly one exists. Every request is served as
+  `demo.user-dn`, resolved through the same `AppUserDetailsService` a certificate or form login
+  uses, then granted every role so nothing is hidden from the view.
+- **Nothing can be changed.** Every request method that could write — POST, PUT, PATCH, DELETE — is
+  refused for every path. The rule is by method rather than by path, so an endpoint added later is
+  covered without anyone remembering to come back and list it.
+- **Actuator is refused apart from health**, because the demo is unauthenticated and this
+  application exposes `env`.
+- **A banner on every page**, and submit buttons on write forms are disabled. That part is a
+  courtesy so visitors are not surprised by a refusal; it is not the boundary. The refusal is.
+
+### Before you turn it on
+
+Enabling this removes authentication from the entire application. Everything the configured
+directory and database hold becomes readable by anyone who can reach the URL. Point a demo instance
+at its own directory and database holding data that is safe to publish — the seeded stack under
+[`test/`](test/) is a reasonable starting point — and never at production.
+
+Two things demo mode does **not** stop, worth knowing before exposing an instance:
+
+- The scheduled jobs still run and still write (auto check-out, absence notifications). They are
+  server-side and unrelated to what a visitor can do, but the data will move on its own.
+- Resolving the demo user creates its `UserRecord` row on first request, exactly as any first
+  sign-in does.
+
+---
+
 ## Windows authentication
 
 The Windows client can sign in with the user's Windows logon instead of, or as

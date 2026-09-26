@@ -31,6 +31,11 @@
     </span>
 </div>
 
+<div th:if="${demoMode}" class="alert alert-warning alert-important m-0 rounded-0 text-center py-2" role="status">
+    <strong th:text="${demoBanner}">DEMO - read only</strong>
+    <span class="ms-1">Sign-in is off and nothing on this instance can be changed.</span>
+</div>
+
 <div class="page">
 
     <!-- Sidebar -->
@@ -354,6 +359,53 @@
             })
     }
 
+</script>
+
+<!--
+  Demo mode courtesy only. The refusal that matters happens in DemoSecurityConfig, which denies
+  every state-changing request method; this just stops a visitor clicking something that would
+  come back 403. Read-only searches and filters are left working, since they are most of what
+  there is to show.
+-->
+<script th:if="${demoMode}">
+    (function () {
+        "use strict";
+
+        function explain() {
+            window.alert("This is a read-only demo; nothing here can be changed.");
+        }
+
+        document.addEventListener("DOMContentLoaded", function () {
+            document.querySelectorAll("form").forEach(function (form) {
+                var method = (form.getAttribute("method") || "get").toLowerCase();
+                if (method === "get") {
+                    return; // searches and filters change nothing, so they stay usable
+                }
+
+                form.addEventListener("submit", function (event) {
+                    event.preventDefault();
+                    explain();
+                });
+
+                form.querySelectorAll("button[type=submit], input[type=submit]").forEach(function (button) {
+                    button.disabled = true;
+                    button.title = "Disabled in the demo";
+                });
+            });
+        });
+
+        // The pages that write through fetch() rather than a form, caught in one place instead of
+        // by naming each button.
+        var realFetch = window.fetch.bind(window);
+        window.fetch = function (input, init) {
+            var method = ((init && init.method) || (input && input.method) || "GET").toUpperCase();
+            if (method !== "GET" && method !== "HEAD") {
+                explain();
+                return Promise.reject(new Error("Demo mode is read only"));
+            }
+            return realFetch(input, init);
+        };
+    })();
 </script>
 
 </body>

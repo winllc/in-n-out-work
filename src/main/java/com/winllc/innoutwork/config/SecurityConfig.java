@@ -3,6 +3,7 @@ package com.winllc.innoutwork.config;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.ldap.core.DirContextAdapter;
@@ -30,7 +31,12 @@ public class SecurityConfig {
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
 
+    /**
+     * The normal chain. Absent while demo mode is on, where {@link DemoSecurityConfig} defines the
+     * only chain instead - the two are mutually exclusive by construction rather than by ordering.
+     */
     @Bean
+    @ConditionalOnProperty(name = "application.demo.enabled", havingValue = "false", matchIfMissing = true)
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AppUserDetailsService appUserDetailsService,
                                                    LdapAuthenticationProvider ldapAuthenticationProvider) throws Exception {
