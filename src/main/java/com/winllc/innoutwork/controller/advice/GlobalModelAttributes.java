@@ -24,6 +24,13 @@ public class GlobalModelAttributes {
     @Value("${application.extra-time-before-absent-notification-minutes:60}")
     private int absenceGraceMinutes;
 
+    /** Drives the banner and the disabled controls; see DemoSecurityConfig for what enforces it. */
+    @Value("${application.demo.enabled:false}")
+    private boolean demoMode;
+
+    @Value("${application.demo.banner:DEMO - read only}")
+    private String demoBanner;
+
     @ModelAttribute
     public void addGlobalAttributes(Model model, HttpSession session, Authentication authentication) {
 
@@ -34,6 +41,8 @@ public class GlobalModelAttributes {
         model.addAttribute("systemTimeZone", ZoneId.systemDefault().getId());
         model.addAttribute("passwordLogin", isPasswordLogin(authentication));
         model.addAttribute("absenceGraceMinutes", absenceGraceMinutes);
+        model.addAttribute("demoMode", demoMode);
+        model.addAttribute("demoBanner", demoBanner);
     }
 
     /**

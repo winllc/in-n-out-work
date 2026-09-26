@@ -53,6 +53,7 @@ public class ApplicationProperties {
     private String dutySubOrgGroupsBaseDn = "";
     private String dutySubOrgFilter = "";
     private Ldap ldap = new Ldap();
+    private Demo demo = new Demo();
     private WindowsAuth windowsAuth = new WindowsAuth();
 
     /**
@@ -83,6 +84,31 @@ public class ApplicationProperties {
         private List<String> allowedRealms = new ArrayList<>();
         /** Log the JDK's Kerberos detail while the keytab is loaded. */
         private boolean debug = false;
+    }
+
+    /**
+     * A read-only, sign-in-free view of the application, for showing it to people who have no account
+     * in the directory. Off unless switched on; see DemoSecurityConfig.
+     *
+     * <p>Turning this on removes authentication from the whole application and shows everything an
+     * administrator can see. Only ever point it at a directory and database holding data that is safe
+     * for anyone who can reach the URL to read.
+     */
+    @Data
+    public static class Demo {
+        /**
+         * Off by default, and the only thing that turns demo mode on. While it is on, nothing about the
+         * normal sign-in applies: every request is served as the demo user.
+         */
+        private boolean enabled = false;
+        /**
+         * The directory entry the demo view is presented as. Required when enabled - the application
+         * refuses to start without it rather than serve a demo with no identity behind it. Point it at a
+         * seeded demo account, never a real person.
+         */
+        private String userDn = "";
+        /** Shown in the banner on every page, so nobody mistakes the demo for the real thing. */
+        private String banner = "DEMO - read only";
     }
 
     /** Directory access tuning; see LdapConnectionConfig for the connection pool. */
