@@ -90,7 +90,8 @@ services:
       # - ./kerberos/krb5.conf:/etc/krb5.conf:ro
       # - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro
     ports:
-      - "8444:8444"
+      # Plain HTTP by default; see server.ssl in application.yml for turning TLS back on.
+      - "8181:8181"
     networks:
       - backend
 

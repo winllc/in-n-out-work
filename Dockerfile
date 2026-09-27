@@ -18,8 +18,8 @@ WORKDIR /app
 # Assuming your jar is named app.jar
 COPY build/libs/*.jar app.jar
 
-# Expose the port the app runs on
-EXPOSE 8443
+# Expose the port the app runs on (the server.port default; the 8443 here never matched it)
+EXPOSE 8181
 
 # Windows sign-in, when enabled, reads mounted files (never bake these into the image):
 #   /etc/krb5.conf                your realm and domain controllers

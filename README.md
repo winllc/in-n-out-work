@@ -96,7 +96,7 @@ check-in/out records. It talks to the containers via `docker exec`, so no local
 ./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
-Then open <https://localhost:8444>. Requires a JDK 21 on `JAVA_HOME`.
+Then open <http://localhost:8181>. Requires a JDK 21 on `JAVA_HOME`.
 
 The `local` profile is what points the app at `localhost` and the published
 ports. The defaults in `application.yml` name the compose services (`postgres`,
@@ -131,7 +131,7 @@ redirects to the application.
 | Variable | Default | Purpose |
 |---|---|---|
 | `PRODUCT_SITE_PORT` | `80` | Host port for the product page |
-| `APP_URL` | `https://$host:8444/` | Where `/launch` redirects. `$host` is whatever hostname the visitor used, so the default reaches the app on the same host. Set a full URL if the app is reached another way. |
+| `APP_URL` | `http://$host:8181/` | Where `/launch` redirects. `$host` is whatever hostname the visitor used, so the default reaches the app on the same host. Set a full URL if the app is reached another way. |
 
 The page loads nothing from other origins and runs no scripts, which lets nginx
 send a strict Content-Security-Policy; keep new markup free of inline `style`
@@ -196,6 +196,11 @@ lock and unlock sign in:
 | `Windows` | The user's Windows logon. Needs Windows sign-in enabled on the server (see [Windows authentication](#windows-authentication)). |
 | `Auto` | Windows first, then the certificate if that fails, for example on a laptop that cannot reach a domain controller. |
 
+> **The server needs TLS for this.** Certificate sign-in cannot work over plain
+> HTTP, and TLS is off in the defaults, so a server the Windows client talks to
+> must run with `SSL_ENABLED=true` (and whatever `SERVER_PORT` you publish for
+> it). Windows sign-in likewise: the ticket goes over the same connection.
+
 Install the script and register all four scheduled tasks from an **elevated**
 prompt:
 
@@ -241,6 +246,23 @@ its own values. Two ways, both without editing the file:
 |---|---|
 | The app on your host, services in compose | `--spring.profiles.active=local` (`application-local.yml`: localhost, published ports) |
 | A real deployment | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` |
+
+### Port and TLS
+
+The application listens on **8181 over plain HTTP** by default, so it starts and
+is reachable with no certificate setup.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SERVER_PORT` | `8181` | Listen port |
+| `SSL_ENABLED` | `false` | TLS, using the keystore settings already in `application.yml` |
+| `APPLICATION_BASE_URL` | `http://localhost:8181` | The URL notification emails link to |
+
+**What is off with TLS.** Client-certificate (X.509) sign-in needs TLS, so with
+the defaults the only way in is the LDAP username and password form, and the
+Windows client's logon, lock and unlock calls cannot authenticate at all. Any
+deployment relying on either needs `SSL_ENABLED=true`; nothing else changes,
+since the keystore configuration is still there.
 
 ### Application settings
 
