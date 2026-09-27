@@ -93,20 +93,26 @@ check-in/out records. It talks to the containers via `docker exec`, so no local
 ### 3. Run the app
 
 ```bash
-./gradlew bootRun
+./gradlew bootRun --args='--spring.profiles.active=local'
 ```
 
 Then open <https://localhost:8444>. Requires a JDK 21 on `JAVA_HOME`.
 
+The `local` profile is what points the app at `localhost` and the published
+ports. The defaults in `application.yml` name the compose services (`postgres`,
+`openldap`), which only resolve from inside the compose network — see
+[Configuration](#configuration).
+
 ### Everything in containers instead
 
 ```bash
-cd test && docker compose -f docker-compose.app.yml up --build
+docker compose up --build
 ```
 
-This builds the app from source and runs it alongside its own PostgreSQL and
-OpenLDAP. It reuses the same container names as `docker-compose.yml`, so do not
-run both compose files at once.
+`docker-compose.yml` in the repository root builds the app from source and runs
+it alongside its own PostgreSQL and OpenLDAP. No profile and no overrides: the
+packaged defaults already name those services. It reuses the same container
+names as `test/docker-compose.yml`, so do not run both at once.
 
 ---
 
@@ -217,6 +223,26 @@ parses in PowerShell but throws at runtime.
 ---
 
 ## Configuration
+
+### Where the database and directory are
+
+The defaults in `src/main/resources/application.yml` name the services in the
+root `docker-compose.yml`, so the containerised stack needs no overrides at all:
+
+```yaml
+url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:appdb}
+urls: ldap://${LDAP_HOST:openldap}:${LDAP_PORT:389}
+```
+
+Those names only resolve inside the compose network, so anywhere else supplies
+its own values. Two ways, both without editing the file:
+
+| Situation | How |
+|---|---|
+| The app on your host, services in compose | `--spring.profiles.active=local` (`application-local.yml`: localhost, published ports) |
+| A real deployment | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` |
+
+### Application settings
 
 Server settings live under the `application:` prefix in
 `src/main/resources/application.yml`, bound to `ApplicationProperties`. The
@@ -331,7 +357,7 @@ container:
 docker exec innout-app klist -kte /etc/in-n-out/http.keytab
 ```
 
-`test/docker-compose.app.yml` has the same settings commented out.
+`docker-compose.yml` has the same settings commented out.
 
 The server's clock must be within 5 minutes of the domain controllers'.
 
@@ -449,9 +475,12 @@ src/main/java/com/winllc/innoutwork/
   data/        DTOs, form objects, chart and report shapes
   cron/        Scheduled jobs
   security/    AppUserDetailsService, PermissionEvaluator
+docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from source
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
-test/          Docker Compose stack, seed script, local CA
+db/migrations/ Indexes and constraints Hibernate does not create; run with psql
+test/          Backing services alone, the app's Dockerfile and mounted config,
+               seed script, local CA
 ```
 
 ---

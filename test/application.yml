@@ -1,9 +1,11 @@
-# External Spring Boot config used when running the app via test/docker-compose.app.yml.
+# External Spring Boot config used when running the app via the root docker-compose.yml.
 # It is mounted into the container at /app/config/application.yml and picked up through
 # SPRING_CONFIG_ADDITIONAL_LOCATION, so its values override the packaged application.yml.
 #
-# The only differences from src/main/resources/application.yml are the datasource/ldap
-# hosts (container network names instead of localhost) and the super-user DN (a mock user).
+# It no longer has to name the datasource and directory hosts - the packaged defaults already
+# name the compose services - but it still repeats them, harmlessly and identically. What it is
+# actually for is the settings the seeded mock data needs: the super-user DNs, the attribute
+# mappings the fixture uses, and the short cron intervals that make the jobs observable.
 server:
   port: 8181
   ssl:
