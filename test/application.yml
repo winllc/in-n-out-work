@@ -5,9 +5,9 @@
 # The only differences from src/main/resources/application.yml are the datasource/ldap
 # hosts (container network names instead of localhost) and the super-user DN (a mock user).
 server:
-  port: 8444
+  port: 8181
   ssl:
-    enabled: true
+    enabled: false
     key-store: classpath:winhal.p12
     key-store-password: capassword
     key-store-type: PKCS12
