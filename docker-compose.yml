@@ -1,15 +1,17 @@
-# Full stack that also BUILDS and RUNS the application (in addition to the
-# backing services). Use this instead of docker-compose.yml when you want the
-# app itself running in a container:
+# The whole stack: PostgreSQL, OpenLDAP, and the application built from source.
 #
-#     cd test
-#     docker compose -f docker-compose.app.yml up --build
+#     docker compose up --build
 #
-# The app is built from source via test/Dockerfile (multi-stage) and connects to
-# the postgres/openldap services by their container network names.
+# The application's packaged defaults already name these services - postgres and
+# openldap - so nothing has to be overridden for the app to find them. To run the
+# app outside a container against these same services, use the local profile,
+# which swaps those names for localhost and the published ports:
 #
-# Note: this brings up its own postgres + openldap using the same container
-# names as docker-compose.yml, so don't run both compose files at the same time.
+#     docker compose up -d postgres openldap
+#     ./gradlew bootRun --args='--spring.profiles.active=local'
+#
+# Note: this uses the same container names as test/docker-compose.yml, which
+# brings up the backing services alone, so do not run both at once.
 
 services:
   postgres:
@@ -54,7 +56,7 @@ services:
     volumes:
       - openldap_data:/var/lib/ldap
       - openldap_config:/etc/ldap/slapd.d
-      - ./openldap/enable-pagination.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/enable-pagination.ldif
+      - ./test/openldap/enable-pagination.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/enable-pagination.ldif
     healthcheck:
       test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost:389 -b dc=winllc,dc=com -s base -D cn=admin,dc=winllc,dc=com -w adminpassword >/dev/null 2>&1"]
       interval: 5s
@@ -66,7 +68,7 @@ services:
 
   app:
     build:
-      context: ..
+      context: .
       dockerfile: test/Dockerfile
     container_name: innout-app
     restart: unless-stopped
@@ -78,17 +80,18 @@ services:
     environment:
       # Use the mounted test/application.yml as the config source. Additional-location
       # takes precedence over the application.yml packaged in the jar.
-      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/application.yml
+      #SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/application.yml
       # Windows sign-in for the check-in calls (see the README). Needs an AD domain, so it is off here.
       # APPLICATION_WINDOWSAUTH_ENABLED: "true"
       # APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL: HTTP/inout.winllc.com@WINLLC.COM
       # APPLICATION_WINDOWSAUTH_KEYTABLOCATION: /etc/in-n-out/http.keytab
     volumes:
-      - ./application.yml:/app/config/application.yml:ro
+      - ./test/application.yml:/app/config/application.yml:ro
       # - ./kerberos/krb5.conf:/etc/krb5.conf:ro
       # - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro
     ports:
-      - "8444:8444"
+      # Plain HTTP by default; see server.ssl in application.yml for turning TLS back on.
+      - "8181:8181"
     networks:
       - backend
 
