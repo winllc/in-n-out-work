@@ -33,8 +33,8 @@ WORKDIR /app
 
 COPY --from=build /workspace/app.jar app.jar
 
-# server.port in application.yml is 8444 (HTTPS)
-EXPOSE 8444
+# server.port in application.yml is 8181, plain HTTP unless SSL_ENABLED=true
+EXPOSE 8181
 
 ENV JAVA_OPTS=""
 ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar /app/app.jar"]

@@ -1,20 +1,15 @@
-# External Spring Boot config used when running the app via test/docker-compose.app.yml.
+# External Spring Boot config used when running the app via the root docker-compose.yml.
 # It is mounted into the container at /app/config/application.yml and picked up through
 # SPRING_CONFIG_ADDITIONAL_LOCATION, so its values override the packaged application.yml.
 #
-# The only differences from src/main/resources/application.yml are the datasource/ldap
-# hosts (container network names instead of localhost) and the super-user DN (a mock user).
-server:
-  port: 8444
-  ssl:
-    enabled: true
-    key-store: classpath:winhal.p12
-    key-store-password: capassword
-    key-store-type: PKCS12
-    client-auth: want
-    trust-store: classpath:truststore.p12
-    trust-store-password: changeit
-    trust-store-type: PKCS12
+# It no longer has to name the datasource and directory hosts - the packaged defaults already
+# name the compose services - but it still repeats them, harmlessly and identically. What it is
+# actually for is the settings the seeded mock data needs: the super-user DNs, the attribute
+# mappings the fixture uses, and the short cron intervals that make the jobs observable.
+# No server block: the packaged defaults are already plain HTTP on 8181. Repeating them here
+# would also break the switch back, since a literal value in this file beats the SSL_ENABLED
+# placeholder in the packaged file - set SSL_ENABLED and SERVER_PORT in the compose
+# environment instead, and publish the port you choose.
 
 logging:
   level:
@@ -104,7 +99,7 @@ application:
   notification-sender-email: user1@winllc-dev.com
   user-ldap-manager-id-attribute: title
   manager-ldap-id-attribute: street
-  application-base-url: https://localhost:8444
+  application-base-url: http://localhost:8181
   duty-sub-org-groups-base-dn: ou=Groups,dc=winllc,dc=com
   user-ldap-duty-sub-organization-attribute: departmentNumber
   windows-auth:
