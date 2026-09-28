@@ -265,6 +265,28 @@ application:
 account the demo is presented as. The application refuses to start without it rather than serve a
 sign-in-free instance whose every page then fails on an identity that was never configured.
 
+### Running the demo
+
+The `demo` profile turns it on and already names the seeded account, so a demo is one flag:
+
+```bash
+cd test && docker compose up -d && ./seed-mock-data.sh   # data first
+./gradlew bootRun --args='--spring.profiles.active=demo'
+```
+
+Seed the data first — the demo comes up as **`CN=Demo Admin,OU=Users,DC=winllc,DC=com`**, which
+`test/seed-mock-data.sh` creates alongside the other mock users and `test/application.yml` lists
+under `super-user-dns`. It is a full user in the fixture, with a manager, groups and check-in
+records, so the demo has something to show rather than an empty account. Signed in normally it is
+`demo` / `password`.
+
+`DemoProfileTest` ties those three files together: the profile's DN, the row in the seed script,
+and the super-user entry. Rename the account in one and that test fails rather than the demo
+quietly coming up as an unresolvable identity.
+
+For the containerised stack, uncomment `SPRING_PROFILES_ACTIVE: demo` in
+`test/docker-compose.app.yml`.
+
 | Setting | Meaning |
 |---|---|
 | `demo.enabled` | The only thing that turns demo mode on. Default `false`. |

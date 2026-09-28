@@ -79,6 +79,10 @@ services:
       # Use the mounted test/application.yml as the config source. Additional-location
       # takes precedence over the application.yml packaged in the jar.
       SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/application.yml
+      # Read-only demo mode: no sign-in, everything shown as the seeded Demo Admin. Off here.
+      # Run ./seed-mock-data.sh first, so the account it is presented as exists. Read the Demo
+      # mode section of the README before exposing an instance with this on.
+      # SPRING_PROFILES_ACTIVE: demo
       # Windows sign-in for the check-in calls (see the README). Needs an AD domain, so it is off here.
       # APPLICATION_WINDOWSAUTH_ENABLED: "true"
       # APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL: HTTP/inout.winllc.com@WINLLC.COM

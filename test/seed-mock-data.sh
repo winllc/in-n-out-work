@@ -3,7 +3,8 @@
 # seed-mock-data.sh
 #
 # Populates the local test stack (see test/docker-compose.yml) with mock data:
-#   * LDAP  (openldap container)  -> mock users under ou=Users + two groups
+#   * LDAP  (openldap container)  -> mock users under ou=Users + two groups,
+#                                  including the "Demo Admin" account demo mode presents
 #   * Postgres (postgres container) -> check_in_out_records that are
 #       - historical (previous days)
 #       - current    (today: checked in / out / away / none)
@@ -64,6 +65,10 @@ USERS=(
   "Erin Evans|Evans|erin|ABC12X|FT|WinLLC|New York|East|OUT"
   "Grace Green|Green|grace|ABC12X|FT|WinLLC|Chicago|South|IN"
   "Frank Foster|Foster|frank|ABC12Y|PT|WinLLC|Los Angeles|West|AWAY"
+  # The account demo mode is presented as (application.demo.user-dn, and a super-user in
+  # test/application.yml). Appended rather than inserted: group assignment is indexed off this
+  # array, so adding here leaves everyone else's groups exactly as they were.
+  "Demo Admin|Admin|demo|RYS34B|FT|WinLLC|New York|North|IN"
 )
 
 # Alice is everyone's manager. manager lookup = user.title -> manager.street
