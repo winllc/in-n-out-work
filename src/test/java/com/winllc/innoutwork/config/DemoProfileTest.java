@@ -27,7 +27,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DemoProfileTest {
 
     private static final Path SEED_SCRIPT = Path.of("test", "seed-mock-data.sh");
-    private static final Path CONTAINER_CONFIG = Path.of("test", "application.yml");
+    /**
+     * The packaged config, not test/application.yml: docker-compose.yml has the mounted
+     * additional-location commented out, so the container runs on this file alone.
+     */
+    private static final Path PACKAGED_CONFIG = Path.of("src", "main", "resources", "application.yml");
 
     private static ConfigurableEnvironment environment(String... profiles) {
         ConfigurableEnvironment env = new StandardEnvironment();
@@ -78,9 +82,9 @@ class DemoProfileTest {
     void theAccountTheDemoProfileNamesIsASuperUser() throws IOException {
         String userDn = environment("demo").getProperty("application.demo.user-dn");
 
-        String config = Files.readString(CONTAINER_CONFIG);
+        String config = Files.readString(PACKAGED_CONFIG);
         assertTrue(config.toLowerCase().contains(userDn.toLowerCase()),
-                "test/application.yml does not list " + userDn + " under super-user-dns, so signing "
+                "src/main/resources/application.yml does not list " + userDn + " under super-user-dns, so signing "
                         + "in as it normally would not be an administrator");
     }
 }

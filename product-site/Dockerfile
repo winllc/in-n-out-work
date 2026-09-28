@@ -5,10 +5,10 @@
 #     docker run -d -p 80:8080 in-n-out-work/product-site
 FROM nginxinc/nginx-unprivileged:1.28-alpine
 
-# Where "Open the app" sends people. The app runs on the same host on port 8444, so the default
+# Where "Open the app" sends people. The app runs on the same host on port 8181, so the default
 # keeps whatever hostname the visitor used ($host is an nginx variable, filled in per request).
 # Override with a full URL when the app is reached some other way, e.g. APP_URL=https://app.example.com/
-ENV APP_URL=https://\$host:8444/
+ENV APP_URL=http://\$host:8181/
 
 # The image renders /etc/nginx/templates/*.template into conf.d at start-up, substituting
 # environment variables such as APP_URL (nginx's own $variables are left alone).
