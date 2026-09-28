@@ -2,6 +2,7 @@ package com.winllc.innoutwork.security;
 
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.AppUserDetails;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.model.UserRecord;
 import jakarta.servlet.FilterChain;
 import org.junit.jupiter.api.AfterEach;
@@ -15,14 +16,17 @@ import org.springframework.security.authentication.TestingAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.User;
 
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -82,6 +86,81 @@ class DemoAuthenticationFilterTest {
     @Test
     void theDemoHoldsEveryRoleSoNothingIsHiddenFromTheView() throws Exception {
         stubDemoUser();
+
+        filter().doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), chain);
+
+        Set<String> granted = authorities(SecurityContextHolder.getContext().getAuthentication());
+        for (UserRoleEnum role : UserRoleEnum.values()) {
+            assertTrue(granted.contains(role.name()), "demo view is missing " + role);
+        }
+    }
+
+    @Test
+    void theDirectoryIsAskedOnceNoMatterHowManyRequestsArrive() throws Exception {
+        stubDemoUser();
+        DemoAuthenticationFilter filter = filter();
+
+        for (int i = 0; i < 5; i++) {
+            SecurityContextHolder.clearContext();
+            filter.doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), chain);
+        }
+
+        // It used to be once per request, which is why a DN the directory could not resolve logged
+        // an LDAP failure on every page: the misses are never cached, so nothing settled.
+        verify(appUserDetailsService, times(1)).loadUserByUsername(DEMO_DN);
+    }
+
+    @Test
+    void aDnTheDirectoryCannotResolveStillYieldsTheConfiguredDnAsThePrincipal() throws Exception {
+        // What AppUserDetailsService returns for a DN with no entry: a placeholder whose username is
+        // not the DN asked for, and not a DN at all.
+        when(appUserDetailsService.loadUserByUsername(DEMO_DN))
+                .thenReturn(User.withUsername("NOTFOUND").password("").roles().build());
+
+        filter().doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), chain);
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertNotNull(authentication);
+        // Controllers parse getName() as a DN, and "NOTFOUND" is not one - passing it through threw
+        // on every page that built an LdapDn from the principal.
+        assertEquals(DEMO_DN, authentication.getName());
+        assertDoesNotThrow(() -> new LdapDn(authentication.getName()));
+    }
+
+    @Test
+    void aFailingDirectoryDoesNotFailTheRequest() throws Exception {
+        when(appUserDetailsService.loadUserByUsername(DEMO_DN))
+                .thenThrow(new RuntimeException("connection refused"));
+
+        assertDoesNotThrow(() -> filter()
+                .doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), chain));
+
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        assertNotNull(authentication);
+        assertEquals(DEMO_DN, authentication.getName());
+        verify(chain).doFilter(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void afterAFailureTheDirectoryIsNotAskedAgainOnTheNextRequest() throws Exception {
+        when(appUserDetailsService.loadUserByUsername(DEMO_DN))
+                .thenThrow(new RuntimeException("connection refused"));
+        DemoAuthenticationFilter filter = filter();
+
+        for (int i = 0; i < 4; i++) {
+            SecurityContextHolder.clearContext();
+            filter.doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), chain);
+        }
+
+        // Quiet for a window rather than retrying per page; long enough that a page load does not
+        // produce a log line, short enough that seeding the account later recovers on its own.
+        verify(appUserDetailsService, times(1)).loadUserByUsername(DEMO_DN);
+    }
+
+    @Test
+    void theDemoStillHoldsEveryRoleWhenTheDirectoryHasNoEntry() throws Exception {
+        when(appUserDetailsService.loadUserByUsername(DEMO_DN))
+                .thenThrow(new RuntimeException("connection refused"));
 
         filter().doFilter(new MockHttpServletRequest(), new MockHttpServletResponse(), chain);
 

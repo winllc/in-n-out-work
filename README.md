@@ -332,6 +332,11 @@ records, so the demo has something to show rather than an empty account. Signed 
 and the super-user entry. Rename the account in one and that test fails rather than the demo
 quietly coming up as an unresolvable identity.
 
+If the account is not in the directory — the seed not run, or a different directory — the demo
+still comes up, thinner, and logs one line per minute naming the DN it could not read rather than
+an LDAP failure per page. Run the seed and it recovers on its own within the retry window; no
+restart needed.
+
 For the containerised stack, uncomment `SPRING_PROFILES_ACTIVE: demo` in the root
 `docker-compose.yml`.
 
