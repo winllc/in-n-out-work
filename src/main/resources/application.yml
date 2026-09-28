@@ -1,7 +1,15 @@
 server:
-  port: 8444
+  port: ${SERVER_PORT:8181}
   ssl:
-    enabled: true
+    # Off by default so the application starts and is reachable over plain HTTP with no
+    # certificate setup. The keystore settings below are kept ready: SSL_ENABLED=true is the
+    # whole switch back, nothing else has to change.
+    #
+    # Note what is off with it. Client-certificate (X.509) sign-in needs TLS, so with this
+    # false the only way in is the LDAP username and password form, and the Windows client's
+    # logon, lock and unlock calls - which authenticate with a certificate - cannot work.
+    # Turn it on for any deployment that relies on either.
+    enabled: ${SSL_ENABLED:false}
     key-store: classpath:winhal.p12
     key-store-password: capassword
     key-store-type: PKCS12
@@ -21,9 +29,13 @@ logging:
 
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/appdb
-    username: appuser
-    password: secret123
+    # Defaults name the services in docker-compose.yml, so "docker compose up" needs no overrides.
+    # Each part is overridable for anything else: DB_HOST=db.internal, and so on. To run the app
+    # outside a container against the compose services, use the local profile
+    # (application-local.yml), which points these at localhost and the published ports.
+    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:appdb}
+    username: ${DB_USERNAME:appuser}
+    password: ${DB_PASSWORD:secret123}
     driver-class-name: org.postgresql.Driver
   jpa:
     # Off: otherwise a web request holds its database connection until it finishes, including while it
@@ -42,10 +54,10 @@ spring:
         order_inserts: true
         order_updates: true
   ldap:
-    #urls: ldap://fid.winllc-dev.com:2389
-    urls: ldap://localhost:1389
-    username: cn=admin,dc=winllc,dc=com
-    password: adminpassword
+    # As above: the compose service name by default, overridable per part.
+    urls: ldap://${LDAP_HOST:openldap}:${LDAP_PORT:389}
+    username: ${LDAP_USERNAME:cn=admin,dc=winllc,dc=com}
+    password: ${LDAP_PASSWORD:adminpassword}
     # Timeouts in milliseconds; without them an unresponsive directory holds requests indefinitely.
     # Pooling is on by default (application.ldap.pooled); see LdapConnectionConfig.
     base-environment:
@@ -135,7 +147,7 @@ application:
   notification-sender-email: user1@winllc-dev.com
   user-ldap-manager-id-attribute: title
   manager-ldap-id-attribute: street
-  application-base-url: https://localhost:8444
+  application-base-url: ${APPLICATION_BASE_URL:http://localhost:8181}
   duty-sub-org-groups-base-dn: ou=Groups,dc=winllc,dc=com
   user-ldap-duty-sub-organization-attribute: departmentNumber
   duty-sub-org-filter: (departmentNumber=*)

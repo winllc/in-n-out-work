@@ -1,0 +1,16 @@
+# Running the application outside a container against the compose services.
+#
+#     docker compose up -d postgres openldap
+#     ./gradlew bootRun --args='--spring.profiles.active=local'
+#
+# The defaults in application.yml name the compose services (postgres, openldap), which only
+# resolve from inside the compose network. From the host the same services are reached on
+# localhost at the ports docker-compose.yml publishes: 5432 for PostgreSQL, and 1389 for LDAP
+# because 389 is privileged.
+#
+# Everything else - credentials, base DNs, timeouts - is inherited from application.yml.
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/appdb
+  ldap:
+    urls: ldap://localhost:1389
