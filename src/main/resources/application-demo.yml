@@ -1,0 +1,17 @@
+# The demo profile: demo mode, already pointed at the seeded demo account.
+#
+#     ./gradlew bootRun --args='--spring.profiles.active=demo'
+#
+# It exists so a demo needs one flag rather than two settings, and so the DN it uses is the one
+# test/seed-mock-data.sh actually creates. Turning demo mode on without this profile still has to
+# supply application.demo.user-dn; the application refuses to start otherwise, which is
+# deliberate - a demo presented as an identity the directory cannot resolve is a dead demo.
+#
+# Read what demo mode does before pointing this at anything: it removes authentication from the
+# whole application. See the Demo mode section of the README.
+application:
+  demo:
+    enabled: true
+    # Seeded by test/seed-mock-data.sh, and listed under super-user-dns in test/application.yml.
+    user-dn: "CN=Demo Admin,OU=Users,DC=winllc,DC=com"
+    banner: "DEMO - read only"

@@ -31,11 +31,6 @@
     </span>
 </div>
 
-<div th:if="${demoMode}" class="alert alert-warning alert-important m-0 rounded-0 text-center py-2" role="status">
-    <strong th:text="${demoBanner}">DEMO - read only</strong>
-    <span class="ms-1">Sign-in is off and nothing on this instance can be changed.</span>
-</div>
-
 <div class="page">
 
     <!-- Sidebar -->
@@ -185,6 +180,22 @@
     </header>
 
     <div class="page-wrapper">
+
+        <!--
+          Inside the content column on purpose. The sidebar is position:fixed (Tabler, offset by
+          the classification bar in app.css), so a banner above .page was overlapped by it and
+          pushed the page-wrapper out of line with it.
+        -->
+        <div th:if="${demoMode}" class="alert alert-warning mb-0 rounded-0 border-top-0 border-start-0 border-end-0"
+             role="status">
+            <div class="container-xl d-flex align-items-center">
+                <i class="ti ti-eye me-2" aria-hidden="true"></i>
+                <div>
+                    <strong th:text="${demoBanner}">DEMO - read only</strong>
+                    <span class="ms-1">Sign-in is off and nothing here can be changed.</span>
+                </div>
+            </div>
+        </div>
 
         <div class="page-header d-print-none">
             <div class="container-xl">

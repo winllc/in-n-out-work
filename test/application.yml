@@ -86,6 +86,10 @@ application:
     - CN=user3,OU=Users,DC=winllc,DC=com
     # Mock super-user so admin features are testable with the seeded data (alice / password)
     - CN=Alice Adams,OU=Users,DC=winllc,DC=com
+    # The account demo mode is presented as; seeded by test/seed-mock-data.sh. Demo mode grants
+    # every role anyway, so this is what makes it an administrator when signed in normally too
+    # (demo / password).
+    - CN=Demo Admin,OU=Users,DC=winllc,DC=com
   groups:
     - groups-base-dn: ou=Groups,dc=winllc,dc=com
     - groups-base-dn: ou=Companies,dc=winllc,dc=com
