@@ -313,7 +313,41 @@ application:
 account the demo is presented as. The application refuses to start without it rather than serve a
 sign-in-free instance whose every page then fails on an identity that was never configured.
 
-### Running the demo
+### The demo stack: one command
+
+`docker-compose.demo.yml` brings up the whole thing and populates it, with nothing to configure
+and nothing to sign in with:
+
+```bash
+docker compose -f docker-compose.demo.yml -p readyroom-demo up --build
+```
+
+Then browse to <http://localhost:8181>. Set `DEMO_PORT` to publish somewhere else.
+
+| Service | What it does |
+|---|---|
+| `postgres`, `openldap` | The backing services, on their own volumes and network |
+| `app` | Built from source, running with the `demo` profile |
+| `demo-seed` | Loads the mock directory and the check-in/out history, then exits |
+
+The seeder is what makes one `up` enough. It waits for the directory, loads the users and groups,
+then **waits for the application to create its tables** — Hibernate does that on first start, so
+there is nothing to insert into before then — and only then writes the records. No second command,
+and re-running the stack re-seeds cleanly, since the script deletes its own previous rows.
+
+It runs `test/seed-mock-data.sh` in a new **network mode** (`SEED_TRANSPORT=network`): the same
+script and the same data as the host path, but reaching the services over the compose network
+rather than with `docker exec`, which a container has no socket for. Its image
+(`test/Dockerfile.seed`) is `postgres:16` plus `ldap-utils`, for a `psql` and an `ldapadd`.
+
+Use `-p` as shown. Without it compose derives the project name from the directory and this stack
+would share its network and volumes with `docker-compose.yml`.
+
+> **Not a production configuration.** Demo mode removes authentication from the whole application,
+> so everything in that stack is readable by anyone who can reach the port. The mock fixture is the
+> only thing that belongs in it.
+
+### Running the demo without containers
 
 The `demo` profile turns it on and already names the seeded account, so a demo is one flag:
 
@@ -578,6 +612,7 @@ src/main/java/com/winllc/innoutwork/
   cron/        Scheduled jobs
   security/    AppUserDetailsService, PermissionEvaluator
 docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from source
+docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
 db/migrations/ Indexes and constraints Hibernate does not create; run with psql

@@ -1,0 +1,132 @@
+# A demo of the whole application from one command, with nothing to configure and nothing to
+# sign in with.
+#
+#     docker compose -f docker-compose.demo.yml -p readyroom-demo up --build
+#
+# Then browse to http://localhost:8181. There is no login: every page is served as the seeded
+# Demo Admin with every role, and nothing can be changed.
+#
+# What comes up:
+#   postgres, openldap   the backing services
+#   app                  built from source, running with the demo profile
+#   demo-seed            loads the mock directory and the check-in/out history, then exits
+#
+# The seeder waits for the directory, loads users and groups, then waits for the application to
+# create its tables (Hibernate does that on first start) before inserting the records. So one "up"
+# is genuinely enough - there is no second command to remember.
+#
+# Use -p as above. Without it, compose derives the project from the directory name and this stack
+# would share its network and volumes with docker-compose.yml.
+#
+# THIS IS NOT A PRODUCTION CONFIGURATION. Demo mode removes authentication from the whole
+# application, so everything here is readable by anyone who can reach the port. The data is the
+# mock fixture from test/seed-mock-data.sh and nothing else belongs in it.
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: demo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: appuser
+      POSTGRES_PASSWORD: secret123
+      POSTGRES_DB: appdb
+    volumes:
+      - demo_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U appuser -d appdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - demo
+
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: demo-openldap
+    restart: unless-stopped
+    environment:
+      LDAP_ORGANISATION: "WINLLC"
+      LDAP_DOMAIN: "winllc.com"
+      LDAP_ADMIN_PASSWORD: "adminpassword"
+      LDAP_CONFIG_PASSWORD: "configpassword"
+      LDAP_READONLY_USER: "true"
+      LDAP_READONLY_USER_USERNAME: "readonly"
+      LDAP_READONLY_USER_PASSWORD: "readonlypass"
+      LDAP_RFC2307BIS_SCHEMA: "true"
+      LDAP_REMOVE_CONFIG_AFTER_SETUP: "false"
+      LDAP_TLS: "false"
+      LDAP_ENABLE_PPOLICY: "true"
+    volumes:
+      - demo_openldap_data:/var/lib/ldap
+      - demo_openldap_config:/etc/ldap/slapd.d
+      - ./test/openldap/enable-pagination.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/enable-pagination.ldif
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost:389 -b dc=winllc,dc=com -s base -D cn=admin,dc=winllc,dc=com -w adminpassword >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      - demo
+
+  app:
+    build:
+      context: .
+      dockerfile: test/Dockerfile
+    container_name: demo-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openldap:
+        condition: service_healthy
+    environment:
+      # Read-only, no sign-in, presented as the seeded Demo Admin. See application-demo.yml.
+      SPRING_PROFILES_ACTIVE: demo
+      # The packaged defaults already name the postgres and openldap services, so there is
+      # nothing to override here and no mounted config file.
+      JAVA_OPTS: ""
+    ports:
+      - "${DEMO_PORT:-8181}:8181"
+    networks:
+      - demo
+
+  demo-seed:
+    build:
+      context: .
+      dockerfile: test/Dockerfile.seed
+    container_name: demo-seed
+    depends_on:
+      postgres:
+        condition: service_healthy
+      openldap:
+        condition: service_healthy
+    environment:
+      SEED_TRANSPORT: network
+      PG_HOST: postgres
+      PG_USER: appuser
+      PG_PASSWORD: secret123
+      PG_DB: appdb
+      LDAP_HOST: openldap
+      LDAP_PORT: "389"
+      LDAP_BASE_DN: dc=winllc,dc=com
+      LDAP_ADMIN_PW: adminpassword
+    # One pass: directory first, then the records once the application has made somewhere to put
+    # them. Read-only mount - the seeder has no business editing the script it runs.
+    volumes:
+      - ./test/seed-mock-data.sh:/seed/seed-mock-data.sh:ro
+    command: ["/seed/seed-mock-data.sh"]
+    # It is a one-shot job, not a service.
+    restart: "no"
+    networks:
+      - demo
+
+networks:
+  demo:
+    driver: bridge
+
+volumes:
+  demo_postgres_data:
+  demo_openldap_data:
+  demo_openldap_config:

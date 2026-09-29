@@ -28,6 +28,19 @@ PG_USER="${PG_USER:-appuser}"
 PG_DB="${PG_DB:-appdb}"
 
 LDAP_CONTAINER="${LDAP_CONTAINER:-openldap}"
+
+# How the clients reach the services:
+#   exec     (default) run psql/ldapadd inside the running containers with docker exec - what a
+#            developer on the host has, and what this script has always done.
+#   network  run them directly against PG_HOST/LDAP_HOST. The demo stack's seeder container has
+#            both clients but no docker socket, so that is the mode it uses.
+SEED_TRANSPORT="${SEED_TRANSPORT:-exec}"
+PG_HOST="${PG_HOST:-postgres}"
+PG_PASSWORD="${PG_PASSWORD:-secret123}"
+LDAP_HOST="${LDAP_HOST:-openldap}"
+LDAP_PORT="${LDAP_PORT:-389}"
+# Network mode waits for things to come up rather than failing on a race.
+WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-300}"
 LDAP_BASE_DN="${LDAP_BASE_DN:-dc=winllc,dc=com}"
 LDAP_ADMIN_DN="${LDAP_ADMIN_DN:-cn=admin,${LDAP_BASE_DN}}"
 LDAP_ADMIN_PW="${LDAP_ADMIN_PW:-adminpassword}"
@@ -36,8 +49,48 @@ USERS_OU="ou=Users,${LDAP_BASE_DN}"
 GROUPS_OU="ou=Groups,${LDAP_BASE_DN}"
 
 # ----------------------------- helpers --------------------------------------
-psql_exec() { docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DB" "$@"; }
-ldap_add()  { docker exec -i "$LDAP_CONTAINER" ldapadd -c -x -D "$LDAP_ADMIN_DN" -w "$LDAP_ADMIN_PW"; }
+psql_exec() {
+  if [[ "$SEED_TRANSPORT" == "network" ]]; then
+    PGPASSWORD="$PG_PASSWORD" psql -v ON_ERROR_STOP=1 -h "$PG_HOST" -U "$PG_USER" -d "$PG_DB" "$@"
+  else
+    docker exec -i "$PG_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$PG_USER" -d "$PG_DB" "$@"
+  fi
+}
+
+ldap_add() {
+  if [[ "$SEED_TRANSPORT" == "network" ]]; then
+    ldapadd -c -x -H "ldap://${LDAP_HOST}:${LDAP_PORT}" -D "$LDAP_ADMIN_DN" -w "$LDAP_ADMIN_PW"
+  else
+    docker exec -i "$LDAP_CONTAINER" ldapadd -c -x -D "$LDAP_ADMIN_DN" -w "$LDAP_ADMIN_PW"
+  fi
+}
+
+# Polls without ON_ERROR_STOP, so "not up yet" is not an error.
+schema_ready() {
+  PGPASSWORD="$PG_PASSWORD" psql -tAqX -h "$PG_HOST" -U "$PG_USER" -d "$PG_DB" \
+    -c "SELECT to_regclass('public.check_in_out_records') IS NOT NULL" 2>/dev/null | grep -qx "t"
+}
+
+ldap_ready() {
+  ldapsearch -x -H "ldap://${LDAP_HOST}:${LDAP_PORT}" -b "$LDAP_BASE_DN" -s base \
+    -D "$LDAP_ADMIN_DN" -w "$LDAP_ADMIN_PW" >/dev/null 2>&1
+}
+
+# wait_for <description> <predicate>
+wait_for() {
+  local what="$1" predicate="$2" waited=0
+  until "$predicate"; do
+    if (( waited >= WAIT_TIMEOUT_SECONDS )); then
+      echo "ERROR: gave up waiting ${WAIT_TIMEOUT_SECONDS}s for ${what}." >&2
+      exit 1
+    fi
+    if (( waited % 15 == 0 )); then
+      echo "    waiting for ${what}... (${waited}s)"
+    fi
+    sleep 3
+    waited=$((waited + 3))
+  done
+}
 
 require_container() {
   local name="$1"
@@ -48,9 +101,17 @@ require_container() {
   fi
 }
 
-command -v docker >/dev/null 2>&1 || { echo "ERROR: docker is required but not found on PATH." >&2; exit 1; }
-require_container "$PG_CONTAINER"
-require_container "$LDAP_CONTAINER"
+if [[ "$SEED_TRANSPORT" == "network" ]]; then
+  for tool in psql ldapadd ldapsearch; do
+    command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: $tool is required in network mode." >&2; exit 1; }
+  done
+  echo "==> Seeding over the network (ldap://${LDAP_HOST}:${LDAP_PORT}, postgres ${PG_HOST})"
+  wait_for "the directory at ${LDAP_HOST}:${LDAP_PORT}" ldap_ready
+else
+  command -v docker >/dev/null 2>&1 || { echo "ERROR: docker is required but not found on PATH." >&2; exit 1; }
+  require_container "$PG_CONTAINER"
+  require_container "$LDAP_CONTAINER"
+fi
 
 # ----------------------------- mock users -----------------------------------
 # Each row: cn|sn|uid|departmentNumber|employeeType|o|l|branch|today_status
@@ -231,6 +292,13 @@ for row in "${USERS[@]}"; do
   emit "$dn" "CHECK_OUT" "$co_fut" "$etype" "$org" "$loc" "$branch" "$dept" "$uid"
 done
 
+if [[ "$SEED_TRANSPORT" == "network" ]]; then
+  # Hibernate creates the tables (ddl-auto=update), so there is nothing to insert into until the
+  # application has started at least once. The note at the end of this script is the manual
+  # equivalent; in the demo stack this is what makes one "up" enough.
+  wait_for "the application to create its tables" schema_ready
+fi
+
 echo "==> Inserting check-in/out records into Postgres (${PG_CONTAINER})..."
 psql_exec <"$SQL_FILE" >/dev/null
 
@@ -254,8 +322,10 @@ for g in "${!MOCK_GROUPS[@]}"; do
   [[ -n "$members" ]] && echo "  ${MOCK_GROUPS[$g]}: ${members%, }"
 done
 echo "Org values:   RYS34B, RYS34C, RYS35A, ABC12X, ABC12Y"
-echo "Today status: IN=Alice,Dave,Grace  OUT=Bob,Erin  AWAY=Heidi,Frank  NONE=Carol"
+echo "Today status: IN=Alice,Dave,Grace,Demo Admin  OUT=Bob,Erin  AWAY=Heidi,Frank  NONE=Carol"
 echo
-echo "Note: user_records rows are created lazily by the app when a user is looked up,"
-echo "      so start the app (which also creates the DB schema via ddl-auto=update)"
-echo "      at least once before running this if the tables don't exist yet."
+echo "Note: user_records rows are created lazily by the app when a user is looked up."
+if [[ "$SEED_TRANSPORT" != "network" ]]; then
+  echo "      Start the app (which creates the DB schema via ddl-auto=update) at least once"
+  echo "      before running this if the tables don't exist yet. Network mode waits instead."
+fi
