@@ -343,6 +343,15 @@ rather than with `docker exec`, which a container has no socket for. Its image
 Use `-p` as shown. Without it compose derives the project name from the directory and this stack
 would share its network and volumes with `docker-compose.yml`.
 
+If the application comes up empty, the seeder is what to look at. It verifies its own work — it
+counts the users in the directory and the rows in the database, and stops with the reason rather
+than reporting success over an empty directory — but a plain `up` does not make that obvious,
+because the other services carry on:
+
+```bash
+docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed
+```
+
 > **Not a production configuration.** Demo mode removes authentication from the whole application,
 > so everything in that stack is readable by anyone who can reach the port. The mock fixture is the
 > only thing that belongs in it.

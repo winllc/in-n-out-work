@@ -18,6 +18,12 @@
 # Use -p as above. Without it, compose derives the project from the directory name and this stack
 # would share its network and volumes with docker-compose.yml.
 #
+# If the application comes up with no data in it, the seeder is what to look at - it verifies its
+# own work and exits non-zero with the reason, which a plain "up" does not make obvious because the
+# other services keep running:
+#
+#     docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed
+#
 # THIS IS NOT A PRODUCTION CONFIGURATION. Demo mode removes authentication from the whole
 # application, so everything here is readable by anyone who can reach the port. The data is the
 # mock fixture from test/seed-mock-data.sh and nothing else belongs in it.
