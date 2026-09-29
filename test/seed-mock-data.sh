@@ -71,6 +71,20 @@ schema_ready() {
     -c "SELECT to_regclass('public.check_in_out_records') IS NOT NULL" 2>/dev/null | grep -qx "t"
 }
 
+ldap_search() {
+  if [[ "$SEED_TRANSPORT" == "network" ]]; then
+    ldapsearch -x -LLL -H "ldap://${LDAP_HOST}:${LDAP_PORT}" -D "$LDAP_ADMIN_DN" -w "$LDAP_ADMIN_PW" "$@"
+  else
+    docker exec -i "$LDAP_CONTAINER" ldapsearch -x -LLL -D "$LDAP_ADMIN_DN" -w "$LDAP_ADMIN_PW" "$@"
+  fi
+}
+
+# How many of the mock users are actually in the directory right now.
+ldap_user_count() {
+  ldap_search -b "$USERS_OU" -s one "(objectClass=inetOrgPerson)" dn 2>/dev/null \
+    | grep -c "^dn: " || true
+}
+
 ldap_ready() {
   ldapsearch -x -H "ldap://${LDAP_HOST}:${LDAP_PORT}" -b "$LDAP_BASE_DN" -s base \
     -D "$LDAP_ADMIN_DN" -w "$LDAP_ADMIN_PW" >/dev/null 2>&1
@@ -234,8 +248,31 @@ LDIF
 }
 
 assign_groups
-echo "==> Loading mock users and groups into LDAP (${LDAP_CONTAINER})..."
-build_ldif | ldap_add || true   # -c already continues; tolerate 'already exists'
+echo "==> Loading mock users and groups into LDAP (${LDAP_HOST:-$LDAP_CONTAINER})..."
+
+LDAP_LOG="$(mktemp)"
+trap 'rm -f "$LDAP_LOG"' EXIT
+
+# ldapadd -c keeps going past entries that already exist and still exits non-zero, so its exit
+# code cannot tell "already there" from "every entry rejected". This used to be "|| true", which
+# discarded the output as well - a directory that rejected the whole load looked identical to a
+# successful one, and the script went on to print a happy summary over an empty directory. So:
+# show anything that is not an "already exists", then check the directory rather than trust it.
+if ! build_ldif | ldap_add >"$LDAP_LOG" 2>&1; then
+  if grep -qvi "already exists" "$LDAP_LOG"; then
+    echo "    ldapadd reported:"
+    grep -vi "already exists" "$LDAP_LOG" | sed 's/^/      /'
+  fi
+fi
+
+LOADED_USERS="$(ldap_user_count)"
+if (( LOADED_USERS < ${#USERS[@]} )); then
+  echo "ERROR: the directory holds ${LOADED_USERS} of the ${#USERS[@]} mock users under ${USERS_OU}." >&2
+  echo "       Nothing else will look right, so stopping here. ldapadd said:" >&2
+  sed 's/^/       /' "$LDAP_LOG" >&2
+  exit 1
+fi
+echo "    ${LOADED_USERS} users present under ${USERS_OU}"
 
 # ----------------------------- build check-in/out SQL -----------------------
 # Timestamps are computed in SQL with now()/date_trunc so they stay timezone
@@ -299,8 +336,16 @@ if [[ "$SEED_TRANSPORT" == "network" ]]; then
   wait_for "the application to create its tables" schema_ready
 fi
 
-echo "==> Inserting check-in/out records into Postgres (${PG_CONTAINER})..."
+echo "==> Inserting check-in/out records into Postgres (${PG_HOST:-$PG_CONTAINER})..."
 psql_exec <"$SQL_FILE" >/dev/null
+
+SEEDED_ROWS="$(psql_exec -tAqX -c \
+  "SELECT count(*) FROM check_in_out_records WHERE session_id LIKE 'mock-%'" | tr -d '[:space:]')"
+if [[ "${SEEDED_ROWS:-0}" == "0" ]]; then
+  echo "ERROR: no mock check-in/out rows are in the database after inserting ${SEQ} of them." >&2
+  exit 1
+fi
+echo "    ${SEEDED_ROWS} check-in/out rows present"
 
 # ----------------------------- summary --------------------------------------
 echo "==> Done. Summary:"
