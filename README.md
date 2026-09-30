@@ -322,11 +322,30 @@ and nothing to sign in with:
 docker compose -f docker-compose.demo.yml -p readyroom-demo up --build
 ```
 
-Then browse to <http://localhost:8181>. Set `DEMO_PORT` to publish somewhere else.
+**Nothing is published to the host.** The application listens on 8181 inside the demo network only.
+Demo mode removes authentication, so binding it to the host by default would put an unauthenticated
+copy of the application on the machine's interfaces for anything that can reach them — exposing it
+should be a decision, not a default.
+
+To reach it, put something in front of it on the same network, or add a small override file:
+
+```yaml
+# demo-ports.yml
+services:
+  app:
+    ports: ["8181:8181"]
+```
+
+```bash
+docker compose -f docker-compose.demo.yml -f demo-ports.yml -p readyroom-demo up --build
+```
+
+Then <http://localhost:8181>. Bind to a single interface (`"127.0.0.1:8181:8181"`) if the machine is
+reachable by others.
 
 | Service | What it does |
 |---|---|
-| `postgres`, `openldap` | The backing services, on their own volumes and network |
+| `postgres`, `openldap` | The backing services, on their own volumes and network, unpublished |
 | `app` | Built from source, running with the `demo` profile |
 | `demo-seed-ldap` | Loads the mock users and groups into the directory, then exits |
 | `demo-seed-db` | Loads the check-in/out history once the tables exist, then exits |

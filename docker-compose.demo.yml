@@ -3,8 +3,20 @@
 #
 #     docker compose -f docker-compose.demo.yml -p readyroom-demo up --build
 #
-# Then browse to http://localhost:8181. There is no login: every page is served as the seeded
-# Demo Admin with every role, and nothing can be changed.
+# There is no login: every page is served as the seeded Demo Admin with every role, and nothing can
+# be changed.
+#
+# Nothing is published to the host. The application listens on 8181 inside the demo network only,
+# because demo mode removes authentication and binding that to the host by default would expose an
+# unauthenticated copy of it to anything that can reach the machine. Reach it on purpose instead,
+# either by putting something in front of it on this network, or with an override file:
+#
+#     # demo-ports.yml
+#     services:
+#       app:
+#         ports: ["8181:8181"]
+#
+#     docker compose -f docker-compose.demo.yml -f demo-ports.yml -p readyroom-demo up --build
 #
 # What comes up:
 #   postgres, openldap   the backing services
@@ -95,8 +107,12 @@ services:
       # The packaged defaults already name the postgres and openldap services, so there is
       # nothing to override here and no mounted config file.
       JAVA_OPTS: ""
-    ports:
-      - "${DEMO_PORT:-8181}:8181"
+    # No port published to the host. Demo mode has no authentication, so binding it to the host by
+    # default would put an unauthenticated copy of the application on the machine's interfaces for
+    # anything that can reach them. It listens on 8181 inside the demo network, which is where
+    # something in front of it - or a deliberate override, see the header - reaches it.
+    expose:
+      - "8181"
     networks:
       - demo
 
