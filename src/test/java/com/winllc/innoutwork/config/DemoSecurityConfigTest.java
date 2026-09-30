@@ -1,10 +1,8 @@
 package com.winllc.innoutwork.config;
 
-import com.winllc.innoutwork.constant.UserRoleEnum;
-import com.winllc.innoutwork.data.AppUserDetails;
-import com.winllc.innoutwork.model.UserRecord;
+import com.winllc.innoutwork.controller.LoginController;
+import com.winllc.innoutwork.controller.advice.GlobalModelAttributes;
 import com.winllc.innoutwork.security.AppUserDetailsService;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -12,6 +10,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
@@ -21,11 +20,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -35,22 +32,33 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * Demo mode's security boundary.
  *
- * <p>Two properties matter and neither is visible in a template: a request with no credentials is
- * served, and a request that could change something is not. The second is what makes "read only"
- * true - the disabled buttons in the layout are a courtesy, and anyone with curl ignores them.
+ * <p>Three things matter and none is visible in a template: the login page still stands in front of
+ * the application, a request that could change something is refused, and the sign-in post is not
+ * caught by that refusal - without which the published credentials would be unusable and the demo
+ * would have no way in at all.
  */
 @WebMvcTest(controllers = DemoSecurityConfigTest.DemoProbeController.class)
 // The controller is imported as well: @SpringBootApplication lives in this package, which is not a
 // parent of the tests, so a @WebMvcTest slice registers no controllers by itself (see README).
 @Import({DemoSecurityConfig.class, DemoSecurityConfigTest.DemoTestConfig.class,
-        DemoSecurityConfigTest.DemoProbeController.class})
+        DemoSecurityConfigTest.DemoProbeController.class, LoginController.class,
+        GlobalModelAttributes.class})
+// Set as properties rather than built in DemoTestConfig: ApplicationProperties is
+// @ConfigurationProperties, so Boot binds the environment onto whatever instance the bean method
+// returns and an "accounts: []" in application.yml would overwrite a list assembled in Java. This
+// also exercises the binding the real configuration goes through.
 @TestPropertySource(properties = {
         "application.demo.enabled=true",
-        "application.demo.user-dn=cn=Demo User,ou=Users,dc=winllc,dc=com"
+        "application.demo.accounts[0].role=Administrator",
+        "application.demo.accounts[0].username=demo",
+        "application.demo.accounts[0].password=password",
+        "application.demo.accounts[0].description=Everything"
 })
 class DemoSecurityConfigTest {
 
-    private static final String DEMO_DN = "cn=Demo User,ou=Users,dc=winllc,dc=com";
+    /** A signed-in demo visitor: read-only is the chain's job, not a matter of what they hold. */
+    private static final org.springframework.test.web.servlet.request.RequestPostProcessor SIGNED_IN =
+            user("demo").authorities(new org.springframework.security.core.authority.SimpleGrantedAuthority("ADMIN"));
 
     @Autowired
     private MockMvc mockMvc;
@@ -58,76 +66,79 @@ class DemoSecurityConfigTest {
     @MockitoBean
     private AppUserDetailsService appUserDetailsService;
 
-    @BeforeEach
-    void setUp() {
-        UserRecord record = new UserRecord();
-        record.setDn(DEMO_DN);
-        AppUserDetails details = new AppUserDetails(record);
-        details.addAuthority(UserRoleEnum.USER.name());
+    @MockitoBean
+    private LdapAuthenticationProvider ldapAuthenticationProvider;
 
-        when(appUserDetailsService.loadUserByUsername(anyString())).thenReturn(details);
+    @Test
+    void theLoginPageIsServedWithoutCredentials() throws Exception {
+        mockMvc.perform(get("/login")).andExpect(status().isOk());
+    }
+
+    /** Demo mode publishes the credentials; it does not remove the sign-in. */
+    @Test
+    void anApplicationPageStillRequiresSigningIn() throws Exception {
+        mockMvc.perform(get("/demo-probe")).andExpect(status().is3xxRedirection());
     }
 
     @Test
-    void aPageIsServedWithNoCredentialsAtAll() throws Exception {
-        mockMvc.perform(get("/demo-probe"))
-                .andExpect(status().isOk());
+    void aSignedInVisitorCanReadPages() throws Exception {
+        mockMvc.perform(get("/demo-probe").with(SIGNED_IN)).andExpect(status().isOk());
     }
 
+    /**
+     * The read-only rule refuses posts by method for every path, so it would refuse the sign-in too
+     * unless it is let through first - and then there would be no way into the demo.
+     */
+    /** The point of the tile: a visitor with no account can see what to sign in with. */
     @Test
-    void theRequestArrivesAsTheDemoUserWithAdministratorRights() throws Exception {
-        mockMvc.perform(get("/demo-probe"))
+    void theLoginPageListsTheConfiguredAccounts() throws Exception {
+        String page = mockMvc.perform(get("/login"))
                 .andExpect(status().isOk())
-                .andExpect(result -> assertEquals(DEMO_DN + ":true",
-                        result.getResponse().getContentAsString()));
+                .andReturn().getResponse().getContentAsString();
+
+        assertTrue(page.contains("Administrator"), "the role is not on the login page");
+        assertTrue(page.contains("demo"), "the username is not on the login page");
+        assertTrue(page.contains("password"), "the password is not on the login page");
     }
 
     @Test
-    void postIsRefused() throws Exception {
-        mockMvc.perform(post("/demo-probe")).andExpect(status().isForbidden());
+    void theSignInPostIsNotCaughtByTheReadOnlyRule() throws Exception {
+        mockMvc.perform(post("/login").param("username", "demo").param("password", "password"))
+                .andExpect(result -> assertNotEquals(403, result.getResponse().getStatus(),
+                        "the login post must not be refused, or the published credentials are unusable"));
+    }
+
+    @Test
+    void theSignOutPostIsNotCaughtEither() throws Exception {
+        mockMvc.perform(post("/logout"))
+                .andExpect(result -> assertNotEquals(403, result.getResponse().getStatus()));
+    }
+
+    @Test
+    void postIsRefusedEvenForASignedInVisitor() throws Exception {
+        mockMvc.perform(post("/demo-probe").with(SIGNED_IN)).andExpect(status().isForbidden());
     }
 
     @Test
     void putIsRefused() throws Exception {
-        mockMvc.perform(put("/demo-probe")).andExpect(status().isForbidden());
+        mockMvc.perform(put("/demo-probe").with(SIGNED_IN)).andExpect(status().isForbidden());
     }
 
     @Test
     void deleteIsRefused() throws Exception {
-        mockMvc.perform(delete("/demo-probe")).andExpect(status().isForbidden());
+        mockMvc.perform(delete("/demo-probe").with(SIGNED_IN)).andExpect(status().isForbidden());
     }
 
-    /**
-     * A path nobody thought to hide is still refused, because the rule is by method rather than by
-     * path. This one has no controller behind it at all.
-     */
+    /** A path nobody thought to hide is refused too, because the rule is by method, not by path. */
     @Test
     void anUnknownWritePathIsRefusedRatherThanReaching404() throws Exception {
-        mockMvc.perform(post("/some/endpoint/added/later")).andExpect(status().isForbidden());
+        mockMvc.perform(post("/some/endpoint/added/later").with(SIGNED_IN)).andExpect(status().isForbidden());
     }
 
-    /** The demo is unauthenticated and usually public; actuator exposes env in this application. */
+    /** A demo is usually reachable by people who should not read the configuration. */
     @Test
     void actuatorIsRefusedApartFromHealth() throws Exception {
-        mockMvc.perform(get("/actuator/env")).andExpect(status().isForbidden());
-    }
-
-    @Test
-    void enablingDemoModeWithoutAUserDnRefusesToStart() {
-        ApplicationProperties properties = new ApplicationProperties();
-        properties.getDemo().setEnabled(true);
-        properties.getDemo().setUserDn("   ");
-
-        IllegalStateException thrown = assertThrows(IllegalStateException.class,
-                () -> new DemoSecurityConfig()
-                        .demoAuthenticationFilter(mock(AppUserDetailsService.class), properties));
-
-        assertEquals(true, thrown.getMessage().contains("application.demo.user-dn"));
-    }
-
-    @Test
-    void demoModeIsOffUnlessAskedFor() {
-        assertEquals(false, new ApplicationProperties().getDemo().isEnabled());
+        mockMvc.perform(get("/actuator/env").with(SIGNED_IN)).andExpect(status().isForbidden());
     }
 
     @Configuration
@@ -136,22 +147,17 @@ class DemoSecurityConfigTest {
 
         @Bean
         ApplicationProperties applicationProperties() {
-            ApplicationProperties properties = new ApplicationProperties();
-            properties.getDemo().setEnabled(true);
-            properties.getDemo().setUserDn(DEMO_DN);
-            return properties;
+            // Bound from the properties above by Boot's @ConfigurationProperties processing.
+            return new ApplicationProperties();
         }
     }
 
-    /** Stands in for the real pages: echoes who the request arrived as, and offers write methods. */
     @RestController
     static class DemoProbeController {
 
         @GetMapping("/demo-probe")
-        String read(org.springframework.security.core.Authentication authentication) {
-            boolean admin = authentication.getAuthorities().stream()
-                    .anyMatch(a -> a.getAuthority().equals(UserRoleEnum.ADMIN.name()));
-            return authentication.getName() + ":" + admin;
+        String read() {
+            return "read";
         }
 
         @PostMapping("/demo-probe")

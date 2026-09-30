@@ -18,7 +18,9 @@
         <div class="card card-md">
             <div class="card-body">
                 <h2 class="h2 text-center mb-1">Sign in</h2>
-                <p class="text-secondary text-center mb-4">Use your directory credentials</p>
+                <p class="text-secondary text-center mb-4"
+                   th:text="${demoMode == true} ? 'Pick a role below, or use your directory credentials'
+                                        : 'Use your directory credentials'">Use your directory credentials</p>
 
                 <div th:if="${param.error}" class="alert alert-danger" role="alert">
                     Invalid username or password.
@@ -43,8 +45,51 @@
                     </div>
                 </form>
             </div>
+
+            <!--
+              Demo accounts. Rendered only when demo mode is on: GlobalModelAttributes passes an empty
+              list otherwise, so a deployment that did not ask to publish credentials cannot show them
+              even if some are configured. Clicking a row fills the form rather than submitting it, so
+              nothing signs in without the visitor pressing the button.
+            -->
+            <div th:if="${demoAccounts != null and !demoAccounts.isEmpty()}" class="card-body border-top">
+                <div class="d-flex align-items-center mb-2">
+                    <span class="badge bg-warning-lt me-2" th:text="${demoBanner}">DEMO</span>
+                    <span class="text-secondary small">Sign in as any of these to look around</span>
+                </div>
+
+                <div class="list-group list-group-flush">
+                    <button th:each="account : ${demoAccounts}" type="button"
+                            class="list-group-item list-group-item-action px-0 border-0 bg-transparent"
+                            th:attr="data-username=${account.username},data-password=${account.password}"
+                            onclick="fillDemoCredentials(this)">
+                        <div class="d-flex align-items-baseline">
+                            <strong class="me-auto" th:text="${account.role}">Role</strong>
+                            <code class="ms-2" th:text="${account.username}">user</code>
+                            <span class="text-secondary mx-1">/</span>
+                            <code th:text="${account.password}">password</code>
+                        </div>
+                        <div class="text-secondary small text-start" th:if="${!#strings.isEmpty(account.description)}"
+                             th:text="${account.description}">What this role sees</div>
+                    </button>
+                </div>
+
+                <p class="text-secondary small mb-0 mt-2">
+                    Nothing in this demo can be changed, whichever role you choose.
+                </p>
+            </div>
         </div>
     </div>
 </div>
+
+<script th:if="${demoMode == true}">
+    // Fills the form from a clicked row and focuses the button, so signing in stays a deliberate
+    // press. Submitting here instead would make a stray click sign someone in as an administrator.
+    function fillDemoCredentials(row) {
+        document.getElementById("username").value = row.dataset.username;
+        document.getElementById("password").value = row.dataset.password;
+        document.querySelector("button[type=submit]").focus();
+    }
+</script>
 </body>
 </html>

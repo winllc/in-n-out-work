@@ -1,17 +1,33 @@
-# The demo profile: demo mode, already pointed at the seeded demo account.
+# The demo profile: read-only, with the seeded accounts published on the login page.
 #
 #     ./gradlew bootRun --args='--spring.profiles.active=demo'
 #
-# It exists so a demo needs one flag rather than two settings, and so the DN it uses is the one
-# test/seed-mock-data.sh actually creates. Turning demo mode on without this profile still has to
-# supply application.demo.user-dn; the application refuses to start otherwise, which is
-# deliberate - a demo presented as an identity the directory cannot resolve is a dead demo.
+# Visitors still sign in. This profile does not change who can do what - the directory and
+# super-user-dns decide that as always - it turns off writing and lists a few accounts so someone
+# with no account of their own can pick a role and look around as it.
 #
-# Read what demo mode does before pointing this at anything: it removes authentication from the
-# whole application. See the Demo mode section of the README.
+# The accounts below are the ones test/seed-mock-data.sh creates, and the roles are what those
+# accounts genuinely hold in the seeded data:
+#   demo    listed under super-user-dns in application.yml, so ADMIN
+#   alice   given user_role MANAGER by the seed script, and the directory manager of everyone else
+#   bob     nothing special, so a plain USER
+#
+# Publishing credentials makes everything those accounts can see readable by anyone who can reach
+# the login page. Only ever point this at seeded demo data. See the Demo mode section of the README.
 application:
   demo:
     enabled: true
-    # Seeded by test/seed-mock-data.sh, and listed under super-user-dns in test/application.yml.
-    user-dn: "CN=Demo Admin,OU=Users,DC=winllc,DC=com"
     banner: "DEMO - read only"
+    accounts:
+      - role: "Administrator"
+        username: "demo"
+        password: "password"
+        description: "Everything: all groups, settings, reports and the org chart"
+      - role: "Manager"
+        username: "alice"
+        password: "password"
+        description: "Her own day, her direct reports, and the groups she manages"
+      - role: "User"
+        username: "bob"
+        password: "password"
+        description: "His own attendance and profile only"
