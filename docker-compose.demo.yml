@@ -9,11 +9,13 @@
 # What comes up:
 #   postgres, openldap   the backing services
 #   app                  built from source, running with the demo profile
-#   demo-seed            loads the mock directory and the check-in/out history, then exits
+#   demo-seed-ldap       loads the mock users and groups into the directory, then exits
+#   demo-seed-db         loads the check-in/out history once the tables exist, then exits
 #
-# The seeder waits for the directory, loads users and groups, then waits for the application to
-# create its tables (Hibernate does that on first start) before inserting the records. So one "up"
-# is genuinely enough - there is no second command to remember.
+# The seeders wait for what they need - the directory for one, the application's tables for the
+# other, since Hibernate creates those on first start - so one "up" is genuinely enough and there
+# is no second command to remember. Both verify what they loaded and exit non-zero if it is not
+# there.
 #
 # Use -p as above. Without it, compose derives the project from the directory name and this stack
 # would share its network and volumes with docker-compose.yml.
@@ -22,7 +24,7 @@
 # own work and exits non-zero with the reason, which a plain "up" does not make obvious because the
 # other services keep running:
 #
-#     docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed
+#     docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed-ldap demo-seed-db
 #
 # THIS IS NOT A PRODUCTION CONFIGURATION. Demo mode removes authentication from the whole
 # application, so everything here is readable by anyone who can reach the port. The data is the
@@ -98,32 +100,49 @@ services:
     networks:
       - demo
 
-  demo-seed:
-    build:
-      context: .
-      dockerfile: test/Dockerfile.seed
-    container_name: demo-seed
+  # Two seeders rather than one, because the image that already ships ldapadd and the image that
+  # already ships psql are different ones. Splitting means the demo builds no seeder image of its
+  # own and pulls nothing extra - the alternative was a Dockerfile that apt-installed ldap-utils,
+  # which needs Debian mirrors reachable at build time. The halves are independent: the user list
+  # is fixed and the group assignment is seeded, so each derives the same data.
+  demo-seed-ldap:
+    image: osixia/openldap:1.5.0
+    container_name: demo-seed-ldap
     depends_on:
-      postgres:
-        condition: service_healthy
       openldap:
         condition: service_healthy
     environment:
       SEED_TRANSPORT: network
-      PG_HOST: postgres
-      PG_USER: appuser
-      PG_PASSWORD: secret123
-      PG_DB: appdb
+      SEED_ONLY: ldap
       LDAP_HOST: openldap
       LDAP_PORT: "389"
       LDAP_BASE_DN: dc=winllc,dc=com
       LDAP_ADMIN_PW: adminpassword
-    # One pass: directory first, then the records once the application has made somewhere to put
-    # them. Read-only mount - the seeder has no business editing the script it runs.
     volumes:
       - ./test/seed-mock-data.sh:/seed/seed-mock-data.sh:ro
-    command: ["/seed/seed-mock-data.sh"]
-    # It is a one-shot job, not a service.
+    entrypoint: ["/bin/bash", "/seed/seed-mock-data.sh"]
+    restart: "no"
+    networks:
+      - demo
+
+  demo-seed-db:
+    image: postgres:16
+    container_name: demo-seed-db
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SEED_TRANSPORT: network
+      SEED_ONLY: db
+      PG_HOST: postgres
+      PG_USER: appuser
+      PG_PASSWORD: secret123
+      PG_DB: appdb
+    volumes:
+      - ./test/seed-mock-data.sh:/seed/seed-mock-data.sh:ro
+    # Waits for the application to create its tables before inserting - Hibernate does that on
+    # first start, so there is nowhere to put the records until then.
+    entrypoint: ["/bin/bash", "/seed/seed-mock-data.sh"]
     restart: "no"
     networks:
       - demo

@@ -328,17 +328,20 @@ Then browse to <http://localhost:8181>. Set `DEMO_PORT` to publish somewhere els
 |---|---|
 | `postgres`, `openldap` | The backing services, on their own volumes and network |
 | `app` | Built from source, running with the `demo` profile |
-| `demo-seed` | Loads the mock directory and the check-in/out history, then exits |
+| `demo-seed-ldap` | Loads the mock users and groups into the directory, then exits |
+| `demo-seed-db` | Loads the check-in/out history once the tables exist, then exits |
 
-The seeder is what makes one `up` enough. It waits for the directory, loads the users and groups,
-then **waits for the application to create its tables** — Hibernate does that on first start, so
-there is nothing to insert into before then — and only then writes the records. No second command,
-and re-running the stack re-seeds cleanly, since the script deletes its own previous rows.
+The seeders are what make one `up` enough. One waits for the directory and loads the users and
+groups; the other **waits for the application to create its tables** — Hibernate does that on first
+start, so there is nothing to insert into before then — and only then writes the records. No second
+command, and re-running re-seeds cleanly: the LDAP load tolerates entries that already exist and the
+SQL deletes its own previous rows.
 
-It runs `test/seed-mock-data.sh` in a new **network mode** (`SEED_TRANSPORT=network`): the same
-script and the same data as the host path, but reaching the services over the compose network
-rather than with `docker exec`, which a container has no socket for. Its image
-(`test/Dockerfile.seed`) is `postgres:16` plus `ldap-utils`, for a `psql` and an `ldapadd`.
+Both run `test/seed-mock-data.sh` in a **network mode** (`SEED_TRANSPORT=network`): the same script
+and the same data as the host path, but reaching the services over the compose network rather than
+with `docker exec`, which a container has no socket for. They are two services because
+`SEED_ONLY=ldap` needs an image with `ldapadd` and `SEED_ONLY=db` needs one with `psql`, and the
+stack already pulls both — so the demo builds no seeder image of its own and pulls nothing extra.
 
 Use `-p` as shown. Without it compose derives the project name from the directory and this stack
 would share its network and volumes with `docker-compose.yml`.
@@ -349,7 +352,7 @@ than reporting success over an empty directory — but a plain `up` does not mak
 because the other services carry on:
 
 ```bash
-docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed
+docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed-ldap demo-seed-db
 ```
 
 > **Not a production configuration.** Demo mode removes authentication from the whole application,
