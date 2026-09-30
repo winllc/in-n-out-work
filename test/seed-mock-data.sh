@@ -41,6 +41,29 @@ LDAP_HOST="${LDAP_HOST:-openldap}"
 LDAP_PORT="${LDAP_PORT:-389}"
 # Network mode waits for things to come up rather than failing on a race.
 WAIT_TIMEOUT_SECONDS="${WAIT_TIMEOUT_SECONDS:-300}"
+# Which half to run: all (default), ldap, or db. The demo stack runs them as two services,
+# because the image that already has ldapadd and the image that already has psql are different
+# ones - splitting is what lets it use images it already needs instead of building a seeder with
+# both clients in it.
+#
+# Safe to split because the halves do not share anything: the user list is fixed, and the records
+# the db half writes are derived from that list alone. Group membership is NOT reproducible across
+# the two - RANDOM is seeded, but bash 5.0 and 5.2 produce different sequences from the same seed,
+# and the two images do not carry the same bash. Only the ldap half creates the groups, so that
+# does not matter, but it is why the summary below only reports them in the half that made them.
+SEED_ONLY="${SEED_ONLY:-all}"
+case "$SEED_ONLY" in
+  all|ldap|db) ;;
+  *) echo "ERROR: SEED_ONLY must be all, ldap or db (got '${SEED_ONLY}')." >&2; exit 1 ;;
+esac
+do_ldap() { [[ "$SEED_ONLY" == "all" || "$SEED_ONLY" == "ldap" ]]; }
+do_db()   { [[ "$SEED_ONLY" == "all" || "$SEED_ONLY" == "db" ]]; }
+
+# Declared up front and cleaned up by one trap: a second "trap ... EXIT" replaces the first
+# instead of adding to it, so installing one per temp file left the earlier one leaking.
+LDAP_LOG=""
+SQL_FILE=""
+trap 'rm -f "$LDAP_LOG" "$SQL_FILE"' EXIT
 LDAP_BASE_DN="${LDAP_BASE_DN:-dc=winllc,dc=com}"
 LDAP_ADMIN_DN="${LDAP_ADMIN_DN:-cn=admin,${LDAP_BASE_DN}}"
 LDAP_ADMIN_PW="${LDAP_ADMIN_PW:-adminpassword}"
@@ -77,6 +100,12 @@ ldap_search() {
   else
     docker exec -i "$LDAP_CONTAINER" ldapsearch -x -LLL -D "$LDAP_ADMIN_DN" -w "$LDAP_ADMIN_PW" "$@"
   fi
+}
+
+# ldapadd's real failures: its own "ldapadd:" lines, minus the already-exists ones a re-run causes.
+# Exits non-zero when there are none, so it doubles as the test for "anything worth printing".
+ldap_errors() {
+  grep -E "^ldapadd: " "$LDAP_LOG" 2>/dev/null | grep -vi "already exists"
 }
 
 # How many of the mock users are actually in the directory right now.
@@ -116,11 +145,14 @@ require_container() {
 }
 
 if [[ "$SEED_TRANSPORT" == "network" ]]; then
-  for tool in psql ldapadd ldapsearch; do
+  needed=()
+  do_ldap && needed+=(ldapadd ldapsearch)
+  do_db   && needed+=(psql)
+  for tool in "${needed[@]}"; do
     command -v "$tool" >/dev/null 2>&1 || { echo "ERROR: $tool is required in network mode." >&2; exit 1; }
   done
-  echo "==> Seeding over the network (ldap://${LDAP_HOST}:${LDAP_PORT}, postgres ${PG_HOST})"
-  wait_for "the directory at ${LDAP_HOST}:${LDAP_PORT}" ldap_ready
+  echo "==> Seeding ${SEED_ONLY} over the network (ldap://${LDAP_HOST}:${LDAP_PORT}, postgres ${PG_HOST})"
+  do_ldap && wait_for "the directory at ${LDAP_HOST}:${LDAP_PORT}" ldap_ready
 else
   command -v docker >/dev/null 2>&1 || { echo "ERROR: docker is required but not found on PATH." >&2; exit 1; }
   require_container "$PG_CONTAINER"
@@ -248,10 +280,11 @@ LDIF
 }
 
 assign_groups
+
+if do_ldap; then
 echo "==> Loading mock users and groups into LDAP (${LDAP_HOST:-$LDAP_CONTAINER})..."
 
 LDAP_LOG="$(mktemp)"
-trap 'rm -f "$LDAP_LOG"' EXIT
 
 # ldapadd -c keeps going past entries that already exist and still exits non-zero, so its exit
 # code cannot tell "already there" from "every entry rejected". This used to be "|| true", which
@@ -259,9 +292,12 @@ trap 'rm -f "$LDAP_LOG"' EXIT
 # successful one, and the script went on to print a happy summary over an empty directory. So:
 # show anything that is not an "already exists", then check the directory rather than trust it.
 if ! build_ldif | ldap_add >"$LDAP_LOG" 2>&1; then
-  if grep -qvi "already exists" "$LDAP_LOG"; then
+  # ldapadd narrates every entry it attempts ("adding new entry ..."); only the "ldapadd:" lines
+  # are failures, and "Already exists" among those is the expected result of a re-run. Filtering on
+  # the narration instead made every re-run look like it had reported errors.
+  if ldap_errors >/dev/null; then
     echo "    ldapadd reported:"
-    grep -vi "already exists" "$LDAP_LOG" | sed 's/^/      /'
+    ldap_errors | sed 's/^/      /'
   fi
 fi
 
@@ -273,12 +309,13 @@ if (( LOADED_USERS < ${#USERS[@]} )); then
   exit 1
 fi
 echo "    ${LOADED_USERS} users present under ${USERS_OU}"
+fi
 
+if do_db; then
 # ----------------------------- build check-in/out SQL -----------------------
 # Timestamps are computed in SQL with now()/date_trunc so they stay timezone
 # correct regardless of host locale.
 SQL_FILE="$(mktemp)"
-trap 'rm -f "$SQL_FILE"' EXIT
 
 SEQ=0
 emit() {
@@ -346,14 +383,18 @@ if [[ "${SEEDED_ROWS:-0}" == "0" ]]; then
   exit 1
 fi
 echo "    ${SEEDED_ROWS} check-in/out rows present"
+fi
 
 # ----------------------------- summary --------------------------------------
 echo "==> Done. Summary:"
-psql_exec -c "SELECT duty_sub_organization AS org, employee_type AS type, action, count(*)
-              FROM check_in_out_records WHERE session_id LIKE 'mock-%'
-              GROUP BY 1,2,3 ORDER BY 1,2,3;"
+if do_db; then
+  psql_exec -c "SELECT duty_sub_organization AS org, employee_type AS type, action, count(*)
+                FROM check_in_out_records WHERE session_id LIKE 'mock-%'
+                GROUP BY 1,2,3 ORDER BY 1,2,3;"
+fi
 
 echo
+if do_ldap; then
 echo "LDAP users:   ${#USERS[@]} under ${USERS_OU}"
 echo "LDAP groups (random membership):"
 for g in "${!MOCK_GROUPS[@]}"; do
@@ -366,6 +407,7 @@ for g in "${!MOCK_GROUPS[@]}"; do
   done
   [[ -n "$members" ]] && echo "  ${MOCK_GROUPS[$g]}: ${members%, }"
 done
+fi
 echo "Org values:   RYS34B, RYS34C, RYS35A, ABC12X, ABC12Y"
 echo "Today status: IN=Alice,Dave,Grace,Demo Admin  OUT=Bob,Erin  AWAY=Heidi,Frank  NONE=Carol"
 echo
