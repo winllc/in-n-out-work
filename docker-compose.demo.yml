@@ -117,12 +117,16 @@ services:
       - demo
 
   # Two seeders rather than one, because the image that already ships ldapadd and the image that
-  # already ships psql are different ones. Splitting means the demo builds no seeder image of its
-  # own and pulls nothing extra - the alternative was a Dockerfile that apt-installed ldap-utils,
-  # which needs Debian mirrors reachable at build time. The halves are independent: the user list
-  # is fixed and the group assignment is seeded, so each derives the same data.
+  # already ships psql are different ones. Both are built from test/Dockerfile.seed, which only adds
+  # the script to a base the stack already pulls - nothing is installed, so nothing has to be
+  # reachable at build time. The halves are independent: the user list is fixed and the records
+  # derive from it alone.
   demo-seed-ldap:
-    image: osixia/openldap:1.5.0
+    build:
+      context: .
+      dockerfile: test/Dockerfile.seed
+      args:
+        BASE_IMAGE: osixia/openldap:1.5.0
     container_name: demo-seed-ldap
     depends_on:
       openldap:
@@ -134,15 +138,16 @@ services:
       LDAP_PORT: "389"
       LDAP_BASE_DN: dc=winllc,dc=com
       LDAP_ADMIN_PW: adminpassword
-    volumes:
-      - ./test/seed-mock-data.sh:/seed/seed-mock-data.sh:ro
-    entrypoint: ["/bin/bash", "/seed/seed-mock-data.sh"]
     restart: "no"
     networks:
       - demo
 
   demo-seed-db:
-    image: postgres:16
+    build:
+      context: .
+      dockerfile: test/Dockerfile.seed
+      args:
+        BASE_IMAGE: postgres:16
     container_name: demo-seed-db
     depends_on:
       postgres:
@@ -154,11 +159,8 @@ services:
       PG_USER: appuser
       PG_PASSWORD: secret123
       PG_DB: appdb
-    volumes:
-      - ./test/seed-mock-data.sh:/seed/seed-mock-data.sh:ro
     # Waits for the application to create its tables before inserting - Hibernate does that on
     # first start, so there is nowhere to put the records until then.
-    entrypoint: ["/bin/bash", "/seed/seed-mock-data.sh"]
     restart: "no"
     networks:
       - demo

@@ -408,8 +408,16 @@ SQL deletes its own previous rows.
 Both run `test/seed-mock-data.sh` in a **network mode** (`SEED_TRANSPORT=network`): the same script
 and the same data as the host path, but reaching the services over the compose network rather than
 with `docker exec`, which a container has no socket for. They are two services because
-`SEED_ONLY=ldap` needs an image with `ldapadd` and `SEED_ONLY=db` needs one with `psql`, and the
-stack already pulls both — so the demo builds no seeder image of its own and pulls nothing extra.
+`SEED_ONLY=ldap` needs an image with `ldapadd` and `SEED_ONLY=db` needs one with `psql`. Both are
+built from `test/Dockerfile.seed`, which does nothing but copy the script onto one of those two
+bases — chosen per service with the `BASE_IMAGE` build argument — so nothing is installed and
+nothing beyond the images the stack already pulls is needed.
+
+The script is **copied into the image rather than bind-mounted**, deliberately. A single-file bind
+mount whose source does not resolve does not fail: Docker creates a *directory* at the target, and
+the container dies with `/seed/seed-mock-data.sh: Is a directory` and exit 126, which says nothing
+about the actual problem — and it creates that directory on the host too, so the mistake outlives
+the run. Copied in, the path either exists in the image or the build fails saying so.
 
 Use `-p` as shown. Without it compose derives the project name from the directory and this stack
 would share its network and volumes with `docker-compose.yml`.

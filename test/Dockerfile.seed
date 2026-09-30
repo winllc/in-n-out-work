@@ -1,0 +1,21 @@
+# The demo stack's seeder. One Dockerfile, built twice with a different base:
+#
+#   BASE_IMAGE=osixia/openldap:1.5.0   has ldapadd and ldapsearch, for SEED_ONLY=ldap
+#   BASE_IMAGE=postgres:16             has psql,                   for SEED_ONLY=db
+#
+# Both bases are images the demo stack already pulls, and each already carries the client its half
+# needs, so nothing is installed here - an earlier version apt-installed ldap-utils to get both
+# clients into one image, which needs Debian mirrors reachable at build time and failed where they
+# are not.
+#
+# The script is COPYed rather than bind-mounted. A single-file bind mount whose source does not
+# resolve does not fail: Docker creates a DIRECTORY at the target, and the container dies with
+# "/seed/seed-mock-data.sh: Is a directory" and exit 126, which says nothing about the real problem.
+# It creates the directory on the host as well, so the mistake outlives the run. Baking the script
+# in means the path either exists in the image or the build fails.
+ARG BASE_IMAGE=postgres:16
+FROM ${BASE_IMAGE}
+
+COPY test/seed-mock-data.sh /seed/seed-mock-data.sh
+
+ENTRYPOINT ["/bin/bash", "/seed/seed-mock-data.sh"]
