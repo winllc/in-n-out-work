@@ -88,10 +88,12 @@ ldap_add() {
   fi
 }
 
-# Polls without ON_ERROR_STOP, so "not up yet" is not an error.
+# Polls without ON_ERROR_STOP, so "not up yet" is not an error. Both tables, because the seed
+# writes to both: the records, and the user_records row that grants the demo manager their role.
 schema_ready() {
   PGPASSWORD="$PG_PASSWORD" psql -tAqX -h "$PG_HOST" -U "$PG_USER" -d "$PG_DB" \
-    -c "SELECT to_regclass('public.check_in_out_records') IS NOT NULL" 2>/dev/null | grep -qx "t"
+    -c "SELECT to_regclass('public.check_in_out_records') IS NOT NULL
+           AND to_regclass('public.user_records') IS NOT NULL" 2>/dev/null | grep -qx "t"
 }
 
 ldap_search() {
@@ -328,6 +330,15 @@ emit() {
 # Remove any rows from a previous run so the script is idempotent.
 echo "DELETE FROM check_in_out_records WHERE session_id LIKE 'mock-%';" >>"$SQL_FILE"
 
+# Application roles. ADMIN comes from super-user-dns in the configuration, but MANAGER lives in
+# user_records.user_role, which the application otherwise only ever creates as USER - so the demo
+# login page could not honestly offer a manager without this. Written before the app has seen the
+# user: createUserIfDoesNotExist only inserts when the row is absent, so it leaves this one alone.
+cat >>"$SQL_FILE" <<SQL
+DELETE FROM user_records WHERE lower(dn) = lower('cn=${MANAGER_CN},${USERS_OU}');
+INSERT INTO user_records (dn, user_role) VALUES ('cn=${MANAGER_CN},${USERS_OU}', 'MANAGER');
+SQL
+
 for row in "${USERS[@]}"; do
   IFS='|' read -r cn sn uid dept etype org loc branch status <<<"$row"
   dn="cn=${cn},${USERS_OU}"
@@ -383,6 +394,15 @@ if [[ "${SEEDED_ROWS:-0}" == "0" ]]; then
   exit 1
 fi
 echo "    ${SEEDED_ROWS} check-in/out rows present"
+
+MANAGER_ROLE="$(psql_exec -tAqX -c \
+  "SELECT user_role FROM user_records WHERE lower(dn) = lower('cn=${MANAGER_CN},${USERS_OU}')" \
+  | tr -d '[:space:]')"
+if [[ "$MANAGER_ROLE" != "MANAGER" ]]; then
+  echo "ERROR: ${MANAGER_CN} should hold the MANAGER role but user_records says '${MANAGER_ROLE:-nothing}'." >&2
+  exit 1
+fi
+echo "    ${MANAGER_CN} holds the MANAGER role"
 fi
 
 # ----------------------------- summary --------------------------------------

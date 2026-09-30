@@ -298,33 +298,82 @@ define the levels.
 
 ## Demo mode
 
-A read-only, sign-in-free view of the whole application, for showing it to people who have no
-account in the directory. **Off unless switched on**, and off in the shipped configuration.
+A read-only walkthrough of the whole application, for showing it to people who have no account in
+the directory. **Off unless switched on**, and off in the shipped configuration.
+
+**Visitors still sign in.** The login page, the directory and the roles all work exactly as they
+normally do. What demo mode changes is two things: nothing can be written, and the credentials for a
+few seeded accounts are listed on the login page so someone with no account of their own can pick a
+role and look around as it.
 
 ```yaml
 application:
   demo:
     enabled: true
-    user-dn: "cn=Demo User,ou=Users,dc=winllc,dc=com"
     banner: "DEMO - read only"
+    accounts:
+      - role: "Administrator"
+        username: "demo"
+        password: "password"
+        description: "Everything: all groups, settings, reports and the org chart"
+      - role: "Manager"
+        username: "alice"
+        password: "password"
+        description: "Her own day, her direct reports, and the groups she manages"
+      - role: "User"
+        username: "bob"
+        password: "password"
+        description: "His own attendance and profile only"
 ```
 
-`user-dn` is required when enabled and must be an entry that exists in the directory: it is the
-account the demo is presented as. The application refuses to start without it rather than serve a
-sign-in-free instance whose every page then fails on an identity that was never configured.
+`accounts` drives the tile on the login page; an empty list just means no tile. Clicking a row fills
+the form rather than submitting it, so a stray click cannot sign someone in as an administrator.
+
+The `role` label is for the visitor — **it grants nothing.** What each account can do comes from the
+directory and `super-user-dns` as always, so a label that does not match the account is only ever
+misleading. In the seeded data the three above are true: `demo` is listed under `super-user-dns`,
+`alice` is given `user_role = MANAGER` by `test/seed-mock-data.sh` and is the directory manager of
+everyone else, and `bob` is a plain user. `DemoProfileTest` checks that each advertised username is
+one the seed script creates, that the passwords match the one it sets, and that the admin and manager
+roles are actually granted somewhere.
+
+### What is enforced, and what is not
+
+- **Nothing can be changed.** POST, PUT, PATCH and DELETE are refused for every path. The rule is by
+  method rather than by path, so an endpoint added later is covered without anyone remembering to
+  come back to it, and so is anything reached directly with curl. The sign-in and sign-out posts are
+  the two exceptions — they write nothing of the application's own, and without them there would be
+  no way in.
+- **Actuator is refused apart from health**, because a demo is usually reachable by people who should
+  not be reading the application's configuration and this application exposes `env`.
+- **A banner on every page**, and submit buttons on write forms are disabled. That part is a courtesy
+  so visitors are not surprised by a refusal; it is not the boundary. The refusal is.
+
+### Before you turn it on
+
+Publishing credentials makes everything those accounts can see readable by anyone who can reach the
+login page. Point a demo instance at its own directory and database holding data that is safe to
+publish — the seeded stack below is a reasonable base — and never at production.
+
+Two things demo mode does **not** stop:
+
+- The scheduled jobs still run and still write (auto check-out, absence notifications). They are
+  server-side and unrelated to what a visitor can do, but the data will move on its own.
+- Signing in creates the account's `user_record` row on first request, exactly as any first sign-in
+  does.
 
 ### The demo stack: one command
 
-`docker-compose.demo.yml` brings up the whole thing and populates it, with nothing to configure
-and nothing to sign in with:
+`docker-compose.demo.yml` brings up the whole thing and populates it, with nothing to configure and
+the credentials waiting on the login page:
 
 ```bash
 docker compose -f docker-compose.demo.yml -p readyroom-demo up --build
 ```
 
 **Nothing is published to the host.** The application listens on 8181 inside the demo network only.
-Demo mode removes authentication, so binding it to the host by default would put an unauthenticated
-copy of the application on the machine's interfaces for anything that can reach them — exposing it
+The demo publishes working credentials, so binding it to the host by default would put everything
+those accounts can see on the machine's interfaces for anything that can reach them — exposing it
 should be a decision, not a default.
 
 To reach it, put something in front of it on the same network, or add a small override file:
@@ -348,7 +397,7 @@ reachable by others.
 | `postgres`, `openldap` | The backing services, on their own volumes and network, unpublished |
 | `app` | Built from source, running with the `demo` profile |
 | `demo-seed-ldap` | Loads the mock users and groups into the directory, then exits |
-| `demo-seed-db` | Loads the check-in/out history once the tables exist, then exits |
+| `demo-seed-db` | Loads the check-in/out history and the manager role once the tables exist, then exits |
 
 The seeders are what make one `up` enough. One waits for the directory and loads the users and
 groups; the other **waits for the application to create its tables** — Hibernate does that on first
@@ -374,70 +423,31 @@ because the other services carry on:
 docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed-ldap demo-seed-db
 ```
 
-> **Not a production configuration.** Demo mode removes authentication from the whole application,
-> so everything in that stack is readable by anyone who can reach the port. The mock fixture is the
-> only thing that belongs in it.
+> **Not a production configuration.** The credentials are published on the login page, so everything
+> those accounts can see is readable by anyone who can reach the port. The mock fixture is the only
+> thing that belongs in it.
 
 ### Running the demo without containers
 
-The `demo` profile turns it on and already names the seeded account, so a demo is one flag:
+The `demo` profile turns demo mode on and carries the account list, so it is one flag:
 
 ```bash
 cd test && docker compose up -d && ./seed-mock-data.sh   # data first
 ./gradlew bootRun --args='--spring.profiles.active=demo'
 ```
 
-Seed the data first — the demo comes up as **`CN=Demo Admin,OU=Users,DC=winllc,DC=com`**, which
-`test/seed-mock-data.sh` creates alongside the other mock users and
-`src/main/resources/application.yml` lists under `super-user-dns`. It is a full user in the fixture, with a manager, groups and check-in
-records, so the demo has something to show rather than an empty account. Signed in normally it is
-`demo` / `password`.
-
-`DemoProfileTest` ties those three files together: the profile's DN, the row in the seed script,
-and the super-user entry. Rename the account in one and that test fails rather than the demo
-quietly coming up as an unresolvable identity.
-
-If the account is not in the directory — the seed not run, or a different directory — the demo
-still comes up, thinner, and logs one line per minute naming the DN it could not read rather than
-an LDAP failure per page. Run the seed and it recovers on its own within the retry window; no
-restart needed.
+Seed the data first: the accounts on the tile are the seeded ones, and without them the login page
+offers credentials that cannot sign in. The seed also grants the manager role, so run it before
+judging what each role can see.
 
 For the containerised stack, uncomment `SPRING_PROFILES_ACTIVE: demo` in the root
-`docker-compose.yml`.
+`docker-compose.yml`, or use `docker-compose.demo.yml`, which sets it already.
 
 | Setting | Meaning |
 |---|---|
 | `demo.enabled` | The only thing that turns demo mode on. Default `false`. |
-| `demo.user-dn` | The directory entry the demo is presented as. Required when enabled. |
 | `demo.banner` | Banner text shown on every page. |
-
-### What it does
-
-- **No sign-in.** `DemoSecurityConfig` replaces the normal chain entirely — the two are conditional
-  on opposite values of the same property, so exactly one exists. Every request is served as
-  `demo.user-dn`, resolved through the same `AppUserDetailsService` a certificate or form login
-  uses, then granted every role so nothing is hidden from the view.
-- **Nothing can be changed.** Every request method that could write — POST, PUT, PATCH, DELETE — is
-  refused for every path. The rule is by method rather than by path, so an endpoint added later is
-  covered without anyone remembering to come back and list it.
-- **Actuator is refused apart from health**, because the demo is unauthenticated and this
-  application exposes `env`.
-- **A banner on every page**, and submit buttons on write forms are disabled. That part is a
-  courtesy so visitors are not surprised by a refusal; it is not the boundary. The refusal is.
-
-### Before you turn it on
-
-Enabling this removes authentication from the entire application. Everything the configured
-directory and database hold becomes readable by anyone who can reach the URL. Point a demo instance
-at its own directory and database holding data that is safe to publish — the seeded stack under
-[`test/`](test/) is a reasonable starting point — and never at production.
-
-Two things demo mode does **not** stop, worth knowing before exposing an instance:
-
-- The scheduled jobs still run and still write (auto check-out, absence notifications). They are
-  server-side and unrelated to what a visitor can do, but the data will move on its own.
-- Resolving the demo user creates its `UserRecord` row on first request, exactly as any first
-  sign-in does.
+| `demo.accounts` | The rows of the login page's tile: `role`, `username`, `password`, `description`. Empty by default, so a deployment that never asked for demo mode publishes nothing even if accounts are configured. |
 
 ---
 

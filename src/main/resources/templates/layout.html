@@ -186,7 +186,7 @@
           the classification bar in app.css), so a banner above .page was overlapped by it and
           pushed the page-wrapper out of line with it.
         -->
-        <div th:if="${demoMode}" class="alert alert-warning mb-0 rounded-0 border-top-0 border-start-0 border-end-0"
+        <div th:if="${demoMode == true}" class="alert alert-warning mb-0 rounded-0 border-top-0 border-start-0 border-end-0"
              role="status">
             <div class="container-xl d-flex align-items-center">
                 <i class="ti ti-eye me-2" aria-hidden="true"></i>
@@ -378,7 +378,7 @@
   come back 403. Read-only searches and filters are left working, since they are most of what
   there is to show.
 -->
-<script th:if="${demoMode}">
+<script th:if="${demoMode == true}">
     (function () {
         "use strict";
 

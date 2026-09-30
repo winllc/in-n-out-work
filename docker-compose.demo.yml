@@ -3,12 +3,12 @@
 #
 #     docker compose -f docker-compose.demo.yml -p readyroom-demo up --build
 #
-# There is no login: every page is served as the seeded Demo Admin with every role, and nothing can
-# be changed.
+# Visitors sign in, and the login page lists the seeded accounts to sign in as - one per role. Nothing
+# in it can be changed, whichever role is chosen.
 #
 # Nothing is published to the host. The application listens on 8181 inside the demo network only,
-# because demo mode removes authentication and binding that to the host by default would expose an
-# unauthenticated copy of it to anything that can reach the machine. Reach it on purpose instead,
+# because the demo publishes working credentials, and binding that to the host by default would put
+# everything those accounts can see within reach of the machine. Reach it on purpose instead,
 # either by putting something in front of it on this network, or with an override file:
 #
 #     # demo-ports.yml
@@ -22,7 +22,7 @@
 #   postgres, openldap   the backing services
 #   app                  built from source, running with the demo profile
 #   demo-seed-ldap       loads the mock users and groups into the directory, then exits
-#   demo-seed-db         loads the check-in/out history once the tables exist, then exits
+#   demo-seed-db         loads the check-in/out history and the manager role once the tables exist
 #
 # The seeders wait for what they need - the directory for one, the application's tables for the
 # other, since Hibernate creates those on first start - so one "up" is genuinely enough and there
@@ -38,8 +38,8 @@
 #
 #     docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed-ldap demo-seed-db
 #
-# THIS IS NOT A PRODUCTION CONFIGURATION. Demo mode removes authentication from the whole
-# application, so everything here is readable by anyone who can reach the port. The data is the
+# THIS IS NOT A PRODUCTION CONFIGURATION. The credentials are published on the login page, so
+# everything those accounts can see is readable by anyone who can reach the port. The data is the
 # mock fixture from test/seed-mock-data.sh and nothing else belongs in it.
 
 services:

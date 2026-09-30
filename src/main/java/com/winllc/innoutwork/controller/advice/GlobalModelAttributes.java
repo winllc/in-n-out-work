@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.controller.advice;
 
+import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.service.CheckInOutService;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,6 +11,7 @@ import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ModelAttribute;
 
 import java.time.ZoneId;
+import java.util.List;
 import java.time.ZonedDateTime;
 
 import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
@@ -31,6 +33,13 @@ public class GlobalModelAttributes {
     @Value("${application.demo.banner:DEMO - read only}")
     private String demoBanner;
 
+    /** Bound rather than read through @Value: the accounts are a list of objects. */
+    private final ApplicationProperties properties;
+
+    public GlobalModelAttributes(ApplicationProperties properties) {
+        this.properties = properties;
+    }
+
     @ModelAttribute
     public void addGlobalAttributes(Model model, HttpSession session, Authentication authentication) {
 
@@ -43,6 +52,10 @@ public class GlobalModelAttributes {
         model.addAttribute("absenceGraceMinutes", absenceGraceMinutes);
         model.addAttribute("demoMode", demoMode);
         model.addAttribute("demoBanner", demoBanner);
+        // Only when demo mode is on. These carry passwords, so they must never reach a template on a
+        // deployment that did not ask to publish them, whatever the configuration happens to hold.
+        model.addAttribute("demoAccounts",
+                demoMode ? properties.getDemo().getAccounts() : List.of());
     }
 
     /**

@@ -87,28 +87,47 @@ public class ApplicationProperties {
     }
 
     /**
-     * A read-only, sign-in-free view of the application, for showing it to people who have no account
-     * in the directory. Off unless switched on; see DemoSecurityConfig.
+     * A read-only walkthrough of the application, for showing it to people who have no account in the
+     * directory. Off unless switched on; see DemoSecurityConfig.
      *
-     * <p>Turning this on removes authentication from the whole application and shows everything an
-     * administrator can see. Only ever point it at a directory and database holding data that is safe
-     * for anyone who can reach the URL to read.
+     * <p>Visitors still sign in - the login page and the directory decide who they are, exactly as
+     * normally - so what demo mode changes is that nothing can be written, and that the credentials
+     * are published on the login page so a visitor can pick a role to look around as.
+     *
+     * <p>Publishing credentials means the accounts listed here are readable by anyone who can reach
+     * the site. Only ever list seeded demo accounts, in a deployment whose directory and database hold
+     * data that is safe for those people to read.
      */
     @Data
     public static class Demo {
-        /**
-         * Off by default, and the only thing that turns demo mode on. While it is on, nothing about the
-         * normal sign-in applies: every request is served as the demo user.
-         */
+        /** Off by default, and the only thing that turns demo mode on. */
         private boolean enabled = false;
-        /**
-         * The directory entry the demo view is presented as. Required when enabled - the application
-         * refuses to start without it rather than serve a demo with no identity behind it. Point it at a
-         * seeded demo account, never a real person.
-         */
-        private String userDn = "";
         /** Shown in the banner on every page, so nobody mistakes the demo for the real thing. */
         private String banner = "DEMO - read only";
+        /**
+         * The accounts offered on the login page. Empty means no tile is shown - demo mode still
+         * applies, visitors just have to be told the credentials some other way.
+         */
+        private List<DemoAccount> accounts = new ArrayList<>();
+    }
+
+    /**
+     * One row of the login page's demo tile: a role to look around as, and what to sign in with.
+     *
+     * <p>The role is a label for the visitor, not something this grants. What an account can actually
+     * do comes from the directory and from super-user-dns exactly as it always does, so a label here
+     * that does not match the account is only ever misleading, never permission.
+     */
+    @Data
+    public static class DemoAccount {
+        /** What the visitor sees this account as, e.g. "Administrator". */
+        private String role = "";
+        /** What they type into the username field: a uid, common name or email. */
+        private String username = "";
+        /** The account's password, shown in full. Seeded demo accounts only. */
+        private String password = "";
+        /** One line on what this role can see, shown beside the credentials. */
+        private String description = "";
     }
 
     /** Directory access tuning; see LdapConnectionConfig for the connection pool. */

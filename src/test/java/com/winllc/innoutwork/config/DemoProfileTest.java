@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.config;
 
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.config.ConfigDataEnvironmentPostProcessor;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.StandardEnvironment;
@@ -13,24 +14,20 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The demo profile and the account it names.
+ * The demo profile and the accounts it publishes.
  *
- * <p>The profile is only useful if the DN it presents the application as is one the seed script
- * actually creates and the config actually treats as an administrator. Those three live in three
- * different files, in two different languages, and nothing but this test connects them - rename the
- * account in one and the demo silently comes up as an identity the directory cannot resolve.
+ * <p>The tile is only useful if the credentials on it work and the role beside each one is true.
+ * Neither is checkable from the login page: the accounts are configured in one file, created by a
+ * shell script in another, and given their roles by a third. Nothing but this test connects them, so
+ * renaming an account in one place leaves a tile that invites visitors to sign in as something that
+ * does not exist.
  */
 class DemoProfileTest {
 
     private static final Path SEED_SCRIPT = Path.of("test", "seed-mock-data.sh");
-    /**
-     * The packaged config, not test/application.yml: docker-compose.yml has the mounted
-     * additional-location commented out, so the container runs on this file alone.
-     */
     private static final Path PACKAGED_CONFIG = Path.of("src", "main", "resources", "application.yml");
 
     private static ConfigurableEnvironment environment(String... profiles) {
@@ -42,49 +39,72 @@ class DemoProfileTest {
         return env;
     }
 
-    /** "CN=Demo Admin,OU=..." -> "Demo Admin", which is how the seed script and LDAP name it. */
-    private static String commonNameOf(String dn) {
-        String first = dn.split(",")[0];
-        return first.substring(first.indexOf('=') + 1).trim();
+    private static ApplicationProperties.Demo demo(String... profiles) {
+        return Binder.get(environment(profiles))
+                .bind("application.demo", ApplicationProperties.Demo.class)
+                .orElseGet(ApplicationProperties.Demo::new);
     }
 
     @Test
-    void theDemoProfileTurnsDemoModeOnAndNamesAnAccount() {
-        ConfigurableEnvironment env = environment("demo");
+    void theDemoProfileTurnsDemoModeOnAndPublishesAccounts() {
+        ApplicationProperties.Demo settings = demo("demo");
 
-        assertEquals("true", env.getProperty("application.demo.enabled"));
-        String userDn = env.getProperty("application.demo.user-dn");
-        assertNotNull(userDn);
-        assertFalse(userDn.isBlank(), "the demo profile must name the account it presents");
+        assertTrue(settings.isEnabled());
+        assertFalse(settings.getAccounts().isEmpty(), "the tile would be empty");
     }
 
     @Test
-    void withoutTheProfileDemoModeStaysOffAndNamesNobody() {
-        ConfigurableEnvironment env = environment();
+    void withoutTheProfileDemoModeStaysOffAndPublishesNothing() {
+        ApplicationProperties.Demo settings = demo();
 
-        assertEquals("false", env.getProperty("application.demo.enabled"));
-        // Blank on purpose: enabling demo mode without supplying a DN refuses to start, and a
-        // default here would quietly remove that.
-        assertTrue(env.getProperty("application.demo.user-dn", "").isBlank());
+        assertFalse(settings.isEnabled());
+        // A configured account on a deployment that never asked for demo mode would be a published
+        // password, so the default has to be empty as well as off.
+        assertTrue(settings.getAccounts().isEmpty());
     }
 
     @Test
-    void theSeedScriptCreatesTheAccountTheDemoProfileNames() throws IOException {
-        String cn = commonNameOf(environment("demo").getProperty("application.demo.user-dn"));
+    void everyPublishedAccountIsComplete() {
+        for (ApplicationProperties.DemoAccount account : demo("demo").getAccounts()) {
+            assertFalse(account.getRole().isBlank(), "an account with no role label");
+            assertFalse(account.getUsername().isBlank(), "an account with no username");
+            assertFalse(account.getPassword().isBlank(), "an account with no password");
+        }
+    }
 
+    /** Each username has to be a uid the seed script actually creates, or the tile cannot sign in. */
+    @Test
+    void everyPublishedUsernameIsSeeded() throws IOException {
         String seed = Files.readString(SEED_SCRIPT);
-        assertTrue(seed.contains("\"" + cn + "|"),
-                "test/seed-mock-data.sh has no user row for '" + cn + "', so the demo would come up "
-                        + "as a DN the directory cannot resolve");
+
+        for (ApplicationProperties.DemoAccount account : demo("demo").getAccounts()) {
+            assertTrue(seed.contains("|" + account.getUsername() + "|"),
+                    "test/seed-mock-data.sh creates no user with uid '" + account.getUsername()
+                            + "', so the login page offers credentials that cannot work");
+        }
     }
 
+    /** The passwords on the tile have to be the one the seed script sets on every mock user. */
     @Test
-    void theAccountTheDemoProfileNamesIsASuperUser() throws IOException {
-        String userDn = environment("demo").getProperty("application.demo.user-dn");
+    void thePublishedPasswordIsTheOneTheSeedSets() throws IOException {
+        String seed = Files.readString(SEED_SCRIPT);
+        assertTrue(seed.contains("userPassword: password"), "the seed script's password changed");
 
+        for (ApplicationProperties.DemoAccount account : demo("demo").getAccounts()) {
+            assertEquals("password", account.getPassword(),
+                    "the seeded accounts all share one password; " + account.getUsername() + " differs");
+        }
+    }
+
+    /** Administrator has to come from super-user-dns, and Manager from the row the seed writes. */
+    @Test
+    void theAdvertisedRolesAreOnesTheDataActuallyGrants() throws IOException {
         String config = Files.readString(PACKAGED_CONFIG);
-        assertTrue(config.toLowerCase().contains(userDn.toLowerCase()),
-                "src/main/resources/application.yml does not list " + userDn + " under super-user-dns, so signing "
-                        + "in as it normally would not be an administrator");
+        String seed = Files.readString(SEED_SCRIPT);
+
+        assertTrue(config.contains("CN=Demo Admin,OU=Users,DC=winllc,DC=com"),
+                "the administrator account is not under super-user-dns, so it would not be an admin");
+        assertTrue(seed.contains("'MANAGER'"),
+                "the seed script grants nobody the MANAGER role, so the tile's manager would be a plain user");
     }
 }
