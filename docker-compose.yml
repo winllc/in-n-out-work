@@ -90,12 +90,17 @@ services:
       # Run test/seed-mock-data.sh first, so the account it is presented as exists. Read the Demo
       # mode section of the README before exposing an instance with this on.
       # SPRING_PROFILES_ACTIVE: demo
+      # Where the mounted license below is read from.
+      ENS_LICENSE_FILE: /etc/ens/license/license.lic
       # Windows sign-in for the check-in calls (see the README). Needs an AD domain, so it is off here.
       # APPLICATION_WINDOWSAUTH_ENABLED: "true"
       # APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL: HTTP/inout.winllc.com@WINLLC.COM
       # APPLICATION_WINDOWSAUTH_KEYTABLOCATION: /etc/in-n-out/http.keytab
     volumes:
       - ./test/application.yml:/app/config/application.yml:ro
+      # The ENS Solutions license: put license.lic in ./license. With none there (compose creates the
+      # directory empty) the app runs with its core features only. See Licensing in the README.
+      - ./license:/etc/ens/license:ro
       # - ./kerberos/krb5.conf:/etc/krb5.conf:ro
       # - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro
     ports:
