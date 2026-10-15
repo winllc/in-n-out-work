@@ -32,7 +32,8 @@
             </div>
         </div>
 
-        <div class="col-md-6" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+        <div class="col-md-6" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')" id="group-report"
+             th:if="${licenseInfo == null or licenseInfo.isEnabled('reports')}">
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Generate Group Report</h3>
@@ -206,9 +207,13 @@
 
          */
 
-        document.getElementById("reportRange").addEventListener("change", (event) => {
-            document.getElementById('generateReportButton').disabled = document.getElementById('reportRange').value.trim() === "";
-        });
+        // The report card is absent for plain users and when reports are not licensed.
+        const reportRange = document.getElementById("reportRange");
+        if (reportRange) {
+            reportRange.addEventListener("change", (event) => {
+                document.getElementById('generateReportButton').disabled = reportRange.value.trim() === "";
+            });
+        }
 
 
         document.getElementById("advanced-btn").addEventListener("change", (event) => {

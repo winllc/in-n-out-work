@@ -1,6 +1,8 @@
 package com.winllc.innoutwork.controller.advice;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.license.LicenseInfo;
+import com.winllc.innoutwork.license.LicenseService;
 import com.winllc.innoutwork.service.CheckInOutService;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Value;
@@ -36,8 +38,11 @@ public class GlobalModelAttributes {
     /** Bound rather than read through @Value: the accounts are a list of objects. */
     private final ApplicationProperties properties;
 
-    public GlobalModelAttributes(ApplicationProperties properties) {
+    private final LicenseService licenseService;
+
+    public GlobalModelAttributes(ApplicationProperties properties, LicenseService licenseService) {
         this.properties = properties;
+        this.licenseService = licenseService;
     }
 
     @ModelAttribute
@@ -56,6 +61,10 @@ public class GlobalModelAttributes {
         // deployment that did not ask to publish them, whatever the configuration happens to hold.
         model.addAttribute("demoAccounts",
                 demoMode ? properties.getDemo().getAccounts() : List.of());
+        // What the license covers, for hiding the way to licensed pages; LicenseInterceptor is what refuses them.
+        LicenseInfo licenseInfo = LicenseInfo.of(licenseService);
+        model.addAttribute("license", licenseInfo.status());
+        model.addAttribute("licenseInfo", licenseInfo);
     }
 
     /**

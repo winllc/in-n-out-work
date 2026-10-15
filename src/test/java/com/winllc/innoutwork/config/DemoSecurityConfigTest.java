@@ -2,6 +2,7 @@ package com.winllc.innoutwork.config;
 
 import com.winllc.innoutwork.controller.LoginController;
 import com.winllc.innoutwork.controller.advice.GlobalModelAttributes;
+import com.winllc.innoutwork.license.LicenseConfig;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -42,7 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // parent of the tests, so a @WebMvcTest slice registers no controllers by itself (see README).
 @Import({DemoSecurityConfig.class, DemoSecurityConfigTest.DemoTestConfig.class,
         DemoSecurityConfigTest.DemoProbeController.class, LoginController.class,
-        GlobalModelAttributes.class})
+        GlobalModelAttributes.class, LicenseConfig.class})
 // Set as properties rather than built in DemoTestConfig: ApplicationProperties is
 // @ConfigurationProperties, so Boot binds the environment onto whatever instance the bean method
 // returns and an "accounts: []" in application.yml would overwrite a list assembled in Java. This
@@ -52,7 +53,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "application.demo.accounts[0].role=Administrator",
         "application.demo.accounts[0].username=demo",
         "application.demo.accounts[0].password=password",
-        "application.demo.accounts[0].description=Everything"
+        "application.demo.accounts[0].description=Everything",
+        "ens.license.file=src/test/resources/license/test.lic"
 })
 class DemoSecurityConfigTest {
 

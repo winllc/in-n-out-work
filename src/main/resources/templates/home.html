@@ -128,7 +128,8 @@
         <div class="d-flex align-items-center mb-2 mt-4" id="my-team">
             <h2 class="mb-0"><i class="ti ti-users me-2"></i>My team</h2>
             <span class="badge bg-blue-lt ms-2" th:text="${team.reportCount() + ' direct reports'}"></span>
-            <a class="ms-auto" th:href="@{/app/user/reports}">View all reports</a>
+            <a class="ms-auto" th:href="@{/app/user/reports}"
+               th:if="${licenseInfo == null or licenseInfo.isEnabled('reports')}">View all reports</a>
         </div>
 
         <div class="row row-cards">

@@ -79,15 +79,16 @@
                         <strong><i class="ti ti-user me-2"></i>Users</strong>
                         <div class="text-secondary">Search for anyone by name (at least three characters) and open their details.</div>
                     </div>
-                    <div class="list-group-item px-0">
+                    <div class="list-group-item px-0" th:if="${licenseInfo == null or licenseInfo.isEnabled('reports')}">
                         <strong><i class="ti ti-list-check me-2"></i>My Reports</strong>
                         <div class="text-secondary">Everyone who reports to you in the directory, in one table.</div>
                     </div>
-                    <div class="list-group-item px-0">
+                    <div class="list-group-item px-0" th:if="${licenseInfo == null or licenseInfo.isEnabled('org-chart')}">
                         <strong><i class="ti ti-hierarchy-3 me-2"></i>Org Chart</strong>
                         <div class="text-secondary">The organization's structure. Open an organization to see who is in it.</div>
                     </div>
-                    <div class="list-group-item px-0" id="help-metrics" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                    <div class="list-group-item px-0" id="help-metrics" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')"
+                         th:if="${licenseInfo == null or licenseInfo.isEnabled('metrics')}">
                         <strong><i class="ti ti-chart-bar me-2"></i>Metrics</strong>
                         <div class="text-secondary">
                             Organization-wide figures: the accounted-for rate, status mix, workstation agent coverage
