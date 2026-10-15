@@ -94,6 +94,13 @@ spring:
  #   cache: false   # disable caching for dev
 #   mode: HTML
 
+ens:
+  license:
+    # The ENS Solutions license (ENS_LICENSE_FILE). Without a valid one the application runs with its core
+    # features only; see Licensing in the README. Relative to the working directory; the production
+    # image sets /etc/ens/license/license.lic.
+    file: ${ENS_LICENSE_FILE:license.lic}
+
 management:
   endpoints:
     web:

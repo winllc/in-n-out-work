@@ -78,7 +78,13 @@
                             <span class="nav-link-title">Users</span>
                         </a>
                     </li>
-                    <li class="nav-item" sec:authorize="hasAnyAuthority('USER', 'ADMIN', 'MANAGER')">
+                    <!--
+                      Licensed features: hidden when the license does not cover them (licenseInfo comes from
+                      GlobalModelAttributes; LicenseInterceptor is what refuses the pages). A page rendered
+                      without that model advice shows them, since there is nothing to go on.
+                    -->
+                    <li class="nav-item" sec:authorize="hasAnyAuthority('USER', 'ADMIN', 'MANAGER')"
+                        th:if="${licenseInfo == null or licenseInfo.isEnabled('reports')}">
                         <a class="nav-link" th:href="@{/app/user/reports}">
                             <span class="nav-link-icon d-md-none d-lg-inline-block">
                                 <i class="ti ti-list-check"></i>
@@ -86,7 +92,7 @@
                             <span class="nav-link-title">My Reports</span>
                         </a>
                     </li>
-                    <li class="nav-item">
+                    <li class="nav-item" th:if="${licenseInfo == null or licenseInfo.isEnabled('org-chart')}">
                         <a class="nav-link" th:href="@{/app/orgchart}">
                             <span class="nav-link-icon d-md-none d-lg-inline-block">
                                 <i class="ti ti-hierarchy-3"></i>
@@ -94,7 +100,8 @@
                             <span class="nav-link-title">Org Chart</span>
                         </a>
                     </li>
-                    <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                    <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')"
+                        th:if="${licenseInfo == null or licenseInfo.isEnabled('metrics')}">
                         <a class="nav-link" th:href="@{/app/metrics}">
                             <span class="nav-link-icon d-md-none d-lg-inline-block">
                                 <i class="ti ti-chart-bar"></i>
@@ -227,6 +234,8 @@
                         <p class="mb-0">Designed and Developed by
                             <a href="https://ens-solutions.com/" class="link-secondary">ENS Solutions, LLC</a>
                         </p>
+                        <p class="mb-0 small text-secondary" id="license-status" sec:authorize="hasAuthority('ADMIN')"
+                           th:if="${licenseInfo != null}" th:text="${licenseInfo.summary}">Licensed to</p>
                     </div>
                 </div>
             </div>
