@@ -49,3 +49,6 @@ bin/
 !src/test/resources/license/ens-license-test-private.pem
 # Mounted into the app container by docker-compose.yml.
 /license/
+
+### Release bundles (scripts/release-bundle.sh) ###
+/dist/

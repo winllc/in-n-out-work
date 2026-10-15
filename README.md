@@ -722,6 +722,57 @@ PERF_MEASURE=1 ./gradlew test --tests '*QueryPerformanceMeasurement'
 
 ---
 
+## Releases
+
+Push a tag `vX.Y.Z` (or `vX.Y.Z-rc.1` for a pre-release):
+
+```bash
+git tag v1.2.3 && git push origin v1.2.3
+```
+
+The `image` job in `.github/workflows/ci.yml` builds and smoke-tests the image as on any push,
+publishes it as `ghcr.io/winllc/in-n-out-work:1.2.3` (and `1.2`), and then, from that same image,
+builds the customer release bundle with `scripts/release-bundle.sh`:
+
+| File | What |
+|---|---|
+| `readyroom-1.2.3.tar.gz` | Unpacks to `readyroom-1.2.3/`: `README.md`, `install.sh`, `upgrade.sh`, a production `docker-compose.yml` (ReadyRoom and PostgreSQL 16, the customer's LDAP and SMTP from `.env`) with optional TLS and Windows sign-in overrides, `env.template`, `license/`, the Windows client, the database migrations, and `images/readyroom-images-1.2.3.tar` (`docker save` of both images, for air-gapped sites). Sources in `deploy/bundle/`. |
+| `sbom-in-n-out-work.spdx.json`, `sbom-postgres.spdx.json` | SPDX SBOMs of the two images |
+| `SHA256SUMS` | Checksums of the files above |
+| `SHA256SUMS.asc` | Detached GPG signature of `SHA256SUMS`, when a signing key is configured |
+
+They are uploaded to `s3://<bucket>/readyroom/1.2.3/`, and `readyroom/latest.txt` is set to `1.2.3`
+(not for pre-releases), and kept as the workflow artifact `release-readyroom-1.2.3` for 30 days.
+Every pull request builds the bundle as a dry run (`0.0.0-pr<number>`), kept as an artifact for 3
+days and never uploaded. Signing and upload are skipped, with the reason in the job summary, until
+these are configured (Settings > Secrets and variables > Actions):
+
+| Name | Kind | Purpose |
+|---|---|---|
+| `RELEASE_GPG_PRIVATE_KEY` | secret | ASCII-armored private key that signs `SHA256SUMS` |
+| `RELEASE_GPG_PASSPHRASE` | secret | Its passphrase, if it has one |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | secrets | Credentials that can write to the bucket |
+| `RELEASE_S3_BUCKET` | variable | The bucket |
+| `RELEASE_S3_ENDPOINT` | variable | Endpoint URL for Cloudflare R2 or MinIO; unset for AWS S3 |
+| `RELEASE_S3_REGION` | variable | Region; default `us-east-1` (`auto` for R2) |
+
+To build a bundle locally from an image you have (needs Docker; `syft` for the SBOMs, or `SKIP_SBOM=1`):
+
+```bash
+docker tag readyroom:latest ghcr.io/winllc/in-n-out-work:1.2.3
+scripts/release-bundle.sh 1.2.3 ghcr.io/winllc/in-n-out-work:1.2.3    # output in dist/release/
+```
+
+**Verifying a download.** Customers check the files they downloaded, in the directory holding them,
+with the ENS Solutions release public key imported (`gpg --import ens-release-key.asc`):
+
+```bash
+gpg --verify SHA256SUMS.asc SHA256SUMS
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+---
+
 ## Project layout
 
 ```
@@ -742,6 +793,8 @@ docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
 db/migrations/ Indexes and constraints Hibernate does not create; run with psql
+deploy/bundle/ The customer release bundle: production compose, env template, install/upgrade
+scripts/release-bundle.sh  Builds the release bundle (see Releases)
 test/          Backing services alone, the app's Dockerfile and mounted config,
                seed script, local CA
 ```

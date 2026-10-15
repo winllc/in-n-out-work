@@ -51,6 +51,16 @@ jobs:
       contents: read
       packages: write
 
+    env:
+      # The customer release bundle (see "Releases" in the README). Secrets cannot be tested in a
+      # step's if:, so whether they are configured is mapped to plain values here.
+      PRODUCT_ID: readyroom
+      RELEASE_IMAGE: ghcr.io/winllc/in-n-out-work
+      RELEASE_OUT: dist/release
+      HAS_GPG: ${{ secrets.RELEASE_GPG_PRIVATE_KEY != '' }}
+      HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' }}
+      S3_BUCKET: ${{ vars.RELEASE_S3_BUCKET }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -130,4 +140,162 @@ jobs:
             echo '```'
             echo "$TAGS"
             echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ---- Customer release bundle -----------------------------------------------------------------
+      # From the image checked above, never a second build. A v* tag makes a release; a pull request
+      # makes a dry run (0.0.0-pr<n>) that is kept as a workflow artifact only, so every PR proves the
+      # bundle still builds. Other pushes skip it.
+      - name: Decide the release version
+        id: version
+        shell: bash
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          case "$GITHUB_EVENT_NAME:$GITHUB_REF" in
+            push:refs/tags/v*) version="${GITHUB_REF_NAME#v}"; release=true ;;
+            pull_request:*)    version="0.0.0-pr${PR_NUMBER}"; release=false ;;
+            *) echo "build=false" >> "$GITHUB_OUTPUT"; echo "No release bundle for this event."; exit 0 ;;
+          esac
+          {
+            echo "build=true"
+            echo "version=$version"
+            echo "release=$release"
+            echo "image=$RELEASE_IMAGE:$version"
+          } >> "$GITHUB_OUTPUT"
+          echo "Release bundle $PRODUCT_ID $version (release=$release)"
+
+      - name: Tag the checked image with the release version
+        if: steps.version.outputs.build == 'true'
+        env:
+          IMAGE: ${{ steps.version.outputs.image }}
+        run: |
+          docker tag readyroom:ci "$IMAGE"
+          mkdir -p "$RELEASE_OUT"
+
+      - name: SBOM for the ReadyRoom image
+        if: steps.version.outputs.build == 'true'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ steps.version.outputs.image }}
+          format: spdx-json
+          output-file: ${{ env.RELEASE_OUT }}/sbom-in-n-out-work.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: SBOM for the PostgreSQL image
+        if: steps.version.outputs.build == 'true'
+        uses: anchore/sbom-action@v0
+        with:
+          image: postgres:16
+          format: spdx-json
+          output-file: ${{ env.RELEASE_OUT }}/sbom-postgres.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Build the release bundle
+        if: steps.version.outputs.build == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          IMAGE: ${{ steps.version.outputs.image }}
+        run: OUT_DIR="$RELEASE_OUT" scripts/release-bundle.sh "$VERSION" "$IMAGE"
+
+      - name: Sign the checksums
+        id: sign
+        if: steps.version.outputs.build == 'true' && env.HAS_GPG == 'true'
+        shell: bash
+        env:
+          GPG_KEY: ${{ secrets.RELEASE_GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.RELEASE_GPG_PASSPHRASE }}
+        run: |
+          # A keyring outside the workspace, removed afterwards; the key only ever goes to gpg.
+          GNUPGHOME="$(mktemp -d "$RUNNER_TEMP/gnupg.XXXXXX")"
+          export GNUPGHOME
+          trap 'gpgconf --kill gpg-agent || true; rm -rf "$GNUPGHOME"' EXIT
+          printf '%s' "$GPG_KEY" | gpg --batch --quiet --import
+          cd "$RELEASE_OUT"
+          if [ -n "$GPG_PASSPHRASE" ]; then
+            printf '%s' "$GPG_PASSPHRASE" | gpg --batch --pinentry-mode loopback --passphrase-fd 0 \
+              --armor --detach-sign --output SHA256SUMS.asc SHA256SUMS
+          else
+            gpg --batch --pinentry-mode loopback --armor --detach-sign --output SHA256SUMS.asc SHA256SUMS
+          fi
+          gpg --batch --verify SHA256SUMS.asc SHA256SUMS
+
+      - name: Upload the release to the bucket
+        id: upload
+        if: >-
+          steps.version.outputs.build == 'true' && steps.version.outputs.release == 'true' &&
+          env.S3_BUCKET != '' && env.HAS_AWS == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ${{ vars.RELEASE_S3_REGION || 'us-east-1' }}
+          S3_ENDPOINT: ${{ vars.RELEASE_S3_ENDPOINT }}
+        run: |
+          args=()
+          if [ -n "$S3_ENDPOINT" ]; then args+=(--endpoint-url "$S3_ENDPOINT"); fi
+          dest="s3://$S3_BUCKET/$PRODUCT_ID/$VERSION"
+          for f in "$RELEASE_OUT"/*; do
+            aws "${args[@]}" s3 cp --only-show-errors "$f" "$dest/$(basename "$f")"
+          done
+          # latest.txt names the newest final release; pre-releases (1.2.0-rc.1) leave it alone.
+          case "$VERSION" in
+            *-*) echo "Pre-release: latest.txt not updated." ;;
+            *) printf '%s\n' "$VERSION" | aws "${args[@]}" s3 cp --only-show-errors - "s3://$S3_BUCKET/$PRODUCT_ID/latest.txt" ;;
+          esac
+
+      - name: Keep the bundle as a workflow artifact
+        if: steps.version.outputs.build == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ env.PRODUCT_ID }}-${{ steps.version.outputs.version }}
+          path: ${{ env.RELEASE_OUT }}/
+          retention-days: ${{ steps.version.outputs.release == 'true' && 30 || 3 }}
+          # The tarball and image archive inside it are already compressed.
+          compression-level: 0
+          if-no-files-found: error
+
+      - name: Summarise the release bundle
+        if: always() && steps.version.outputs.build == 'true'
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          RELEASE: ${{ steps.version.outputs.release }}
+          SIGN_OUTCOME: ${{ steps.sign.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.upload.outcome }}
+        run: |
+          {
+            echo "### Release bundle: $PRODUCT_ID $VERSION"
+            echo
+            if [ "$RELEASE" = true ]; then echo "Release (tag $GITHUB_REF_NAME)."; else echo "Dry run for a pull request: kept as a workflow artifact only."; fi
+            echo
+            echo "| File | Size |"
+            echo "|---|---|"
+            for f in "$RELEASE_OUT"/*; do
+              [ -e "$f" ] || continue
+              echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"
+            done
+            echo
+            case "$SIGN_OUTCOME" in
+              success) echo "**Signed:** yes, \`SHA256SUMS.asc\`." ;;
+              skipped) echo "**Signed:** no. \`RELEASE_GPG_PRIVATE_KEY\` is not configured." ;;
+              *)       echo "**Signed:** no. The signing step ended with: $SIGN_OUTCOME." ;;
+            esac
+            echo
+            if [ "$UPLOAD_OUTCOME" = success ]; then
+              echo "**Uploaded:** \`s3://$S3_BUCKET/$PRODUCT_ID/$VERSION/\`."
+            elif [ "$UPLOAD_OUTCOME" != skipped ]; then
+              echo "**Uploaded:** no. The upload step ended with: $UPLOAD_OUTCOME."
+            elif [ "$RELEASE" != true ]; then
+              echo "**Uploaded:** no. Pull request dry runs are never uploaded."
+            elif [ -z "$S3_BUCKET" ]; then
+              echo "**Uploaded:** no. The \`RELEASE_S3_BUCKET\` variable is not set."
+            elif [ "$HAS_AWS" != true ]; then
+              echo "**Uploaded:** no. \`AWS_ACCESS_KEY_ID\` is not configured."
+            else
+              echo "**Uploaded:** no. An earlier step failed."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

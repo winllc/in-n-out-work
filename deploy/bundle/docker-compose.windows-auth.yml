@@ -1,0 +1,24 @@
+# Optional: Windows (Kerberos) sign-in for the Windows client's check-in, lock and unlock calls.
+# Switch it on in .env:
+#
+#     COMPOSE_FILE=docker-compose.yml:docker-compose.windows-auth.yml
+#     APPLICATION_WINDOWSAUTH_ENABLED=true
+#     APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL=HTTP/readyroom.example.com@EXAMPLE.COM
+#
+# (with TLS as well: COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml:docker-compose.windows-auth.yml)
+#
+# Put the files in ./kerberos before starting - both must exist, or Docker creates empty directories
+# in their place:
+#   kerberos/krb5.conf     your realm and domain controllers
+#   kerberos/http.keytab   the key for the HTTP/<host> service principal (see "Windows authentication"
+#                          in the ReadyRoom documentation for creating it with setspn and ktpass)
+#
+# Treat the keytab like a password. The container runs as user 185, group 0: chgrp 0 and chmod 0640 it.
+
+services:
+  app:
+    environment:
+      APPLICATION_WINDOWSAUTH_KEYTABLOCATION: /etc/in-n-out/http.keytab
+    volumes:
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
+      - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro
