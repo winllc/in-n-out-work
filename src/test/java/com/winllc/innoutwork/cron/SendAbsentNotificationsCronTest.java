@@ -3,6 +3,8 @@ package com.winllc.innoutwork.cron;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
+import com.winllc.innoutwork.license.LicenseService;
+import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.model.GlobalCalendarRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.model.UserRecord;
@@ -102,7 +104,8 @@ class SendAbsentNotificationsCronTest {
         NotificationService notificationService = mock(NotificationService.class);
         SendAbsentNotificationsCron cron = new SendAbsentNotificationsCron(mock(UserRecordRepository.class),
                 mock(CheckInOutRecordRepository.class), mock(UserEventRecordRepository.class), notificationService,
-                mock(NotificationRepository.class), new ApplicationProperties(), mock(GlobalCalendarRecordRepository.class));
+                mock(NotificationRepository.class), new ApplicationProperties(), mock(GlobalCalendarRecordRepository.class),
+                licensed());
 
         cron.createAndSendNotification(user(LocalTime.of(9, 0), LocalTime.of(8, 30)),
                 List.of(event(UserStatusEnum.LATE_ARRIVAL, LocalTime.of(11, 0))));
@@ -124,6 +127,10 @@ class SendAbsentNotificationsCronTest {
     private NotificationService notificationService;
 
     private SendAbsentNotificationsCron cronAt(ZonedDateTime now, List<UserRecord> everyone) {
+        return cronAt(now, everyone, licensed());
+    }
+
+    private SendAbsentNotificationsCron cronAt(ZonedDateTime now, List<UserRecord> everyone, LicenseService license) {
         users = mock(UserRecordRepository.class);
         checkIns = mock(CheckInOutRecordRepository.class);
         events = mock(UserEventRecordRepository.class);
@@ -144,7 +151,13 @@ class SendAbsentNotificationsCronTest {
         });
 
         return new SendAbsentNotificationsCron(users, checkIns, events, notificationService, notifications,
-                new ApplicationProperties(), calendar, Clock.fixed(now.toInstant(), NEW_YORK));
+                new ApplicationProperties(), calendar, license, Clock.fixed(now.toInstant(), NEW_YORK));
+    }
+
+    private static LicenseService licensed() {
+        LicenseService license = mock(LicenseService.class);
+        when(license.isEnabled(LicensedFeature.ABSENCE_ALERTS.id())).thenReturn(true);
+        return license;
     }
 
     private static UserRecord userWithDn(String dn, LocalTime preferred) {
@@ -207,6 +220,17 @@ class SendAbsentNotificationsCronTest {
         verify(notifications, times(1)).findDistinctAboutUserDnsBetween(dayStart, dayEnd);
         verify(users, times(3)).findAllBy(any(Pageable.class));
         verifyNoInteractions(notificationService);
+    }
+
+    /** Absence alerts are a licensed feature: without it the job looks at nobody and sends nothing. */
+    @Test
+    void withoutTheAbsenceAlertsLicenseNothingIsChecked() {
+        SendAbsentNotificationsCron cron = cronAt(NOW, List.of(userWithDn("cn=absent", LocalTime.of(9, 0))),
+                mock(LicenseService.class));
+
+        cron.sendNotifications();
+
+        verifyNoInteractions(users, checkIns, events, calendar, notificationService);
     }
 
     @Test

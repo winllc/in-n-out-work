@@ -107,6 +107,11 @@ services:
       # The packaged defaults already name the postgres and openldap services, so there is
       # nothing to override here and no mounted config file.
       JAVA_OPTS: ""
+      ENS_LICENSE_FILE: /etc/ens/license/license.lic
+    # Optional: a demo shows the licensed features (metrics, reports, org chart, absence alerts) only
+    # with a license in ./license; without one it runs with the core features.
+    volumes:
+      - ./license:/etc/ens/license:ro
     # No port published to the host. Demo mode has no authentication, so binding it to the host by
     # default would put an unauthenticated copy of the application on the machine's interfaces for
     # anything that can reach them. It listens on 8181 inside the demo network, which is where

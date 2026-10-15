@@ -11,3 +11,11 @@ node_modules
 test/step-ca-data
 test/openldap_data
 test/postgres_data
+
+# Build output from the host; the image builds from source.
+build
+
+# Licenses and signing keys never go into an image; mount the license at run time.
+**/*.lic
+**/*private.pem
+license
