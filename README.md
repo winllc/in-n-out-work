@@ -153,6 +153,10 @@ of concurrent writes run against PostgreSQL in a container (Testcontainers), and
 are skipped when Docker is not available. Windows sign-in is tested with real
 Kerberos tickets from an in-process KDC (Apache Kerby), no domain needed.
 
+Licensing is tested against a test-only key pair: `src/test/resources/license/` holds its public key
+(which shadows the real one on the test classpath), its private key, and `test.lic`, a full license
+signed with it. `TestLicenses` signs variants on the fly. None of it is accepted by a real build.
+
 > **Note for controller tests:** `@SpringBootApplication` lives in
 > `com.winllc.innoutwork.config`, which is not a parent package of the tests. In
 > a `@WebMvcTest` the nested `@Configuration` therefore becomes the slice's only
@@ -224,6 +228,73 @@ machine.
 The superseded `login.ps1`, `logout.ps1` and `updatestatus.ps1` are still
 present for reference. `updatestatus.ps1` never worked — it uses `==`, which
 parses in PowerShell but throws at runtime.
+
+---
+
+## Licensing
+
+ReadyRoom runs without a license, with its **core** features. A valid ENS Solutions license file for
+the product `readyroom` turns on the **licensed** features it lists (`features=*` means all of them).
+
+| Feature | License id | What it covers |
+|---|---|---|
+| Core | — | Windows client check-in/out API (`/api/check/**`), home dashboard, profile and calendar, groups, user search, in-app notifications, settings, sign-in (password, X.509, Windows/Kerberos) |
+| Metrics | `metrics` | `/app/metrics` and the Metrics menu entry |
+| Reports | `reports` | My Reports (`/app/user/reports`, `/api/users/reports`), the group report and its PDF export (`POST /app/group/report`), and the buttons and links to them |
+| Org chart | `org-chart` | `/app/orgchart/**`, `/api/orgnodes/**` and the Org Chart menu entry |
+| Absence alerts | `absence-alerts` | The scheduled absence e-mails (`SendAbsentNotificationsCron`); it skips its runs without one |
+
+The split lives in one place, `license/LicensedFeature.java`. A licensed feature that is not enabled
+is hidden from the menu, and a request for it is refused with 403: a "needs a license" page in the
+browser, and for API callers
+
+```json
+{"error":"license_required","feature":"reports","message":"Reports requires an ENS Solutions license."}
+```
+
+**Where the license goes.** `ens.license.file` (environment `ENS_LICENSE_FILE`) names it; the
+default is `license.lic` in the working directory, and the production image sets
+`/etc/ens/license/license.lic`. The file is checked against the ENS public key built into the jar
+(`src/main/resources/license/ens-license-public.pem`, deliberately not configurable), so any edit to
+it invalidates it. Never bake a license into an image; mount it.
+
+**Checking the status.** The application logs it at startup (`License: licensed to ...` or
+`License: no license file at ...; running with core features only`). Administrators see a one-line
+status in the page footer, and any signed-in user can read `GET /api/license` (the file path is shown
+to administrators only).
+
+**Expiry and renewal.** A license is good through the end of its expiry date (UTC). After that the
+application falls back to its core features; it keeps running. The file is re-read when it changes,
+checked at most every 30 seconds, so dropping in a renewed license takes effect without a restart.
+
+### Production image
+
+The root `Dockerfile` builds from source (Temurin 21 JDK) and runs on Red Hat UBI 9 OpenJDK 21 as the
+non-root user 185 (group 0, so OpenShift's arbitrary UIDs work), on port 8181, with a health check on
+`/actuator/health` and `JAVA_OPTS` defaulting to `-XX:MaxRAMPercentage=75.0`.
+
+```bash
+docker build -t readyroom:latest .
+
+docker run -d --name readyroom -p 8181:8181 \
+    -e DB_HOST=db.internal -e DB_PASSWORD=... \
+    -e LDAP_HOST=ldap.internal -e LDAP_PASSWORD=... \
+    -v /path/to/license.lic:/etc/ens/license/license.lic:ro \
+    readyroom:latest
+```
+
+Mount a directory instead with `-v /path/to/license-dir:/etc/ens/license:ro`, or a Docker/Kubernetes
+secret with `ENS_LICENSE_FILE` pointing at it. Leave the mount out to run with the core features.
+The base images can be swapped for a mirror with `--build-arg BUILD_IMAGE=...` and
+`--build-arg RUNTIME_IMAGE=...`.
+
+The health check reports what actuator reports, which includes the mail server: if the SMTP host in
+`spring.mail` cannot be reached the container shows as unhealthy. Point it at a reachable server, or
+set `MANAGEMENT_HEALTH_MAIL_ENABLED=false`.
+
+Both compose files mount `./license` at `/etc/ens/license`: put `license.lic` there. `license/` and
+`*.lic` are git-ignored. The compose stacks build from `test/Dockerfile`, the same build without the
+production defaults.
 
 ---
 
@@ -363,6 +434,10 @@ Two things demo mode does **not** stop:
   does.
 
 ### The demo stack: one command
+
+The demo is licensed like any other deployment: metrics, reports, the org chart and absence alerts
+appear only with a license in `./license` (mounted at `/etc/ens/license`); without one it shows the
+core features. See [Licensing](#licensing).
 
 `docker-compose.demo.yml` brings up the whole thing and populates it, with nothing to configure and
 the credentials waiting on the login page:
@@ -660,6 +735,8 @@ src/main/java/com/winllc/innoutwork/
   data/        DTOs, form objects, chart and report shapes
   cron/        Scheduled jobs
   security/    AppUserDetailsService, PermissionEvaluator
+  license/     ENS license check, the licensed-feature list and the gate in front of it
+Dockerfile     Production image, built from source; mount the license at run time
 docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from source
 docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions
