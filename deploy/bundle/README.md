@@ -1,0 +1,134 @@
+# ReadyRoom __VERSION__
+
+Workforce check-in/out and attendance for an LDAP-backed organization, by ENS Solutions. This bundle
+installs the ReadyRoom server with Docker Compose. Everything it needs is included: the container
+images are in `images/`, so a site without internet access needs nothing else.
+
+Full documentation: https://ens-solutions.com/ (Configuration, Windows authentication, Licensing).
+
+## What you need
+
+- Linux host with Docker Engine 24 or later and the Docker Compose plugin (`docker compose`), 2 CPUs,
+  4 GB RAM, 10 GB disk.
+- Your LDAP directory or Active Directory, and a read-only service account for it.
+- An SMTP server for absence notifications (optional, see `MANAGEMENT_HEALTH_MAIL_ENABLED`).
+- Your ENS Solutions license file `license.lic` (without it ReadyRoom runs with its core features).
+
+ReadyRoom keeps its own records in the bundled PostgreSQL 16 container, in the Docker volume
+`readyroom_postgres_data`.
+
+## Verify the download
+
+In the directory with the downloaded files:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+gpg --verify SHA256SUMS.asc SHA256SUMS     # with the ENS Solutions release key imported
+```
+
+## Install
+
+```bash
+tar xzf readyroom-__VERSION__.tar.gz
+cd readyroom-__VERSION__
+./install.sh
+```
+
+The first run loads the images, creates `.env` from `env.template` (with a generated database
+password) and lists the lines to edit. Edit `.env`, replacing every `CHANGE_ME`:
+
+| Setting | What |
+|---|---|
+| `APPLICATION_BASE_URL` | The address users reach ReadyRoom at (used in e-mail links) |
+| `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` | Your directory and the service account (`SPRING_LDAP_URLS=ldaps://...` for LDAPS) |
+| `APPLICATION_USERBASEDN`, `APPLICATION_GROUPS_0_GROUPSBASEDN` | Where users and group trees are |
+| `APPLICATION_SUPERUSERDNS_0` | At least one administrator, by full DN |
+| `SPRING_MAIL_*`, `APPLICATION_NOTIFICATIONSENDEREMAIL` | Your SMTP server and the From address |
+
+Copy the license to `license/license.lic`, then run `./install.sh` again. It starts ReadyRoom with
+`docker compose up -d`; the first start takes a minute or two. `docker compose ps` shows the `app`
+container as `healthy` when it is ready. Open `APPLICATION_BASE_URL` and sign in with a directory
+account.
+
+`install.sh` can be run again at any time; it never overwrites `.env`, the license or the database.
+
+**Health and mail.** The health check includes the mail server. If it cannot be reached, ReadyRoom
+reports `DOWN` and the container shows as unhealthy, although everything except e-mail works. Fix the
+`SPRING_MAIL_*` settings, or set `MANAGEMENT_HEALTH_MAIL_ENABLED=false` if you do not use e-mail.
+
+## TLS, the Windows client and Windows sign-in
+
+Out of the box ReadyRoom serves plain HTTP on port 8181 (`READYROOM_PORT`). That is enough for
+browsers with username and password sign-in, for example behind a reverse proxy that terminates TLS.
+
+The **ReadyRoom Windows client** (in `windows-client/`) reports each workstation's logon, lock, unlock
+and logoff. Its check-in, lock and unlock calls sign in with the user's client certificate or Windows
+logon, which needs ReadyRoom itself to speak TLS:
+
+1. Put your server keystore at `tls/keystore.p12` and the CA certificates for client certificates at
+   `tls/truststore.p12` (readable by group 0: `chgrp 0 tls/*.p12 && chmod 0640 tls/*.p12`).
+2. In `.env`: `SSL_ENABLED=true`, `SERVER_SSL_KEYSTOREPASSWORD`, `SERVER_SSL_TRUSTSTOREPASSWORD`,
+   `COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml`, and an `https://` `APPLICATION_BASE_URL`.
+3. `docker compose up -d`.
+
+On each workstation, from an elevated PowerShell prompt in a copy of `windows-client/`:
+
+```powershell
+.\Install-InOutWorker.ps1 -BaseUrl "https://readyroom.example.com:8181/api/check"
+```
+
+Add `-Authentication Windows` or `-Authentication Auto` for Windows sign-in, which also needs, on the
+server:
+
+1. A service account and SPN in Active Directory, and its keytab (`setspn`, `ktpass`; see Windows
+   authentication in the documentation).
+2. `kerberos/krb5.conf` and `kerberos/http.keytab` (keytab: `chgrp 0`, `chmod 0640`).
+3. In `.env`: `APPLICATION_WINDOWSAUTH_ENABLED=true`, `APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL`, and
+   `COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml:docker-compose.windows-auth.yml`.
+
+## Upgrade
+
+Unpack the new release next to the current one and run its `upgrade.sh`, naming the current
+directory:
+
+```bash
+tar xzf readyroom-<new-version>.tar.gz
+cd readyroom-<new-version>
+./upgrade.sh ../readyroom-__VERSION__
+```
+
+It copies `.env`, `license/`, `tls/` and `kerberos/`, loads the new images and recreates the
+containers. The database volume is kept. Back it up first:
+
+```bash
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > readyroom-backup.sql
+```
+
+Release notes may name a script in `migrations/` to run after upgrading, for example:
+
+```bash
+docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
+    < migrations/001_indexes_and_unique_user_dn.sql
+```
+
+## Everyday commands
+
+```bash
+docker compose ps                 # status
+docker compose logs -f app        # application log
+docker compose up -d              # apply changes to .env (recreates what changed)
+docker compose down               # stop (the database volume is kept)
+```
+
+## Contents
+
+| | |
+|---|---|
+| `install.sh`, `upgrade.sh` | Install and upgrade |
+| `docker-compose.yml` | The deployment: ReadyRoom and PostgreSQL 16 |
+| `docker-compose.tls.yml`, `docker-compose.windows-auth.yml` | Optional TLS keystore and Windows sign-in mounts |
+| `env.template` | Every setting, commented; copied to `.env` |
+| `license/` | Where `license.lic` goes |
+| `images/` | The container images (`docker load`) |
+| `windows-client/` | The Windows client and its installer |
+| `migrations/` | Database scripts named in release notes |

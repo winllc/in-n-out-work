@@ -1,0 +1,23 @@
+# Optional: TLS with your own keystore. Switch it on in .env:
+#
+#     COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml
+#     SSL_ENABLED=true
+#     SERVER_SSL_KEYSTOREPASSWORD=...      (and the truststore settings, see env.template)
+#
+# Put the files in ./tls before starting:
+#   tls/keystore.p12     PKCS#12 with the server's private key and certificate chain
+#   tls/truststore.p12   PKCS#12 with the CA certificates whose client certificates may sign in
+#                        (X.509 sign-in, used by the Windows client)
+#
+# The image's built-in keystore is a development certificate and must not be used in production.
+# The container runs as user 185, group 0: make the files readable by group 0 (chgrp 0, chmod 0640).
+
+services:
+  app:
+    environment:
+      SERVER_SSL_KEYSTORE: file:/etc/in-n-out/tls/keystore.p12
+      SERVER_SSL_KEYSTORETYPE: PKCS12
+      SERVER_SSL_TRUSTSTORE: file:/etc/in-n-out/tls/truststore.p12
+      SERVER_SSL_TRUSTSTORETYPE: PKCS12
+    volumes:
+      - ./tls:/etc/in-n-out/tls:ro
