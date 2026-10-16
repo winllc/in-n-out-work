@@ -15,7 +15,7 @@ test/postgres_data
 # Build output from the host; the image builds from source.
 build
 
-# Licenses and signing keys never go into an image; mount the license at run time.
+# Licenses and signing keys never go into an image; the license lives in the /var/lib/ens volume.
 **/*.lic
 **/*private.pem
 license

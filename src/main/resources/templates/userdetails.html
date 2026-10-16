@@ -98,7 +98,7 @@
     </div>
 
     <div class="row row-cards mt-1" th:if="${isGroupManager or isSelf}">
-        <div class="col-lg-6">
+        <div class="col-lg-6" th:if="${licenseInfo == null or licenseInfo.isEnabled('attendance')}">
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Audit Log</h3>
@@ -136,7 +136,7 @@
 
     </div>
 
-    <div class="row row-cards mt-1" th:if="${isGroupManager or isSelf}">
+    <div class="row row-cards mt-1" th:if="${(isGroupManager or isSelf) and (licenseInfo == null or licenseInfo.isEnabled('calendar'))}">
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
@@ -154,7 +154,8 @@
 
         const userDn = /*[[${user.dn}]]*/ "test";
 
-        const table = new Tabulator("#audit-table", {
+        // Absent when attendance is not licensed.
+        const table = document.getElementById("audit-table") && new Tabulator("#audit-table", {
             ajaxURL: "/api/users/checkinoutrecords/" + userDn,
 
             ajaxResponse: function (url, params, response) {
@@ -180,6 +181,7 @@
 
         document.addEventListener('DOMContentLoaded', function () {
             var calendarEl = document.getElementById('calendar');
+            if (!calendarEl) return; // calendar not licensed
             const calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 themeSystem: 'bootstrap5',

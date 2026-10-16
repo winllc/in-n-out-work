@@ -41,13 +41,12 @@ bin/
 ### Mac OS ###
 .DS_Store
 ### ENS licenses and keys ###
-# Licenses are per deployment and private keys are never committed. The test license and test-only key
-# under src/test/resources are the exceptions the test suite needs.
+# Licenses are per deployment and private keys are never committed. The exceptions are the ENS portal's
+# fixtures, signed with its published TEST key, which only the tests trust.
 *.lic
-!src/test/resources/license/test.lic
+!src/test/resources/ens-license-fixtures/*.lic
 *private.pem
-!src/test/resources/license/ens-license-test-private.pem
-# Mounted into the app container by docker-compose.yml.
+# Copied into the license volume by the compose files (see Licensing in the README).
 /license/
 
 ### Release bundles (scripts/release-bundle.sh) ###

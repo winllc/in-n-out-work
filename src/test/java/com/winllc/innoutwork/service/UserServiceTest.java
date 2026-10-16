@@ -39,6 +39,7 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -63,6 +64,8 @@ class UserServiceTest {
     private HttpSession session;
     @Mock
     private Authentication authentication;
+    @Mock
+    private TrackedPeopleLimit peopleLimit;
 
     @InjectMocks
     private UserService userService;
@@ -73,6 +76,9 @@ class UserServiceTest {
         // @Autowired, which @InjectMocks skips once it has picked the constructor.
         ReflectionTestUtils.setField(userService, "checkInOutService", checkInOutService);
         ReflectionTestUtils.setField(userService, "userEventRecordRepository", userEventRecordRepository);
+
+        // Not a test of the license's size: there is always room.
+        when(peopleLimit.mayAdd(anyLong())).thenReturn(true);
 
         // The service saves and returns the record it was given.
         when(userRecordRepository.save(any(UserRecord.class)))

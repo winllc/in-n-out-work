@@ -57,11 +57,6 @@ spring:
  #   cache: false   # disable caching for dev
 #   mode: HTML
 
-ens:
-  license:
-    # The full test license, signed with the test key that src/test/resources/license overrides the real one with.
-    file: src/test/resources/license/test.lic
-
 management:
   endpoints:
     web:

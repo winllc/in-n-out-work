@@ -56,18 +56,22 @@ public class UserService {
     private final UserEventRecordRepository  userEventRecordRepository;
     /** Creates user records without duplicating one when two requests race; see {@link UserRecordStore}. */
     private final UserRecordStore userRecords;
+    /** The license's size in tracked people: new records beyond it are not created. */
+    private final TrackedPeopleLimit peopleLimit;
 
     public UserService(UserRecordRepository userRecordRepository,
                        LdapService ldapService, ApplicationProperties properties,
                        @Qualifier("ldapUserLoadingCache") LoadingCache<String, LdapUser> userCache,
-                       CheckInOutService checkInOutService, UserEventRecordRepository userEventRecordRepository) {
+                       CheckInOutService checkInOutService, UserEventRecordRepository userEventRecordRepository,
+                       TrackedPeopleLimit peopleLimit) {
         this.userRecordRepository = userRecordRepository;
         this.ldapService = ldapService;
         this.properties = properties;
         this.userCache = userCache;
         this.checkInOutService = checkInOutService;
         this.userEventRecordRepository = userEventRecordRepository;
-        this.userRecords = new UserRecordStore(userRecordRepository);
+        this.peopleLimit = peopleLimit;
+        this.userRecords = new UserRecordStore(userRecordRepository, peopleLimit);
     }
 
     public Optional<UserRecord> getUserByDn(LdapDn dn) {
@@ -79,7 +83,13 @@ public class UserService {
 
             if(userOptional.isPresent()){
                 LdapUser ldapUser = userOptional.get();
-                return Optional.of(userRecords.insertOrFind(dn.dn(), () -> new UserRecord(ldapUser)).record());
+                try {
+                    return Optional.of(userRecords.insertOrFind(dn.dn(), () -> new UserRecord(ldapUser)).record());
+                } catch (TrackedPeopleLimitException e) {
+                    // Only looked up, not signing in: someone the license has no room for is simply not tracked.
+                    log.debug("Not tracking {}: {}", dn, e.getMessage());
+                    return Optional.empty();
+                }
             }
 
         }
@@ -432,6 +442,7 @@ public class UserService {
         int created = 0;
         int updated = 0;
         int unchanged = 0;
+        int notAdded = 0;
 
         List<LdapUser> batch = new ArrayList<>(SYNC_BATCH_SIZE);
         for (LdapUser user : byDn.values()) {
@@ -442,6 +453,7 @@ public class UserService {
                 created += counts[0];
                 updated += counts[1];
                 unchanged += counts[2];
+                notAdded += counts[3];
                 batch.clear();
             }
         }
@@ -450,10 +462,16 @@ public class UserService {
             created += counts[0];
             updated += counts[1];
             unchanged += counts[2];
+            notAdded += counts[3];
         }
 
         DirectorySyncResult result =
-                new DirectorySyncResult(directoryUsers.size(), created, updated, unchanged, skipped);
+                new DirectorySyncResult(directoryUsers.size(), created, updated, unchanged, skipped, notAdded);
+
+        if (notAdded > 0) {
+            log.warn("Directory refresh: {} new people not added; the license's size has been reached",
+                    notAdded);
+        }
 
         if (result.written() > 0) {
             log.info("Directory refresh: {} scanned, {} created, {} updated, {} unchanged, {} skipped in {}ms",
@@ -471,7 +489,11 @@ public class UserService {
      * Handles one batch: a single select for the DNs, then a single save of the subset
      * that changed.
      *
-     * @return {created, updated, unchanged}
+     * <p>New people are added only while the {@link TrackedPeopleLimit} allows; the rest are counted as
+     * not added and picked up by a later run once the license has room. Existing records are always
+     * updated.
+     *
+     * @return {created, updated, unchanged, notAdded}
      */
     private int[] syncBatch(List<LdapUser> batch) {
         List<String> dns = batch.stream()
@@ -488,11 +510,22 @@ public class UserService {
         int created = 0;
         int updated = 0;
         int unchanged = 0;
+        int notAdded = 0;
+        // Counted once per batch: the people already tracked plus the ones this batch adds.
+        long tracked = -1;
 
         for (LdapUser user : batch) {
             UserRecord record = existing.get(user.getDn().toLowerCase());
 
             if (record == null) {
+                if (tracked < 0) {
+                    tracked = userRecordRepository.count();
+                }
+                if (!peopleLimit.mayAdd(tracked + created)) {
+                    notAdded++;
+                    log.debug("Directory refresh: not adding {}; the license's size has been reached", user.getDn());
+                    continue;
+                }
                 UserRecord freshRecord = UserRecord.builder()
                         .dn(user.getDn())
                         .userRole(UserRoleEnum.USER)
@@ -524,7 +557,14 @@ public class UserService {
                         continue;
                     }
                     record.setId(null); // assigned by the rolled-back insert
-                    UserRecordStore.Result result = userRecords.insertOrFind(record.getDn(), () -> record);
+                    UserRecordStore.Result result;
+                    try {
+                        result = userRecords.insertOrFind(record.getDn(), () -> record);
+                    } catch (TrackedPeopleLimitException limitReached) {
+                        created--;
+                        notAdded++;
+                        continue;
+                    }
                     if (!result.inserted() && applyDirectoryMetadata(user, result.record())) {
                         userRecordRepository.save(result.record());
                     }
@@ -532,7 +572,7 @@ public class UserService {
             }
         }
 
-        return new int[]{created, updated, unchanged};
+        return new int[]{created, updated, unchanged, notAdded};
     }
 
     /**

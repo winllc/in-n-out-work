@@ -73,6 +73,12 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }
 
+// META-INF/build-info.properties: its build time is the release date a perpetual ENS license's
+// maintenance is measured against (license.LicenseManagerConfig).
+springBoot {
+    buildInfo()
+}
+
 test {
     useJUnitPlatform()
 }

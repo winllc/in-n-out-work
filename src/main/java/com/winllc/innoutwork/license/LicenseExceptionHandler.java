@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.license;
 
+import com.enssolutions.license.LicenseManager;
+import com.winllc.innoutwork.service.TrackedPeopleLimitException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,8 +18,15 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Answers a {@link LicenseRequiredException} with 403: a JSON body for API callers, the "needs a license"
- * page for browsers. Ordered first so ExceptionController's catch-all does not take it as an error.
+ * Answers the license's refusals with 403. API callers (/api/**, or anything asking for JSON and not
+ * HTML) get
+ * <pre>{"error":"license_required","state":"MISSING","message":"..."}</pre>
+ * with {@code license_read_only} for a read-only license, {@code "feature"} added when one feature is
+ * refused, and {@code license_limit} when a new person would exceed the licensed size. Never a
+ * redirect: the Windows client would follow one to an HTML page and take that as success.
+ *
+ * <p>Browsers are sent to the license screen while there is no usable license, and otherwise get the
+ * "needs a license" page. Ordered first so ExceptionController's catch-all does not take these as errors.
  */
 @ControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
@@ -25,36 +34,62 @@ public class LicenseExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(LicenseExceptionHandler.class);
 
-    private final LicenseService licenseService;
+    private final LicenseManager licenses;
 
-    public LicenseExceptionHandler(LicenseService licenseService) {
-        this.licenseService = licenseService;
+    public LicenseExceptionHandler(LicenseManager licenses) {
+        this.licenses = licenses;
     }
 
-    @ExceptionHandler(LicenseRequiredException.class)
-    public Object handleLicenseRequired(HttpServletRequest req, LicenseRequiredException ex) {
-        LicensedFeature feature = ex.getFeature();
-        log.info("Refused {} {}: {} is not licensed", req.getMethod(), req.getRequestURI(), feature.id());
+    @ExceptionHandler(LicenseRefusedException.class)
+    public Object refused(HttpServletRequest req, LicenseRefusedException ex) {
+        log.info("Refused {} {}: {} ({})", req.getMethod(), req.getRequestURI(), ex.getReason().code(),
+                ex.getFeature() != null ? ex.getFeature().id() : ex.getCheck().state());
 
         if (wantsJson(req)) {
             Map<String, String> body = new LinkedHashMap<>();
-            body.put("error", "license_required");
-            body.put("feature", feature.id());
+            body.put("error", ex.getReason().code());
+            body.put("state", ex.getCheck().state().name());
+            if (ex.getFeature() != null) {
+                body.put("feature", ex.getFeature().id());
+            }
             body.put("message", ex.getMessage());
             return ResponseEntity.status(HttpStatus.FORBIDDEN).contentType(MediaType.APPLICATION_JSON).body(body);
         }
+        if (ex.getReason() == LicenseRefusedException.Reason.LICENSE_REQUIRED) {
+            return new ModelAndView("redirect:" + LicensingConfiguration.LICENSE_SCREEN);
+        }
+        String title = ex.getFeature() != null
+                ? ex.getFeature().label() + " is not licensed"
+                : "ReadyRoom is read-only";
+        return page(title, ex.getMessage());
+    }
 
+    @ExceptionHandler(TrackedPeopleLimitException.class)
+    public Object overLimit(HttpServletRequest req, TrackedPeopleLimitException ex) {
+        log.warn("Refused {} {}: {}", req.getMethod(), req.getRequestURI(), ex.getMessage());
+        if (wantsJson(req)) {
+            Map<String, String> body = new LinkedHashMap<>();
+            body.put("error", "license_limit");
+            body.put("state", licenses.current().state().name());
+            body.put("message", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).contentType(MediaType.APPLICATION_JSON).body(body);
+        }
+        return page("Licensed size reached", ex.getMessage());
+    }
+
+    private ModelAndView page(String title, String message) {
         // Model advice does not run for exception handlers, so the layout's license checks get theirs here.
-        LicenseInfo info = LicenseInfo.of(licenseService);
+        LicenseInfo info = new LicenseInfo(licenses.current());
         ModelAndView mav = new ModelAndView("license-required");
         mav.setStatus(HttpStatus.FORBIDDEN);
-        mav.addObject("feature", feature);
-        mav.addObject("license", info.status());
+        mav.addObject("title", title);
+        mav.addObject("message", message);
+        mav.addObject("license", info.check());
         mav.addObject("licenseInfo", info);
         return mav;
     }
 
-    private static boolean wantsJson(HttpServletRequest req) {
+    static boolean wantsJson(HttpServletRequest req) {
         String path = req.getRequestURI().substring(req.getContextPath().length());
         if (path.startsWith("/api/")) {
             return true;

@@ -2,6 +2,10 @@
 #
 #     docker compose up --build
 #
+# The app needs an ENS license: save one as ./license/license.lic before "up" (license-init copies it
+# into the ens-license volume), or sign in as an administrator and upload it at /app/admin/license.
+# Without one only sign-in and that license screen work.
+#
 # The application's packaged defaults already name these services - postgres and
 # openldap - so nothing has to be overridden for the app to find them. To run the
 # app outside a container against these same services, use the local profile,
@@ -66,6 +70,35 @@ services:
     networks:
       - backend
 
+  # Copies ./license/license.lic, when there is one, into the ens-license volume the app keeps its
+  # license and licensing state in (installation id, revisions), and hands that directory to the app's
+  # user. Only when the file here is newer than the one in the volume, so a license uploaded on the
+  # license screen is not overwritten by an older file. Runs and exits before the app starts; reuses
+  # the postgres image, so nothing else is pulled.
+  license-init:
+    image: postgres:16
+    container_name: innout-license-init
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        dir=/var/lib/ens/readyroom
+        if [ -f /license/license.lic ]; then
+          cp -u /license/license.lic "$$dir/license.lic"
+          echo "license/license.lic is in the ens-license volume"
+        else
+          echo "No license/license.lic: sign in as an administrator and upload one at /app/admin/license"
+        fi
+        chown -R 185:0 "$$dir" && chmod 0770 "$$dir"
+        [ ! -f "$$dir/license.lic" ] || chmod 0660 "$$dir/license.lic"
+    volumes:
+      - ./license:/license:ro
+      - ens-license:/var/lib/ens/readyroom
+    restart: "no"
+    networks:
+      - backend
+
   app:
     build:
       context: .
@@ -77,6 +110,8 @@ services:
         condition: service_healthy
       openldap:
         condition: service_healthy
+      license-init:
+        condition: service_completed_successfully
     environment:
       # Declared empty so this stays a mapping: compose rejects an environment: key whose every
       # entry is commented out ("services.app.environment must be a mapping"), which is what the
@@ -90,17 +125,16 @@ services:
       # Run test/seed-mock-data.sh first, so the account it is presented as exists. Read the Demo
       # mode section of the README before exposing an instance with this on.
       # SPRING_PROFILES_ACTIVE: demo
-      # Where the mounted license below is read from.
-      ENS_LICENSE_FILE: /etc/ens/license/license.lic
       # Windows sign-in for the check-in calls (see the README). Needs an AD domain, so it is off here.
       # APPLICATION_WINDOWSAUTH_ENABLED: "true"
       # APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL: HTTP/inout.winllc.com@WINLLC.COM
       # APPLICATION_WINDOWSAUTH_KEYTABLOCATION: /etc/in-n-out/http.keytab
     volumes:
       - ./test/application.yml:/app/config/application.yml:ro
-      # The ENS Solutions license: put license.lic in ./license. With none there (compose creates the
-      # directory empty) the app runs with its core features only. See Licensing in the README.
-      - ./license:/etc/ens/license:ro
+      # The ENS Solutions license and licensing state (ENS_LICENSE_STATE_DIR in the image). Put
+      # license.lic in ./license for license-init to copy in, or upload it on the license screen.
+      # Without one only sign-in and the license screen work. See Licensing in the README.
+      - ens-license:/var/lib/ens/readyroom
       # - ./kerberos/krb5.conf:/etc/krb5.conf:ro
       # - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro
     ports:
@@ -117,3 +151,4 @@ volumes:
   postgres_data:
   openldap_data:
   openldap_config:
+  ens-license:

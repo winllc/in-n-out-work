@@ -7,6 +7,7 @@ import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.model.UserRecord;
+import com.winllc.innoutwork.service.TrackedPeopleLimitException;
 import com.winllc.innoutwork.service.UserService;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
@@ -51,7 +52,15 @@ public class AppUserDetailsService implements UserDetailsService {
             Set<UserRoleEnum> roles = new HashSet<>();
             roles.add(UserRoleEnum.USER);
 
-            UserRecord record = userService.createUserIfDoesNotExist(dn);
+            UserRecord record;
+            try {
+                record = userService.createUserIfDoesNotExist(dn);
+            } catch (TrackedPeopleLimitException e) {
+                // Over the licensed size: signing in still works, but this person is not tracked (no
+                // record is stored, and the check-in API refuses their events with license_limit).
+                log.warn("Signing in {} without tracking them: {}", dn, e.getMessage());
+                record = new UserRecord(ldapUser);
+            }
 
             AppUserDetails details = new AppUserDetails(record);
 

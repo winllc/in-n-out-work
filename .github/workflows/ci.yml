@@ -93,7 +93,8 @@ jobs:
         run: |
           # A throwaway Postgres for the schema; no directory or mail server. Liveness leaves
           # those out, so what is checked is that the image is assembled correctly and the
-          # application inside it comes up.
+          # application inside it comes up. There is no license either, so the sign-in page must
+          # still answer: it is how an administrator gets to the license screen.
           docker network create readyroom
           docker run -d --name postgres --network readyroom \
             -e POSTGRES_USER=appuser -e POSTGRES_PASSWORD=secret123 -e POSTGRES_DB=appdb postgres:16
@@ -106,6 +107,7 @@ jobs:
             if curl -fsS http://localhost:8181/actuator/health/liveness > /dev/null 2>&1; then
               echo "started after ${i}s"
               curl -fsS http://localhost:8181/actuator/health/liveness
+              curl -fsS -o /dev/null http://localhost:8181/login
               exit 0
             fi
             sleep 1

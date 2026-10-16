@@ -43,6 +43,11 @@
     bottom: 0;
 }
 
+/* Not licensed (classification-banners): the layout renders no bars, so reserve no room. */
+body.no-classification {
+    --classification-height: 0px;
+}
+
 /* The bars are fixed, so the page reserves room for them. */
 body {
     padding-top: var(--classification-height);

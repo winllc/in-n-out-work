@@ -12,10 +12,12 @@ Full documentation: https://ens-solutions.com/ (Configuration, Windows authentic
   4 GB RAM, 10 GB disk.
 - Your LDAP directory or Active Directory, and a read-only service account for it.
 - An SMTP server for absence notifications (optional, see `MANAGEMENT_HEALTH_MAIL_ENABLED`).
-- Your ENS Solutions license file `license.lic` (without it ReadyRoom runs with its core features).
+- Your ENS Solutions license file (`.lic`), downloaded from your account on the ENS portal: an
+  evaluation, or the license issued against your order. Without one ReadyRoom offers only sign-in
+  and its license screen.
 
 ReadyRoom keeps its own records in the bundled PostgreSQL 16 container, in the Docker volume
-`readyroom_postgres_data`.
+`readyroom_postgres_data`, and its license and installation id in the volume `readyroom_ens-license`.
 
 ## Verify the download
 
@@ -45,12 +47,33 @@ password) and lists the lines to edit. Edit `.env`, replacing every `CHANGE_ME`:
 | `APPLICATION_SUPERUSERDNS_0` | At least one administrator, by full DN |
 | `SPRING_MAIL_*`, `APPLICATION_NOTIFICATIONSENDEREMAIL` | Your SMTP server and the From address |
 
-Copy the license to `license/license.lic`, then run `./install.sh` again. It starts ReadyRoom with
-`docker compose up -d`; the first start takes a minute or two. `docker compose ps` shows the `app`
-container as `healthy` when it is ready. Open `APPLICATION_BASE_URL` and sign in with a directory
-account.
+Optionally copy the license to `license/license.lic`, then run `./install.sh` again. It starts
+ReadyRoom with `docker compose up -d`; the first start takes a minute or two. `docker compose ps`
+shows the `app` container as `healthy` when it is ready. If `license/license.lic` is there, it is
+copied into the license volume; otherwise `install.sh` prints where to upload it. Open
+`APPLICATION_BASE_URL` and sign in with a directory account.
 
-`install.sh` can be run again at any time; it never overwrites `.env`, the license or the database.
+`install.sh` can be run again at any time; it never overwrites `.env`, the database or an installed
+license.
+
+## License
+
+Signed in as an administrator (`APPLICATION_SUPERUSERDNS_*`), open **License** in the menu
+(`APPLICATION_BASE_URL/app/admin/license`). It shows what is installed and what it includes, how many
+people ReadyRoom tracks against the licensed size, and this installation's id (for example
+`RR-7F3K-29QD`): enter it on the ENS portal to bind a license to this installation. Upload a new or
+renewed license there; it takes effect at once.
+
+| License | ReadyRoom |
+|---|---|
+| Valid, or expired but within its grace period | Everything the license includes; administrators see a renewal reminder |
+| Expired past grace | Read-only: everything visible, nothing can be changed, the Windows client's check-ins are refused and the scheduled jobs pause |
+| None, or not valid for this installation | Only sign-in and the license screen |
+
+The license lives in the `readyroom_ens-license` volume with the installation id, and is kept across
+upgrades. Never remove that volume (`docker compose down -v`): the installation would get a new id,
+and a license bound to the old one would stop working. Licenses from before this release are in an
+older format that is no longer read: download the license again from the portal.
 
 **Health and mail.** The health check includes the mail server. If it cannot be reached, ReadyRoom
 reports `DOWN` and the container shows as unhealthy, although everything except e-mail works. Fix the
@@ -98,7 +121,9 @@ cd readyroom-<new-version>
 ```
 
 It copies `.env`, `license/`, `tls/` and `kerberos/`, loads the new images and recreates the
-containers. The database volume is kept. Back it up first:
+containers. The database and license volumes are kept; if the license volume holds no license yet,
+`license/license.lic` is copied in, and otherwise `upgrade.sh` says where to upload one. Back the
+database up first:
 
 ```bash
 docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > readyroom-backup.sql
@@ -117,7 +142,7 @@ docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB
 docker compose ps                 # status
 docker compose logs -f app        # application log
 docker compose up -d              # apply changes to .env (recreates what changed)
-docker compose down               # stop (the database volume is kept)
+docker compose down               # stop (the database and license volumes are kept)
 ```
 
 ## Contents
@@ -128,7 +153,7 @@ docker compose down               # stop (the database volume is kept)
 | `docker-compose.yml` | The deployment: ReadyRoom and PostgreSQL 16 |
 | `docker-compose.tls.yml`, `docker-compose.windows-auth.yml` | Optional TLS keystore and Windows sign-in mounts |
 | `env.template` | Every setting, commented; copied to `.env` |
-| `license/` | Where `license.lic` goes |
+| `license/` | Where `license.lic` can go for `install.sh` to copy in |
 | `images/` | The container images (`docker load`) |
 | `windows-client/` | The Windows client and its installer |
 | `migrations/` | Database scripts named in release notes |

@@ -38,7 +38,7 @@ class PermissionServiceTest {
         users = mock(UserRecordRepository.class);
         permissions = mock(PermissionRecordRepository.class);
         when(users.save(any(UserRecord.class))).thenAnswer(inv -> inv.getArgument(0));
-        service = new PermissionService(users, permissions, mock(LdapService.class));
+        service = new PermissionService(users, permissions, mock(LdapService.class), TrackedPeopleLimit.NONE);
     }
 
     @Test

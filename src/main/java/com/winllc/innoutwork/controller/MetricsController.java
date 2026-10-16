@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.LoginByTimeChartData;
@@ -31,6 +33,7 @@ import java.util.stream.Collectors;
 import static com.winllc.innoutwork.constant.ChartColorMap.COLOR_MAP;
 import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_TIME_FORMATTER;
 
+@RequiresFeature(LicensedFeature.METRICS)
 @Controller
 @RequestMapping("/app/metrics")
 public class MetricsController {

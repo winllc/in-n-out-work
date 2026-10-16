@@ -20,15 +20,20 @@ import java.util.function.Supplier;
  * <p>
  * Calls must not run inside a surrounding transaction: a rejected insert would mark that transaction
  * for rollback, and the fallback read would fail with it.
+ * <p>
+ * Every insert is a new tracked person, so it first asks the {@link TrackedPeopleLimit} (the license's
+ * size); past it, {@link TrackedPeopleLimitException} is thrown and nothing is written.
  */
 final class UserRecordStore {
 
     private static final Logger log = LoggerFactory.getLogger(UserRecordStore.class);
 
     private final UserRecordRepository repository;
+    private final TrackedPeopleLimit limit;
 
-    UserRecordStore(UserRecordRepository repository) {
+    UserRecordStore(UserRecordRepository repository, TrackedPeopleLimit limit) {
         this.repository = repository;
+        this.limit = limit;
     }
 
     /** A record freshly inserted, or the one that already existed. */
@@ -37,6 +42,14 @@ final class UserRecordStore {
 
     /** Inserts {@code newRecord} for {@code dn}, or returns the existing record if another request got there first. */
     Result insertOrFind(String dn, Supplier<UserRecord> newRecord) {
+        if (!limit.mayAdd(repository.count())) {
+            // Another request may have created it a moment ago; that one is already tracked.
+            Optional<UserRecord> existing = repository.findByDnIgnoreCase(dn);
+            if (existing.isPresent()) {
+                return new Result(existing.get(), false);
+            }
+            throw new TrackedPeopleLimitException(dn);
+        }
         try {
             return new Result(repository.save(newRecord.get()), true);
         } catch (DataIntegrityViolationException e) {

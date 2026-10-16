@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.CalendarEvent;
@@ -28,6 +30,7 @@ import java.util.Optional;
 
 import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 
+@RequiresFeature(LicensedFeature.CALENDAR)
 @RequestMapping("/api/event")
 @RestController
 public class UserEventRestService {

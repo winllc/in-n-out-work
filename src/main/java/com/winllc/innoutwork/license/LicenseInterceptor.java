@@ -1,28 +1,60 @@
 package com.winllc.innoutwork.license;
 
+import com.enssolutions.license.LicenseCheck;
+import com.enssolutions.license.LicenseManager;
+import com.enssolutions.license.LicenseState;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
+import java.util.Set;
+
 /**
- * Refuses the requests of one licensed feature while the license does not cover it. Registered by
- * {@link LicenseConfig} on the feature's URL patterns; {@link LicenseExceptionHandler} turns the
- * refusal into a 403 page or JSON body.
+ * Applies the license to every request it is registered for (everything but sign-in/out, the license
+ * screen, GET /api/license, static assets, actuator and the error page; see {@link LicensingConfiguration}):
+ * <ul>
+ *   <li>UNLICENSED: refused. Browsers are sent to the license screen, API callers get 403 JSON.</li>
+ *   <li>READ_ONLY: GET, HEAD and OPTIONS work; any other method is refused (error license_read_only).</li>
+ *   <li>{@link RequiresFeature}: refused unless the license is in full effect and unlocks the feature.</li>
+ * </ul>
+ * {@link LicenseExceptionHandler} turns each refusal into the response. The check is left in a request
+ * attribute, so the pages of the same request see the same one.
  */
 public class LicenseInterceptor implements HandlerInterceptor {
 
-    private final LicenseService licenseService;
-    private final LicensedFeature feature;
+    static final String REQUEST_ATTRIBUTE = LicenseInterceptor.class.getName() + ".check";
 
-    public LicenseInterceptor(LicenseService licenseService, LicensedFeature feature) {
-        this.licenseService = licenseService;
-        this.feature = feature;
+    private static final Set<String> SAFE = Set.of("GET", "HEAD", "OPTIONS");
+
+    private final LicenseManager licenses;
+
+    public LicenseInterceptor(LicenseManager licenses) {
+        this.licenses = licenses;
     }
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        if (!licenseService.isEnabled(feature.id())) {
-            throw new LicenseRequiredException(feature);
+        LicenseCheck check = licenses.current();
+        request.setAttribute(REQUEST_ATTRIBUTE, check);
+
+        if (check.mode() == LicenseState.Mode.UNLICENSED) {
+            throw new LicenseRefusedException(LicenseRefusedException.Reason.LICENSE_REQUIRED, check, null,
+                    check.message());
+        }
+        if (check.mode() == LicenseState.Mode.READ_ONLY && !SAFE.contains(request.getMethod())) {
+            throw new LicenseRefusedException(LicenseRefusedException.Reason.LICENSE_READ_ONLY, check, null,
+                    "ReadyRoom is read-only: " + check.message());
+        }
+        if (handler instanceof HandlerMethod method) {
+            RequiresFeature required = method.getMethodAnnotation(RequiresFeature.class);
+            if (required == null) {
+                required = method.getBeanType().getAnnotation(RequiresFeature.class);
+            }
+            if (required != null && !check.isFeatureEnabled(required.value().id())) {
+                throw new LicenseRefusedException(LicenseRefusedException.Reason.FEATURE_NOT_LICENSED, check,
+                        required.value(), required.value().label() + " is not included in this installation's license.");
+            }
         }
         return true;
     }
