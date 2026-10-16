@@ -4,7 +4,8 @@ Workforce check-in/out and attendance for an LDAP-backed organization, by ENS So
 installs the ReadyRoom server with Docker Compose. Everything it needs is included: the container
 images are in `images/`, so a site without internet access needs nothing else.
 
-Full documentation: https://ens-solutions.com/ (Configuration, Windows authentication, Licensing).
+Full documentation: https://ens-solutions.com/ (Configuration, Windows authentication, Licensing,
+Audit logging).
 
 ## What you need
 
@@ -18,6 +19,9 @@ Full documentation: https://ens-solutions.com/ (Configuration, Windows authentic
 
 ReadyRoom keeps its own records in the bundled PostgreSQL 16 container, in the Docker volume
 `readyroom_postgres_data`, and its license and installation id in the volume `readyroom_ens-license`.
+Its audit trail is in the database too (Administration > Audit log); to send it to Splunk or another
+SIEM, set the `ENS_AUDIT_*` lines in `.env` (see `env.template`). The optional audit log file goes to
+the volume `readyroom_ens-audit`.
 
 ## Verify the download
 
