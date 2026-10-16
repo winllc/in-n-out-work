@@ -4,12 +4,14 @@ import org.springframework.beans.factory.annotation.Autowired;
 import com.enssolutions.license.LicenseManager;
 import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.LockModeType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -57,11 +59,17 @@ public class AuditService implements AuditLog {
     private final List<Runnable> appendListeners = new CopyOnWriteArrayList<>();
     private volatile String installationId;
 
+    /*
+     * Takes the factory, not an EntityManager: servlet filters that record sign-ins depend on this
+     * service, and Boot creates them while the embedded server starts, before the shared EntityManager
+     * bean can be resolved. A shared EntityManager made from the factory is the same proxy
+     * @PersistenceContext would inject.
+     */
     @Autowired
-    public AuditService(EntityManager em, PlatformTransactionManager transactions, AuditEventRepository events,
+    public AuditService(EntityManagerFactory emf, PlatformTransactionManager transactions, AuditEventRepository events,
                         AuditProperties properties, ObjectProvider<LicenseManager> licenses,
                         ObjectProvider<BuildProperties> build) {
-        this(em, transactions, events, properties, licenses,
+        this(SharedEntityManagerCreator.createSharedEntityManager(emf), transactions, events, properties, licenses,
                 build.getIfAvailable() != null && build.getIfAvailable().getVersion() != null
                         ? build.getIfAvailable().getVersion() : "dev",
                 hostName(), Clock.systemUTC());
