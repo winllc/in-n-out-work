@@ -717,7 +717,7 @@ means `application.windows-auth.enabled` is off on that server.
 ReadyRoom keeps a tamper-evident audit trail in the shared ENS format `ens-audit/1` (one JSON object
 per event, the same in every ENS product), and can hand it to Splunk or any SIEM without custom
 parsing. The full format and the Splunk setup are on the ENS documentation site,
-[`audit-logging.md`](https://ens-solutions.com/) ("Audit logging").
+[`audit-logging.md`](https://github.com/winllc/ens-apps-documentation/blob/master/docs/audit-logging.md) ("Audit logging").
 
 **Where it lives.** Every event is stored, synchronously, in the `audit_events` table of ReadyRoom's
 own PostgreSQL database, in the request that caused it. Each one carries a gapless `seq` and a SHA-256
