@@ -136,6 +136,15 @@
                             <span class="nav-link-title">License</span>
                         </a>
                     </li>
+                    <!-- Open in every license state, like the license screen: the audit trail stays available. -->
+                    <li class="nav-item" sec:authorize="hasAuthority('ADMIN')">
+                        <a class="nav-link" th:href="@{/app/admin/audit}">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <i class="ti ti-list-search"></i>
+                            </span>
+                            <span class="nav-link-title">Audit log</span>
+                        </a>
+                    </li>
                 </ul>
             </div>
         </div>

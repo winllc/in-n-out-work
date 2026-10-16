@@ -1,10 +1,12 @@
 package com.winllc.innoutwork.license;
 
 import com.enssolutions.license.LicenseManager;
+import com.winllc.innoutwork.audit.AccessDenials;
 import com.winllc.innoutwork.service.TrackedPeopleLimitException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
@@ -36,14 +38,28 @@ public class LicenseExceptionHandler {
 
     private final LicenseManager licenses;
 
+    /** Records each refusal as access.denied; absent in test slices without the audit store. */
+    private AccessDenials denials;
+
     public LicenseExceptionHandler(LicenseManager licenses) {
         this.licenses = licenses;
+    }
+
+    @Autowired(required = false)
+    public void setAccessDenials(AccessDenials denials) {
+        this.denials = denials;
     }
 
     @ExceptionHandler(LicenseRefusedException.class)
     public Object refused(HttpServletRequest req, LicenseRefusedException ex) {
         log.info("Refused {} {}: {} ({})", req.getMethod(), req.getRequestURI(), ex.getReason().code(),
                 ex.getFeature() != null ? ex.getFeature().id() : ex.getCheck().state());
+        if (denials != null) {
+            Map<String, Object> extra = new LinkedHashMap<>();
+            extra.put("licenseState", ex.getCheck().state().name());
+            extra.put("feature", ex.getFeature() != null ? ex.getFeature().id() : null);
+            denials.denied(req, ex.getReason().name().toLowerCase(), ex.getMessage(), extra);
+        }
 
         if (wantsJson(req)) {
             Map<String, String> body = new LinkedHashMap<>();
@@ -67,6 +83,9 @@ public class LicenseExceptionHandler {
     @ExceptionHandler(TrackedPeopleLimitException.class)
     public Object overLimit(HttpServletRequest req, TrackedPeopleLimitException ex) {
         log.warn("Refused {} {}: {}", req.getMethod(), req.getRequestURI(), ex.getMessage());
+        if (denials != null) {
+            denials.denied(req, "license_limit", ex.getMessage(), null);
+        }
         if (wantsJson(req)) {
             Map<String, String> body = new LinkedHashMap<>();
             body.put("error", "license_limit");

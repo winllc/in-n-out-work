@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.cron;
 
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.winllc.innoutwork.audit.JobAudit;
 import com.winllc.innoutwork.config.RefreshUserRecordsCronProperties;
 import com.winllc.innoutwork.data.DirectorySyncResult;
 import com.winllc.innoutwork.license.LicensedFeature;
@@ -30,6 +33,13 @@ public class RefreshUserRecordsCron {
      */
     private final LicensedJobs licensedJobs;
 
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
+
     public RefreshUserRecordsCron(UserService userService, RefreshUserRecordsCronProperties properties,
                                   LicensedJobs licensedJobs) {
         this.userService = userService;
@@ -50,8 +60,13 @@ public class RefreshUserRecordsCron {
             return;
         }
 
+        long start = System.currentTimeMillis();
         try {
             DirectorySyncResult result = userService.syncUserRecordsFromDirectory();
+            // One event per run, with the counts; never one per person.
+            JobAudit.completed(audit, "RefreshUserRecordsCron", start, java.util.Map.of(
+                    "scanned", result.scanned(), "created", result.created(), "updated", result.updated(),
+                    "unchanged", result.unchanged(), "skipped", result.skipped(), "notAdded", result.notAdded()));
 
             // The service logs the detail; this line is about the job having run at all.
             log.debug("RefreshUserRecordsCron finished: {} scanned, {} written, {} not added (license size)",
@@ -59,6 +74,7 @@ public class RefreshUserRecordsCron {
         } catch (Exception e) {
             // Unattended and periodic: swallow so one bad run does not kill the schedule.
             log.error("RefreshUserRecordsCron failed; the next run will retry", e);
+            JobAudit.failed(audit, "RefreshUserRecordsCron", start, e);
         }
     }
 }

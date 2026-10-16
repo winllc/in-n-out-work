@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Audit event</title>
+</head>
+<body>
+
+<span layout:fragment="page-title" th:text="${event != null ? 'Audit event ' + event.seq : 'Audit event'}">Audit event</span>
+
+<div layout:fragment="page-actions">
+    <a class="btn" th:href="@{/app/admin/audit}"><i class="ti ti-arrow-left me-1"></i>Audit log</a>
+</div>
+
+<div layout:fragment="content">
+
+    <div th:if="${event == null}" class="alert alert-warning" role="alert" id="audit-missing">
+        There is no event <span th:text="${missingSeq}"></span>; it may have been pruned by retention.
+    </div>
+
+    <div class="row row-cards" th:if="${event != null}">
+        <div class="col-lg-6">
+            <div class="card" id="audit-event-fields">
+                <div class="card-header">
+                    <h3 class="card-title" th:text="${event.action}">auth.login</h3>
+                    <div class="card-actions">
+                        <span class="badge"
+                              th:classappend="${event.severity == 'alert'} ? 'bg-red-lt' : (${event.severity == 'warning'} ? 'bg-yellow-lt' : (${event.severity == 'notice'} ? 'bg-blue-lt' : 'bg-secondary-lt'))"
+                              th:text="${event.severity}">info</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <th:block th:each="f : ${fields}">
+                            <dt class="col-sm-4 text-break" th:text="${f.name()}">seq</dt>
+                            <dd class="col-sm-8 text-break"
+                                th:classappend="${f.name() == 'hash' or f.name() == 'prevHash' or f.name() == 'id'} ? 'font-monospace small' : ''">
+                                <time th:if="${f.name() == 'time'}" class="audit-time" th:attr="datetime=${f.value()}"
+                                      th:text="${f.value()}"></time>
+                                <span th:if="${f.name() != 'time' and f.value() != null}" th:text="${f.value()}"></span>
+                                <span th:if="${f.value() == null}" class="text-secondary">null</span>
+                            </dd>
+                        </th:block>
+                    </dl>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card" id="audit-event-json">
+                <div class="card-header">
+                    <h3 class="card-title">JSON</h3>
+                    <div class="card-actions small text-secondary">As stored and delivered, formatted</div>
+                </div>
+                <div class="card-body">
+                    <pre class="mb-0 small" style="white-space: pre-wrap; word-break: break-all"
+                         th:text="${pretty}">{}</pre>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.querySelectorAll("time.audit-time").forEach(function (el) {
+            const when = new Date(el.getAttribute("datetime"));
+            if (!isNaN(when)) {
+                el.textContent = when.toLocaleString() + " (" + el.getAttribute("datetime") + ")";
+                el.title = el.getAttribute("datetime");
+            }
+        });
+    </script>
+</div>
+</body>
+</html>

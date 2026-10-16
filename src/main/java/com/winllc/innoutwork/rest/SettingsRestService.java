@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
@@ -37,6 +40,13 @@ public class SettingsRestService {
     private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
 
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
+
     public SettingsRestService(CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
                                GlobalCalendarRecordRepository globalCalendarRecordRepository) {
         this.checkInOutRecordRepository = checkInOutRecordRepository;
@@ -71,19 +81,33 @@ public class SettingsRestService {
         String userDn = authentication.getName();
         LocalDate fromLocalDate = LocalDate.parse(data.getFromDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
         LocalDate toLocalDate = LocalDate.parse(data.getToDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
+        LocalDate firstDay = fromLocalDate;
+        LocalDate endDay = toLocalDate;
 
-        while(fromLocalDate.isBefore(toLocalDate)){
+        // The organization calendar is configuration everyone's absence checks read: saved and audited together.
+        audit.inTransaction(() -> {
+            List<String> ids = new ArrayList<>();
+            LocalDate day = firstDay;
+            while(day.isBefore(endDay)){
 
-            GlobalCalendarRecord record = new GlobalCalendarRecord();
-            record.setDate(fromLocalDate);
-            record.setTitle(data.getTitle());
-            record.setHoliday(Boolean.parseBoolean(data.getHoliday()));
+                GlobalCalendarRecord record = new GlobalCalendarRecord();
+                record.setDate(day);
+                record.setTitle(data.getTitle());
+                record.setHoliday(Boolean.parseBoolean(data.getHoliday()));
 
-            globalCalendarRecordRepository.save(record);
+                ids.add(String.valueOf(globalCalendarRecordRepository.save(record).getId()));
 
-            fromLocalDate = fromLocalDate.plusDays(1);
+                day = day.plusDays(1);
 
-        }
+            }
+            audit.record(AuditEntry.of(AuditEntry.Category.CONFIGURATION, "calendar.org-event-created")
+                    .target("calendar-event", String.join(",", ids), data.getTitle())
+                    .detail("title", data.getTitle())
+                    .detail("holiday", Boolean.parseBoolean(data.getHoliday()))
+                    .detail("from", firstDay.toString())
+                    .detail("to", endDay.toString())
+                    .detail("days", ids.size()));
+        });
 
         return data;
     }
@@ -95,7 +119,16 @@ public class SettingsRestService {
 
         log.debug("deleteEvent called by {} with data: {}", authentication.getName(), eventId);
 
-        globalCalendarRecordRepository.deleteById(Long.parseLong(eventId));
+        long id = Long.parseLong(eventId);
+        audit.inTransaction(() -> {
+            GlobalCalendarRecord old = globalCalendarRecordRepository.findById(id).orElse(null);
+            globalCalendarRecordRepository.deleteById(id);
+            audit.record(AuditEntry.of(AuditEntry.Category.CONFIGURATION, "calendar.org-event-deleted")
+                    .target("calendar-event", eventId, old == null ? null : old.getTitle())
+                    .detail("title", old == null ? null : old.getTitle())
+                    .detail("date", old == null || old.getDate() == null ? null : old.getDate().toString())
+                    .detail("holiday", old == null ? null : old.isHoliday()));
+        });
     }
 
     private List<CalendarEvent> globalCalendarRecordsToEvents(LocalDate fromDate, LocalDate toDate){

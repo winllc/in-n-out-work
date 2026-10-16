@@ -14,8 +14,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 import java.util.TimeZone;
 
 @SpringBootApplication(scanBasePackages = "com.winllc.innoutwork")
-@EntityScan(basePackages = "com.winllc.innoutwork.model")
-@EnableJpaRepositories(basePackages = "com.winllc.innoutwork.repository")
+@EntityScan(basePackages = {"com.winllc.innoutwork.model", "com.winllc.innoutwork.audit"})
+@EnableJpaRepositories(basePackages = {"com.winllc.innoutwork.repository", "com.winllc.innoutwork.audit"})
 @EnableScheduling
 @ConfigurationPropertiesScan
 public class InOutWorkApplication {

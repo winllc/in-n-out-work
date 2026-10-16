@@ -1,5 +1,9 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.GroupFavorite;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.model.GroupRecord;
@@ -26,6 +30,13 @@ public class GroupRestService {
     private final UserService userRecordService;
     private final GroupRecordRepository groupRecordRepository;
     private final GroupService groupService;
+
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
 
     public GroupRestService(UserService userRecordService, GroupRecordRepository groupRecordRepository, GroupService groupService) {
         this.userRecordService = userRecordService;
@@ -92,12 +103,18 @@ public class GroupRestService {
         log.info("Updating managers for user %s to: %s".formatted(authentication.getName(), managerDns));
 
         GroupRecord record = groupService.getOrCreateGroupRecord(groupName);
+        String old = record.getAlternateManagers();
 
         record.setAlternateManagers("");
         for(String managerDn : managerDns){
             record.addAltManager(managerDn);
         }
 
-        groupRecordRepository.save(record);
+        audit.inTransaction(() -> {
+            GroupRecord saved = groupRecordRepository.save(record);
+            audit.record(AuditEntry.of(AuditEntry.Category.CONFIGURATION, "group.managers-changed")
+                    .target("group", groupName, LdapDn.cnOf(groupName))
+                    .change("alternateManagers", old, saved.getAlternateManagers()));
+        });
     }
 }

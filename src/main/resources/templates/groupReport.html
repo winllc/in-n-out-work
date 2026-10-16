@@ -8,8 +8,24 @@
     <script th:src="@{/libs/html2pdf/html2pdf.bundle.min.js}"></script>
 
 
-    <script>
+    <script th:inline="javascript">
+        // What the report covers, for the audit record of the download.
+        const reportExport = {
+            groupDn: /*[[${form != null ? form.groupDn : ''}]]*/ '',
+            fromDate: /*[[${form != null ? form.fromDate : ''}]]*/ '',
+            toDate: /*[[${form != null ? form.toDate : ''}]]*/ ''
+        };
+        const reportExportUrl = /*[[@{/app/group/report/exported}]]*/ '/app/group/report/exported';
+
         function generatePDF() {
+            // The PDF is drawn here in the browser; tell the server it was exported (data.exported).
+            fetch(reportExportUrl, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+                body: new URLSearchParams(Object.assign({format: 'pdf'}, reportExport))
+            }).catch(function () { /* the download itself does not depend on it */ });
+
             const element = document.getElementById('fullReport');
             const opt = {
                 margin: 0.5,
