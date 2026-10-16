@@ -1,0 +1,84 @@
+# ReadyRoom - production deployment.
+#
+# Everything site-specific lives in .env (made from env.template by install.sh); this file should not
+# need editing. Start, stop and inspect it from this directory:
+#
+#     docker compose up -d
+#     docker compose ps
+#     docker compose logs -f app
+#
+# What comes up:
+#   postgres   PostgreSQL 16 for ReadyRoom's own records (check-ins, roles, permissions, notes)
+#   app        ReadyRoom on port 8181, published on the host as READYROOM_PORT
+#
+# What does not: the LDAP directory / Active Directory and the SMTP server are the customer's own and
+# are configured in .env. Optional pieces are separate files, switched on with COMPOSE_FILE in .env:
+#   docker-compose.tls.yml           your own TLS keystore (and client-certificate truststore)
+#   docker-compose.windows-auth.yml  Windows (Kerberos) sign-in: krb5.conf and the service keytab
+#
+# The project name is fixed, so the named volumes (the database) are the same ones whichever directory
+# a release is unpacked into; upgrade.sh relies on this.
+
+name: readyroom
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-readyroom}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set in .env}
+      POSTGRES_DB: ${DB_NAME:-readyroom}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Not published to the host: only the application reaches it, over the backend network.
+    networks:
+      - backend
+
+  app:
+    image: __READYROOM_IMAGE__
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Every variable in .env reaches the application, so any setting in the README's Configuration
+    # section can be added there as an environment variable without touching this file.
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      # Where the mounted license below is read from (the image's default too).
+      ENS_LICENSE_FILE: /etc/ens/license/license.lic
+    volumes:
+      # The ENS Solutions license: put license.lic in ./license. Re-read within 30 seconds of a change.
+      - ./license:/etc/ens/license:ro
+    ports:
+      - "${READYROOM_BIND_ADDRESS:-0.0.0.0}:${READYROOM_PORT:-8181}:8181"
+    healthcheck:
+      # /actuator/health includes the mail server: see MANAGEMENT_HEALTH_MAIL_ENABLED in .env.
+      # Plain HTTP unless SSL_ENABLED=true, when the same port speaks TLS - hence the second try.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:$${SERVER_PORT:-8181}/actuator/health || curl -kfsS -o /dev/null https://127.0.0.1:$${SERVER_PORT:-8181}/actuator/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
