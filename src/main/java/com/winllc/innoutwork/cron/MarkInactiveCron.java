@@ -2,6 +2,8 @@ package com.winllc.innoutwork.cron;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.LicensedJobs;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import org.slf4j.Logger;
@@ -19,10 +21,14 @@ public class MarkInactiveCron {
 
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
+    /** Automatic check-out is part of attendance tracking, and writes: it pauses without a full license. */
+    private final LicensedJobs licensedJobs;
 
-    public MarkInactiveCron(CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties) {
+    public MarkInactiveCron(CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
+                            LicensedJobs licensedJobs) {
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
+        this.licensedJobs = licensedJobs;
     }
 
     // Not @Async: with it the scheduler returned at once, so the fixed delay never waited for a run to
@@ -30,6 +36,9 @@ public class MarkInactiveCron {
     @Scheduled(fixedDelayString = "#{@inactiveCronProperties.fixedRate}",
             initialDelayString = "#{@inactiveCronProperties.initialDelay}")
     public void run(){
+        if (!licensedJobs.mayRun(LicensedFeature.ATTENDANCE, "MarkInactiveCron")) {
+            return;
+        }
 
         long start = System.currentTimeMillis();
 

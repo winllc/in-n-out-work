@@ -22,6 +22,10 @@
                    th:text="${demoMode == true} ? 'Pick a role below, or use your directory credentials'
                                         : 'Use your directory credentials'">Use your directory credentials</p>
 
+                <div th:if="${licenseInfo != null and licenseInfo.evaluationBanner}" id="evaluation-banner"
+                     class="alert alert-info py-2 small" role="status">
+                    Evaluation license &middot; not for production use.
+                </div>
                 <div th:if="${param.error}" class="alert alert-danger" role="alert">
                     Invalid username or password.
                 </div>

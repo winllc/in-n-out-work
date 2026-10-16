@@ -20,12 +20,15 @@ public class PermissionService {
     private final UserRecordRepository userRecordRepository;
     private final PermissionRecordRepository permissionRecordRepository;
     private final LdapService ldapService;
+    private final TrackedPeopleLimit peopleLimit;
 
     public PermissionService(UserRecordRepository userRecordRepository,
-                             PermissionRecordRepository permissionRecordRepository, LdapService ldapService) {
+                             PermissionRecordRepository permissionRecordRepository, LdapService ldapService,
+                             TrackedPeopleLimit peopleLimit) {
         this.userRecordRepository = userRecordRepository;
         this.permissionRecordRepository = permissionRecordRepository;
         this.ldapService = ldapService;
+        this.peopleLimit = peopleLimit;
     }
 
     public List<LdapDn> getUserGroupPermissions(LdapDn userDn){
@@ -78,7 +81,7 @@ public class PermissionService {
     }
 
     private UserRecord getOrCreateUserRecord(LdapDn userDn){
-        return new UserRecordStore(userRecordRepository).findOrCreate(userDn.dn(), () -> {
+        return new UserRecordStore(userRecordRepository, peopleLimit).findOrCreate(userDn.dn(), () -> {
             // Incidental to the grant, which is logged at info by the caller.
             log.debug("Creating user record for {} on first permission change", userDn.dn());
             return UserRecord.builder().dn(userDn.dn()).build();

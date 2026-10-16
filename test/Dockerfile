@@ -1,5 +1,5 @@
 # Multi-stage build: compile the Spring Boot app from source, then run it.
-# Used by test/docker-compose.app.yml. Build context is the repo root.
+# Used by docker-compose.yml and docker-compose.demo.yml. Build context is the repo root.
 
 # ---- build stage -------------------------------------------------------------
 FROM eclipse-temurin:21-jdk AS build
@@ -27,6 +27,13 @@ FROM registry.access.redhat.com/ubi9/openjdk-21-runtime
 # mounted; group 0 is the image's default user's group, so it can read it.
 USER root
 RUN microdnf install -y --nodocs krb5-workstation  && microdnf clean all  && mkdir -p /etc/in-n-out  && chgrp 0 /etc/in-n-out  && chmod 0750 /etc/in-n-out
+
+# The ENS license and licensing state, as in the production Dockerfile: one writable directory, kept on
+# the compose files' ens-license volume.
+ENV ENS_LICENSE_STATE_DIR=/var/lib/ens/readyroom \
+    ENS_LICENSE_FILE=/var/lib/ens/readyroom/license.lic
+RUN mkdir -p /var/lib/ens/readyroom && chown -R 185:0 /var/lib/ens && chmod -R 0770 /var/lib/ens
+VOLUME /var/lib/ens
 USER 185
 
 WORKDIR /app

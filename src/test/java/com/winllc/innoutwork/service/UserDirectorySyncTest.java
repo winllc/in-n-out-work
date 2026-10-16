@@ -47,7 +47,7 @@ class UserDirectorySyncTest {
     void setUp() {
         // Only the repository and the directory matter on this path; the service's other
         // collaborators are never touched by the sync.
-        userService = new UserService(userRecordRepository, ldapService, null, null, null, null);
+        userService = new UserService(userRecordRepository, ldapService, null, null, null, null, TrackedPeopleLimit.NONE);
     }
 
     /**

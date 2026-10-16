@@ -6,8 +6,9 @@
 #
 # Copies .env, license/, tls/ and kerberos/ from the previous release's directory (anything not already
 # here; nothing is overwritten), loads this release's images and recreates the containers with
-# "docker compose up -d". The database lives in a named Docker volume shared by every release, so it
-# is kept; the application updates its schema on start.
+# "docker compose up -d". The database and the license (with this installation's id) live in named
+# Docker volumes shared by every release, so they are kept; the application updates its schema on
+# start. If the license volume holds no license yet, license/license.lic is copied in.
 #
 # Back up the database first:
 #     docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > readyroom-backup.sql
@@ -50,6 +51,54 @@ if [ -n "$previous" ]; then
 fi
 
 [ -f .env ] || die "no .env here. Pass the previous release's directory, or run ./install.sh for a first install."
+
+# --- license -----------------------------------------------------------------------------------------
+# The license, the installation id it can be bound to and the licensing state live in the ens-license
+# volume (/var/lib/ens/readyroom in the app container), which every release shares. license/license.lic
+# is copied in when the volume holds no license yet; after that, licenses are replaced on the license
+# screen, so an older file left here never overwrites a newer one installed there.
+license_screen() {
+    printf '%s/app/admin/license' "$(sed -n 's/^APPLICATION_BASE_URL=//p' .env | tail -n 1)"
+}
+
+install_license() {
+    local target=/var/lib/ens/readyroom/license.lic installed=0
+    if docker compose exec -T app test -s "$target" > /dev/null 2>&1; then
+        installed=1
+    fi
+    if [ ! -f license/license.lic ]; then
+        if [ "$installed" = 1 ]; then
+            say "License: keeping the one installed in the license volume."
+        else
+            say "No license is installed yet, so ReadyRoom offers only sign-in and its license screen."
+            say "Sign in as an administrator and upload the license file (from your ENS portal account) at:"
+            say "    $(license_screen)"
+        fi
+        return 0
+    fi
+    if ! grep -q -- '-----BEGIN ENS LICENSE-----' license/license.lic; then
+        say "license/license.lic is a license in the old format, which this release does not read."
+        say "Download the license from your account on the ENS portal and upload it at:"
+        say "    $(license_screen)"
+        return 0
+    fi
+    if [ "$installed" = 1 ]; then
+        say "License: one is already installed in the license volume, so license/license.lic was not copied."
+        say "         To replace it, upload the new file at $(license_screen)"
+        return 0
+    fi
+    # Written by the app's own user (so it can read and later replace it), then moved into place; the
+    # same as "docker compose cp license/license.lic app:$target" without the ownership fix-up.
+    if ! docker compose exec -T app sh -c 'umask 007 && cat > "$1.tmp" && mv "$1.tmp" "$1"' sh "$target" \
+            < license/license.lic; then
+        say "Could not copy license/license.lic into the app container (is it running? docker compose ps)."
+        say "Run this script again once it is, or upload the license at $(license_screen)"
+        return 0
+    fi
+    say "Copied license/license.lic into the license volume; ReadyRoom uses it at once."
+    say "Check it, or replace it later, at $(license_screen)"
+}
+
 mkdir -p license tls kerberos
 
 for tar in images/*.tar; do
@@ -73,6 +122,8 @@ fi
 docker compose config --quiet
 docker compose up -d --remove-orphans
 
+say ""
+install_license
 say ""
 say "Upgraded to ReadyRoom $(cat VERSION). Check: docker compose ps   /   docker compose logs -f app"
 if [ -n "$previous" ]; then

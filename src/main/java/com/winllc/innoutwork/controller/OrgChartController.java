@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.service.OrgChartService;
@@ -13,6 +15,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.ModelAndView;
 
+@RequiresFeature(LicensedFeature.ORG_CHART)
 @Controller
 @RequestMapping("/app/orgchart")
 public class OrgChartController {

@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapUser;
@@ -68,6 +70,7 @@ public class UserRestService {
      * from the authenticated principal rather than a path variable, so it cannot be used to read
      * somebody else's team.
      */
+    @RequiresFeature(LicensedFeature.METRICS)
     @GetMapping("/reports")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
@@ -114,6 +117,7 @@ public class UserRestService {
         return users;
     }
 
+    @RequiresFeature(LicensedFeature.ATTENDANCE)
     @GetMapping("/checkinoutrecords/{dn}")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)" +

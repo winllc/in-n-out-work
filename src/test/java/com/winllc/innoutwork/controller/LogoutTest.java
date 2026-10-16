@@ -4,7 +4,8 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.config.SecurityConfig;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.controller.advice.GlobalModelAttributes;
-import com.winllc.innoutwork.license.LicenseConfig;
+import com.winllc.innoutwork.license.LicensingConfiguration;
+import com.winllc.innoutwork.license.TestLicensing;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -43,8 +44,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * The menu entry appears only for username/password sessions. A certificate session has nothing to
  * log out of: the browser presents the certificate again and is signed straight back in.
  */
-@WebMvcTest(properties = "ens.license.file=src/test/resources/license/test.lic")
-@Import({SecurityConfig.class, GlobalModelAttributes.class, LicenseConfig.class, LoginController.class,
+@WebMvcTest
+@Import({SecurityConfig.class, GlobalModelAttributes.class, LicensingConfiguration.class, TestLicensing.class, LoginController.class,
         LogoutTest.PageController.class, LogoutTest.Beans.class})
 class LogoutTest {
 

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>License</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">License</span>
+
+<div layout:fragment="content">
+
+    <div th:if="${notice}" class="alert alert-success" role="status" id="license-notice" th:text="${notice}"></div>
+    <div th:if="${error}" class="alert alert-danger" role="alert" id="license-error" th:text="${error}"></div>
+
+    <div class="row row-cards">
+
+        <!-- What is installed -->
+        <div class="col-lg-7">
+            <div class="card" id="license-status-card">
+                <div class="card-header">
+                    <h3 class="card-title">Status</h3>
+                    <div class="card-actions">
+                        <span class="badge"
+                              th:classappend="${check.mode().name() == 'FULL'} ? 'bg-green-lt' : (${check.mode().name() == 'READ_ONLY'} ? 'bg-yellow-lt' : 'bg-red-lt')"
+                              id="license-state" th:text="${check.state().name()}">MISSING</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="mb-3" id="license-message" th:text="${check.message()}">No license is installed.</p>
+                    <p class="text-secondary small mb-0" th:if="${check.mode().name() == 'UNLICENSED'}">
+                        Until a license is installed, ReadyRoom offers only sign-in and this screen. Download the
+                        license from your account on the ENS Solutions portal (an evaluation, or the license issued
+                        against your order) and upload it below.
+                    </p>
+                    <p class="text-secondary small mb-0" th:if="${check.mode().name() == 'READ_ONLY'}">
+                        Everything stays visible, but nothing can be changed, the Windows client's check-ins are
+                        refused and the scheduled jobs (directory sync, auto check-out, absence e-mails) are paused
+                        until a renewed license is installed.
+                    </p>
+                </div>
+                <div class="card-body border-top" th:if="${installed != null}">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Licensee</dt>
+                        <dd class="col-sm-8" th:text="${installed.licensee()}">Example Agency</dd>
+                        <dt class="col-sm-4">Edition</dt>
+                        <dd class="col-sm-8 text-capitalize" th:text="${installed.edition()}">subscription</dd>
+                        <dt class="col-sm-4">License</dt>
+                        <dd class="col-sm-8"><code th:text="${installed.id()}">lic_</code>
+                            <span class="text-secondary" th:text="${'revision ' + installed.revision()}"></span></dd>
+                        <dt class="col-sm-4">Valid from</dt>
+                        <dd class="col-sm-8" th:text="${validFrom}">2026-01-01</dd>
+                        <dt class="col-sm-4">Expires</dt>
+                        <dd class="col-sm-8">
+                            <span th:text="${expires}">2027-01-01</span>
+                            <span class="text-secondary" th:if="${graceEnds != null}"
+                                  th:text="${'(full use continues until ' + graceEnds + ')'}"></span>
+                        </dd>
+                        <th:block th:if="${maintenance != null}">
+                            <dt class="col-sm-4">Maintenance</dt>
+                            <dd class="col-sm-8" th:text="${'Releases up to ' + maintenance}">Releases up to</dd>
+                        </th:block>
+                        <dt class="col-sm-4">Support</dt>
+                        <dd class="col-sm-8 text-capitalize" th:text="${installed.support()}">standard</dd>
+                        <th:block th:if="${installed.installationId().isPresent()}">
+                            <dt class="col-sm-4">Bound to</dt>
+                            <dd class="col-sm-8"><code th:text="${installed.installationId().get()}"></code></dd>
+                        </th:block>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- This installation and its size -->
+        <div class="col-lg-5">
+            <div class="card mb-3" id="installation-card">
+                <div class="card-header">
+                    <h3 class="card-title">This installation</h3>
+                </div>
+                <div class="card-body">
+                    <label class="form-label" for="installation-id">Installation id</label>
+                    <div class="input-group mb-2">
+                        <input type="text" class="form-control font-monospace" id="installation-id" readonly
+                               th:value="${installationId}" value="RR-0000-0000">
+                        <button class="btn" type="button" id="copy-installation-id" title="Copy">
+                            <i class="ti ti-copy"></i>
+                        </button>
+                    </div>
+                    <p class="form-hint">
+                        Enter this on the ENS Solutions portal to bind a license to this installation. A bound
+                        license works here and nowhere else.
+                    </p>
+                    <div class="text-secondary small">License file: <code th:text="${licenseFile}"></code></div>
+                </div>
+            </div>
+            <div class="card" id="usage-card">
+                <div class="card-header">
+                    <h3 class="card-title">Size</h3>
+                </div>
+                <div class="card-body">
+                    <p class="mb-1" id="license-usage" th:text="${usage}">0 tracked people.</p>
+                    <p class="form-hint mb-0">
+                        Tracked people are everyone ReadyRoom keeps a record for. Up to 10% over the licensed
+                        size new people are still added; beyond that they are not, until the license is updated.
+                        Nobody already tracked is removed.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Every catalog feature, ticked or not -->
+        <div class="col-lg-7">
+            <div class="card" id="features-card">
+                <div class="card-header">
+                    <h3 class="card-title">Features</h3>
+                </div>
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex align-items-start" th:each="f : ${features}"
+                         th:id="${'feature-' + f.id()}">
+                        <i class="ti fs-2 me-3"
+                           th:classappend="${f.included()} ? 'ti-circle-check text-green' : 'ti-circle-x text-secondary'"
+                           th:title="${f.included()} ? 'Included' : 'Not included'"></i>
+                        <div>
+                            <div th:text="${f.label()}" th:classappend="${f.included()} ? '' : 'text-secondary'">Feature</div>
+                            <div class="small text-secondary" th:text="${f.description()}"></div>
+                        </div>
+                        <span class="ms-auto badge" th:classappend="${f.included()} ? 'bg-green-lt' : 'bg-secondary-lt'"
+                              th:text="${f.included()} ? 'Included' : 'Not included'"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Upload -->
+        <div class="col-lg-5">
+            <div class="card" id="upload-card">
+                <div class="card-header">
+                    <h3 class="card-title">Install a license</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary small" th:if="${demoMode == true}">
+                        This is a read-only demo, so licenses cannot be uploaded here. Put the license file in the
+                        demo stack's <code>license/</code> directory instead (see the README).
+                    </p>
+                    <form th:action="@{/app/admin/license}" method="post" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label class="form-label" for="license-file">License file (.lic)</label>
+                            <input type="file" class="form-control" id="license-file" name="file" accept=".lic,text/plain">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="license-text">or paste it</label>
+                            <textarea class="form-control font-monospace small" id="license-text" name="text" rows="4"
+                                      placeholder="-----BEGIN ENS LICENSE-----"></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="ti ti-upload me-1"></i>Install
+                        </button>
+                        <p class="form-hint mt-2 mb-0">
+                            It takes effect at once, without a restart. A file for another product, bound to another
+                            installation, or older than one already installed here is refused and the current license
+                            stays.
+                        </p>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById("copy-installation-id").addEventListener("click", function () {
+            const field = document.getElementById("installation-id");
+            field.select();
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(field.value);
+            } else {
+                document.execCommand("copy");
+            }
+        });
+    </script>
+</div>
+</body>
+</html>

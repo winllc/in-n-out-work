@@ -71,7 +71,7 @@ class CheckInOutServiceTest {
         originalZone = TimeZone.getDefault();
         TimeZone.setDefault(TimeZone.getTimeZone(NEW_YORK));
 
-        service = new CheckInOutService(recordRepository, userRecordRepository);
+        service = new CheckInOutService(recordRepository, userRecordRepository, TrackedPeopleLimit.NONE);
 
         when(recordRepository.save(any(CheckInOutRecord.class))).thenAnswer(inv -> {
             CheckInOutRecord record = inv.getArgument(0);

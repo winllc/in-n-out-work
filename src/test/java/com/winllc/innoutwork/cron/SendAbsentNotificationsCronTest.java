@@ -3,7 +3,7 @@ package com.winllc.innoutwork.cron;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
-import com.winllc.innoutwork.license.LicenseService;
+import com.winllc.innoutwork.license.LicensedJobs;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.model.GlobalCalendarRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
@@ -130,7 +130,7 @@ class SendAbsentNotificationsCronTest {
         return cronAt(now, everyone, licensed());
     }
 
-    private SendAbsentNotificationsCron cronAt(ZonedDateTime now, List<UserRecord> everyone, LicenseService license) {
+    private SendAbsentNotificationsCron cronAt(ZonedDateTime now, List<UserRecord> everyone, LicensedJobs license) {
         users = mock(UserRecordRepository.class);
         checkIns = mock(CheckInOutRecordRepository.class);
         events = mock(UserEventRecordRepository.class);
@@ -154,10 +154,10 @@ class SendAbsentNotificationsCronTest {
                 new ApplicationProperties(), calendar, license, Clock.fixed(now.toInstant(), NEW_YORK));
     }
 
-    private static LicenseService licensed() {
-        LicenseService license = mock(LicenseService.class);
-        when(license.isEnabled(LicensedFeature.ABSENCE_ALERTS.id())).thenReturn(true);
-        return license;
+    private static LicensedJobs licensed() {
+        LicensedJobs jobs = mock(LicensedJobs.class);
+        when(jobs.mayRun(eq(LicensedFeature.ABSENCE_ALERTS), anyString())).thenReturn(true);
+        return jobs;
     }
 
     private static UserRecord userWithDn(String dn, LocalTime preferred) {
@@ -226,7 +226,7 @@ class SendAbsentNotificationsCronTest {
     @Test
     void withoutTheAbsenceAlertsLicenseNothingIsChecked() {
         SendAbsentNotificationsCron cron = cronAt(NOW, List.of(userWithDn("cn=absent", LocalTime.of(9, 0))),
-                mock(LicenseService.class));
+                mock(LicensedJobs.class));
 
         cron.sendNotifications();
 

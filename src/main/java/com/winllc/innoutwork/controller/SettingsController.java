@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.model.OrgParseRuleRecord;
 import com.winllc.innoutwork.repository.OrgParseRuleRecordRepository;
 import com.winllc.innoutwork.service.CacheService;
@@ -55,6 +57,7 @@ public class SettingsController {
         return mav;
     }
 
+    @RequiresFeature(LicensedFeature.ORG_CHART)
     @PostMapping("/orgparserules")
     @PreAuthorize("hasAnyAuthority(" +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
@@ -96,6 +99,7 @@ public class SettingsController {
         return "redirect:/app/settings";
     }
 
+    @RequiresFeature(LicensedFeature.ORG_CHART)
     @PostMapping("/orgparserules/delete/{id}")
     @PreAuthorize("hasAnyAuthority(" +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
