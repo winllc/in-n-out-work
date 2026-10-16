@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.cron;
 
+import com.winllc.innoutwork.audit.AuditLog;
+import com.winllc.innoutwork.audit.JobAudit;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.DateTimeConstants;
@@ -63,6 +65,13 @@ public class SendAbsentNotificationsCron {
     private final LicensedJobs licensedJobs;
     private final Clock clock;
 
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
+
     @Autowired
     public SendAbsentNotificationsCron(UserRecordRepository userRecordRepository,
                                        CheckInOutRecordRepository checkInOutRecordRepository,
@@ -103,12 +112,28 @@ public class SendAbsentNotificationsCron {
             return;
         }
         long start = System.currentTimeMillis();
+        try {
+            int[] counts = checkForAbsences(start);
+            // Runs every few minutes: runs that sent nothing are not audited, so the trail is not a stream of
+            // no-op events. Runs that alerted someone, and failures, are (one event per run, never per alert).
+            if (counts != null && counts[1] > 0) {
+                JobAudit.completed(audit, "SendAbsentNotificationsCron", start,
+                        java.util.Map.of("checked", counts[0], "sent", counts[1]));
+            }
+        } catch (RuntimeException e) {
+            JobAudit.failed(audit, "SendAbsentNotificationsCron", start, e);
+            throw e;
+        }
+    }
+
+    /** @return {users checked, notifications sent}, or null on a day off */
+    private int[] checkForAbsences(long start) {
         ZonedDateTime now = ZonedDateTime.now(clock);
         LocalDate today = now.toLocalDate();
 
         if (DateTimeConstants.WEEKEND_DAYS.contains(today.getDayOfWeek()) || isHoliday(today)) {
             log.debug("SendAbsentNotificationsCron: {} is not a working day; nothing to check", today);
-            return;
+            return null;
         }
 
         ZoneId zone = clock.getZone();
@@ -148,6 +173,7 @@ public class SendAbsentNotificationsCron {
 
         log.info("End SendAbsentNotificationsCron. Checked {} user(s), sent {} notification(s) in {}ms",
                 checkedUsers, sent, System.currentTimeMillis() - start);
+        return new int[]{checkedUsers, sent};
     }
 
     void createAndSendNotification(UserRecord user, List<UserEventRecord> todaysEvents) {

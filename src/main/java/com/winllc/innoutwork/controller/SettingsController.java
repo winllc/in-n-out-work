@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.model.OrgParseRuleRecord;
@@ -29,6 +32,13 @@ public class SettingsController {
 
     private final OrgParseRuleRecordRepository orgParseRuleRecordRepository;
     private final CacheService cacheService;
+
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
 
     public SettingsController(OrgParseRuleRecordRepository orgParseRuleRecordRepository,
                               CacheService cacheService) {
@@ -88,11 +98,23 @@ public class SettingsController {
         } else {
             record = new OrgParseRuleRecord();
         }
+        String oldName = record.getOrgName();
+        String oldRegex = record.getOrgParseRegex();
+        boolean created = record.getId() == null;
 
         record.setOrgName(form.getOrgName().trim());
         record.setOrgParseRegex(form.getOrgParseRegex().trim());
 
-        orgParseRuleRecordRepository.save(record);
+        audit.inTransaction(() -> {
+            OrgParseRuleRecord saved = orgParseRuleRecordRepository.save(record);
+            audit.record(AuditEntry.of(AuditEntry.Category.CONFIGURATION, "settings.changed")
+                    .target("org-parse-rule", String.valueOf(saved.getId()), saved.getOrgName())
+                    .detail("setting", "orgParseRule")
+                    .detail("change", created ? "created" : "updated")
+                    .detail("keys", "orgName,orgParseRegex")
+                    .change("orgName", oldName, saved.getOrgName())
+                    .change("orgParseRegex", oldRegex, saved.getOrgParseRegex()));
+        });
 
         redirectAttributes.addFlashAttribute("message",
                 "Saved parse rule for '%s'.".formatted(record.getOrgName()));
@@ -107,7 +129,17 @@ public class SettingsController {
     public String deleteOrgParsingRule(@PathVariable Long id, RedirectAttributes redirectAttributes) {
         log.debug("Deleting org parse rule: {}", id);
 
-        orgParseRuleRecordRepository.deleteById(id);
+        audit.inTransaction(() -> {
+            OrgParseRuleRecord old = orgParseRuleRecordRepository.findById(id).orElse(null);
+            orgParseRuleRecordRepository.deleteById(id);
+            audit.record(AuditEntry.of(AuditEntry.Category.CONFIGURATION, "settings.changed")
+                    .target("org-parse-rule", String.valueOf(id), old == null ? null : old.getOrgName())
+                    .detail("setting", "orgParseRule")
+                    .detail("change", "deleted")
+                    .detail("keys", "orgName,orgParseRegex")
+                    .change("orgName", old == null ? null : old.getOrgName(), null)
+                    .change("orgParseRegex", old == null ? null : old.getOrgParseRegex(), null));
+        });
 
         redirectAttributes.addFlashAttribute("message", "Deleted parse rule.");
         return "redirect:/app/settings";
@@ -126,6 +158,11 @@ public class SettingsController {
         log.debug("Evicting cached group: {}", dn);
 
         int evicted = cacheService.evictGroup(dn.trim());
+        audit.record(AuditEntry.of(AuditEntry.Category.CONFIGURATION, "settings.cache-evicted")
+                .severity(AuditEntry.Severity.INFO)
+                .target("group", dn.trim(), null)
+                .detail("cache", "groups")
+                .detail("evicted", evicted));
 
         if (evicted == 0) {
             // Not an error: nothing cached under that DN is the normal state after an
@@ -149,6 +186,11 @@ public class SettingsController {
         log.debug("Evicting all cached groups");
 
         int evicted = cacheService.evictAllGroups();
+        audit.record(AuditEntry.of(AuditEntry.Category.CONFIGURATION, "settings.cache-evicted")
+                .severity(AuditEntry.Severity.INFO)
+                .detail("cache", "groups")
+                .detail("scope", "all")
+                .detail("evicted", evicted));
 
         redirectAttributes.addFlashAttribute("message",
                 "Evicted all %d cached group %s. Each tree is walked again when it is next opened."
