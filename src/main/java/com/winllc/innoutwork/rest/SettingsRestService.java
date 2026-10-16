@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.CalendarEvent;
 import com.winllc.innoutwork.data.CalendarEventData;
@@ -24,6 +26,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+@RequiresFeature(LicensedFeature.CALENDAR)
 @RequestMapping("/api/settings/calendar")
 @RestController
 public class SettingsRestService {

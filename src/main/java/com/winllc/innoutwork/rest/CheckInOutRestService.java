@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.CheckInOut;
@@ -24,6 +26,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
+@RequiresFeature(LicensedFeature.ATTENDANCE)
 @RestController
 @RequestMapping("/api/check")
 public class CheckInOutRestService {

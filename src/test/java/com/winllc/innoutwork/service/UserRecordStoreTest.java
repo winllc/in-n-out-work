@@ -27,7 +27,7 @@ class UserRecordStoreTest {
     void setUp() {
         repository = mock(UserRecordRepository.class);
         when(repository.save(any(UserRecord.class))).thenAnswer(inv -> inv.getArgument(0));
-        store = new UserRecordStore(repository);
+        store = new UserRecordStore(repository, TrackedPeopleLimit.NONE);
     }
 
     private static UserRecord existing(String notes) {

@@ -37,10 +37,14 @@ public class CheckInOutService {
 
     private final CheckInOutRecordRepository checkinInOutRecordRepository;
     private final UserRecordRepository userRecordRepository;
+    /** The license's size: events from people it has no room for are not recorded. */
+    private final TrackedPeopleLimit peopleLimit;
 
-    public CheckInOutService(CheckInOutRecordRepository checkinInOutRecordRepository, UserRecordRepository userRecordRepository) {
+    public CheckInOutService(CheckInOutRecordRepository checkinInOutRecordRepository, UserRecordRepository userRecordRepository,
+                             TrackedPeopleLimit peopleLimit) {
         this.checkinInOutRecordRepository = checkinInOutRecordRepository;
         this.userRecordRepository = userRecordRepository;
+        this.peopleLimit = peopleLimit;
     }
 
     public long getCheckInOutRecordCount() {
@@ -54,6 +58,10 @@ public class CheckInOutService {
      * One transaction, holding a lock on the user's record for check-ins and unlocks: both read before
      * they write (is this the first event today? what is the average now?), so two events for the same
      * user arriving together would otherwise both be promoted, or overwrite each other's average.
+     * <p>
+     * Someone with no user record is someone ReadyRoom does not track yet. Their events are refused with
+     * {@link TrackedPeopleLimitException} while the license's size leaves no room for another person
+     * (sign-in then lets them in without creating a record; see AppUserDetailsService).
      */
     @Transactional
     public CheckInOutRecord saveCheckInOutRecord(CheckInOutRecord record) {
@@ -61,6 +69,12 @@ public class CheckInOutService {
         Optional<UserRecord> lockedUser = readsBeforeWriting && record.getDn() != null
                 ? userRecordRepository.findByDnForUpdate(record.getDn())
                 : Optional.empty();
+
+        if (record.getAction() != CheckInOutEnum.CHECK_OUT && record.getDn() != null && lockedUser.isEmpty()
+                && userRecordRepository.findByDnIgnoreCase(record.getDn()).isEmpty()
+                && !peopleLimit.mayAdd(userRecordRepository.count())) {
+            throw new TrackedPeopleLimitException(record.getDn());
+        }
 
         //if first record of day and is unlock, mark is as check_in;
 

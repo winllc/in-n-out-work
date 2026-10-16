@@ -8,10 +8,15 @@ package com.winllc.innoutwork.data;
  * @param updated   existing records whose metadata differed and were written
  * @param unchanged existing records that already matched the directory (no write)
  * @param skipped   directory entries ignored, e.g. an entry with no DN
+ * @param notAdded  new people not added because the license's size was reached
  */
-public record DirectorySyncResult(int scanned, int created, int updated, int unchanged, int skipped) {
+public record DirectorySyncResult(int scanned, int created, int updated, int unchanged, int skipped, int notAdded) {
 
-    public static final DirectorySyncResult EMPTY = new DirectorySyncResult(0, 0, 0, 0, 0);
+    public static final DirectorySyncResult EMPTY = new DirectorySyncResult(0, 0, 0, 0, 0, 0);
+
+    public DirectorySyncResult(int scanned, int created, int updated, int unchanged, int skipped) {
+        this(scanned, created, updated, unchanged, skipped, 0);
+    }
 
     /** Rows actually written; the rest of the scan cost nothing but a comparison. */
     public int written() {

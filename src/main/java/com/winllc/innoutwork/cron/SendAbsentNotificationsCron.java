@@ -5,8 +5,8 @@ import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.DateTimeConstants;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.ExpectedLogin;
-import com.winllc.innoutwork.license.LicenseService;
 import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.LicensedJobs;
 import com.winllc.innoutwork.model.GlobalCalendarRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.model.UserRecord;
@@ -36,7 +36,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Tells managers when someone is not in by their expected time plus a grace period.
@@ -60,10 +59,9 @@ public class SendAbsentNotificationsCron {
     private final NotificationRepository notificationRepository;
     private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
-    private final LicenseService licenseService;
+    /** Runs only while the license is in full effect and includes absence alerts. */
+    private final LicensedJobs licensedJobs;
     private final Clock clock;
-    /** So an unlicensed deployment says why the job does nothing once, not every few minutes. */
-    private final AtomicBoolean reportedUnlicensed = new AtomicBoolean();
 
     @Autowired
     public SendAbsentNotificationsCron(UserRecordRepository userRecordRepository,
@@ -72,9 +70,9 @@ public class SendAbsentNotificationsCron {
                                        NotificationRepository notificationRepository,
                                        ApplicationProperties properties,
                                        GlobalCalendarRecordRepository globalCalendarRecordRepository,
-                                       LicenseService licenseService) {
+                                       LicensedJobs licensedJobs) {
         this(userRecordRepository, checkInOutRecordRepository, userEventRecordRepository, notificationService,
-                notificationRepository, properties, globalCalendarRecordRepository, licenseService,
+                notificationRepository, properties, globalCalendarRecordRepository, licensedJobs,
                 Clock.systemDefaultZone());
     }
 
@@ -84,7 +82,7 @@ public class SendAbsentNotificationsCron {
                                 NotificationRepository notificationRepository,
                                 ApplicationProperties properties,
                                 GlobalCalendarRecordRepository globalCalendarRecordRepository,
-                                LicenseService licenseService, Clock clock) {
+                                LicensedJobs licensedJobs, Clock clock) {
         this.userRecordRepository = userRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.userEventRecordRepository = userEventRecordRepository;
@@ -92,7 +90,7 @@ public class SendAbsentNotificationsCron {
         this.notificationRepository = notificationRepository;
         this.properties = properties;
         this.globalCalendarRecordRepository = globalCalendarRecordRepository;
-        this.licenseService = licenseService;
+        this.licensedJobs = licensedJobs;
         this.clock = clock;
     }
 
@@ -101,13 +99,9 @@ public class SendAbsentNotificationsCron {
     @Scheduled(fixedDelayString = "#{@sendAbsentNotificationCronProperties.fixedRate}",
             initialDelayString = "#{@sendAbsentNotificationCronProperties.initialDelay}")
     public void sendNotifications() {
-        if (!licenseService.isEnabled(LicensedFeature.ABSENCE_ALERTS.id())) {
-            if (reportedUnlicensed.compareAndSet(false, true)) {
-                log.info("SendAbsentNotificationsCron: absence alerts are not licensed; skipping");
-            }
+        if (!licensedJobs.mayRun(LicensedFeature.ABSENCE_ALERTS, "SendAbsentNotificationsCron")) {
             return;
         }
-        reportedUnlicensed.set(false);
         long start = System.currentTimeMillis();
         ZonedDateTime now = ZonedDateTime.now(clock);
         LocalDate today = now.toLocalDate();

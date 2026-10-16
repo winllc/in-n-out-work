@@ -16,10 +16,10 @@
     <div class="text-secondary mb-3" id="home-day"
          th:text="${me.day().equals(today) ? 'Today, ' + #temporals.format(me.day(), 'EEEE MMMM d') : 'Showing ' + #temporals.format(me.day(), 'EEEE MMMM d, yyyy')}"></div>
 
-    <!-- The signed-in user -->
+    <!-- The signed-in user. Status and attendance are the licensed "attendance" feature, Coming up "calendar". -->
     <div class="row row-cards mb-3" id="my-day">
 
-        <div class="col-md-6 col-xl-4">
+        <div class="col-md-6 col-xl-4" th:if="${licenseInfo == null or licenseInfo.isEnabled('attendance')}">
             <div class="card h-100" id="my-status">
                 <div class="card-body">
                     <div class="subheader">My status</div>
@@ -56,7 +56,7 @@
             </div>
         </div>
 
-        <div class="col-md-6 col-xl-4" th:with="att=${me.last30Days()}">
+        <div class="col-md-6 col-xl-4" th:if="${licenseInfo == null or licenseInfo.isEnabled('attendance')}" th:with="att=${me.last30Days()}">
             <div class="card h-100" id="my-attendance">
                 <div class="card-body">
                     <div class="subheader">Last 30 days</div>
@@ -77,7 +77,7 @@
             </div>
         </div>
 
-        <div class="col-md-12 col-xl-4">
+        <div class="col-md-12 col-xl-4" th:if="${licenseInfo == null or licenseInfo.isEnabled('attendance')}">
             <div class="card h-100" id="my-agent">
                 <div class="card-body">
                     <div class="subheader">Workstation agent</div>
@@ -102,7 +102,7 @@
             </div>
         </div>
 
-        <div class="col-12">
+        <div class="col-12" th:if="${licenseInfo == null or licenseInfo.isEnabled('calendar')}">
             <div class="card" id="my-upcoming">
                 <div class="card-header">
                     <h3 class="card-title"><i class="ti ti-calendar-event me-2"></i>Coming up</h3>
@@ -123,13 +123,13 @@
     </div>
 
     <!-- Direct reports: only for people someone reports to in the directory -->
-    <th:block th:if="${home.manager()}"
+    <th:block th:if="${home.manager() and (licenseInfo == null or licenseInfo.isEnabled('attendance'))}"
               th:with="acc=${team.accountability()}, af=${team.accountability().accountedFor()}, cov=${team.accountability().agentCoverage()}">
         <div class="d-flex align-items-center mb-2 mt-4" id="my-team">
             <h2 class="mb-0"><i class="ti ti-users me-2"></i>My team</h2>
             <span class="badge bg-blue-lt ms-2" th:text="${team.reportCount() + ' direct reports'}"></span>
             <a class="ms-auto" th:href="@{/app/user/reports}"
-               th:if="${licenseInfo == null or licenseInfo.isEnabled('reports')}">View all reports</a>
+               th:if="${licenseInfo == null or licenseInfo.isEnabled('metrics')}">View all reports</a>
         </div>
 
         <div class="row row-cards">
@@ -221,7 +221,7 @@
                 </div>
             </div>
 
-            <div class="col-lg-6">
+            <div class="col-lg-6" th:if="${licenseInfo == null or licenseInfo.isEnabled('calendar')}">
                 <div class="card h-100" id="team-upcoming">
                     <div class="card-header">
                         <h3 class="card-title"><i class="ti ti-calendar-event me-2"></i>Team coming up</h3>

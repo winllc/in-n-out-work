@@ -98,6 +98,11 @@ check-in/out records. It talks to the containers via `docker exec`, so no local
 
 Then open <http://localhost:8181>. Requires a JDK 21 on `JAVA_HOME`.
 
+It needs an ENS license, and a writable place for it: set `ENS_LICENSE_STATE_DIR` and
+`ENS_LICENSE_FILE` (for example to `$PWD/license-state` and `$PWD/license-state/license.lic`), then
+sign in as an administrator and upload the license at `/app/admin/license`. See
+[Licensing](#licensing).
+
 The `local` profile is what points the app at `localhost` and the published
 ports. The defaults in `application.yml` name the compose services (`postgres`,
 `openldap`), which only resolve from inside the compose network — see
@@ -153,9 +158,11 @@ of concurrent writes run against PostgreSQL in a container (Testcontainers), and
 are skipped when Docker is not available. Windows sign-in is tested with real
 Kerberos tickets from an in-process KDC (Apache Kerby), no domain needed.
 
-Licensing is tested against a test-only key pair: `src/test/resources/license/` holds its public key
-(which shadows the real one on the test classpath), its private key, and `test.lic`, a full license
-signed with it. `TestLicenses` signs variants on the fly. None of it is accepted by a real build.
+Licensing is tested with the ENS portal's published TEST key, which no build trusts: the test
+configuration `license/TestLicensing` supplies a `LicenseManager` that trusts it (over a temporary
+directory, with a full license installed) in place of the production one, and `TestLicenses` signs
+`ens-license/1` files with it on the fly. The portal's own fixtures, signed by its TypeScript code,
+are in `src/test/resources/ens-license-fixtures` for the ported library test.
 
 > **Note for controller tests:** `@SpringBootApplication` lives in
 > `com.winllc.innoutwork.config`, which is not a parent package of the tests. In
@@ -233,39 +240,90 @@ parses in PowerShell but throws at runtime.
 
 ## Licensing
 
-ReadyRoom runs without a license, with its **core** features. A valid ENS Solutions license file for
-the product `readyroom` turns on the **licensed** features it lists (`features=*` means all of them).
+ReadyRoom needs an ENS Solutions license, issued by the ENS licensing portal in the `ens-license/1`
+format for the product `readyroom`, and checked offline against the ENS public key built into the
+application (`license/EnsKeys.java`; deliberately not configurable). The verifier is the portal's own
+zero-dependency library, copied unchanged into `src/main/java/com/enssolutions/license` (from the
+products-page repository, `licensing/java`). No network is involved, so this works the same on an
+air-gapped enclave.
 
-| Feature | License id | What it covers |
+**What the license state means.**
+
+| State | Mode | What works |
 |---|---|---|
-| Core | — | Windows client check-in/out API (`/api/check/**`), home dashboard, profile and calendar, groups, user search, in-app notifications, settings, sign-in (password, X.509, Windows/Kerberos) |
-| Metrics | `metrics` | `/app/metrics` and the Metrics menu entry |
-| Reports | `reports` | My Reports (`/app/user/reports`, `/api/users/reports`), the group report and its PDF export (`POST /app/group/report`), and the buttons and links to them |
-| Org chart | `org-chart` | `/app/orgchart/**`, `/api/orgnodes/**` and the Org Chart menu entry |
-| Absence alerts | `absence-alerts` | The scheduled absence e-mails (`SendAbsentNotificationsCron`); it skips its runs without one |
+| `VALID`, `GRACE` (expired, within its grace days) | full | Everything the license's features include. In grace, and in the last 30 days before expiry, administrators see a renewal warning. |
+| `EXPIRED` (past grace), `RELEASE_NOT_COVERED` (perpetual license, build newer than its maintenance) | read-only | Pages and GET calls work; anything else is refused with 403 (`license_read_only`), the Windows client's check-ins included. Scheduled jobs pause: directory sync, auto check-out, absence e-mails. |
+| `MISSING`, `INVALID`, `WRONG_PRODUCT`, `WRONG_INSTALLATION`, `SUPERSEDED`, `NOT_YET_VALID` | unlicensed | Only sign-in/out, the license screen, `GET /api/license`, static assets, actuator and the error page. Browsers are sent to the license screen; API callers get 403 JSON. |
 
-The split lives in one place, `license/LicensedFeature.java`. A licensed feature that is not enabled
-is hidden from the menu, and a request for it is refused with 403: a "needs a license" page in the
-browser, and for API callers
+An evaluation license shows an "Evaluation license" banner on every page.
+
+**Features.** Every catalog feature is gated, including the ones every license carries today, so a
+feature can move tier on the portal alone:
+
+| Feature | License id | What it gates |
+|---|---|---|
+| Attendance tracking | `readyroom.attendance` | The Windows client's API (`/api/check/**`), a user's check-in/out audit log (`/api/users/checkinoutrecords/**`), the home dashboard's status, attendance and agent cards, auto check-out (`MarkInactiveCron`) and the directory sync (`RefreshUserRecordsCron`) |
+| Calendar | `readyroom.calendar` | The profile and user-details calendars, `/api/event/**`, the organization calendar (`/api/settings/calendar/**`), the dashboard's "Coming up" cards |
+| Absence alerts | `readyroom.absence-alerts` | `SendAbsentNotificationsCron` |
+| Metrics and reports | `readyroom.metrics` | `/app/metrics`, My Reports (`/app/user/reports`, `/api/users/reports`), the group report and its PDF export (`POST /app/group/report`), and the menu entries, buttons and links to them |
+| Org chart | `readyroom.org-chart` | `/app/orgchart/**`, `/api/orgnodes/**`, the organization parse rules in Settings, the menu entry |
+| Classification banners | `readyroom.classification-banners` | The top and bottom banner (`application.banner-text`); not rendered without it. Unlike the rest it stays up in read-only mode, since the data it marks is still on screen. |
+
+Controllers and endpoints are marked `@RequiresFeature(LicensedFeature.X)` (`license/LicensedFeature.java`
+lists them); jobs ask `LicensedJobs.mayRun`; templates hide menus, cards and buttons with
+`licenseInfo.isEnabled('<id>')`. A refused API call gets 403 and
 
 ```json
-{"error":"license_required","feature":"reports","message":"Reports requires an ENS Solutions license."}
+{"error":"license_required","state":"VALID","feature":"metrics","message":"Metrics and reports is not included in this installation's license."}
 ```
 
-**Where the license goes.** `ens.license.file` (environment `ENS_LICENSE_FILE`) names it; the
-default is `license.lic` in the working directory, and the production image sets
-`/etc/ens/license/license.lic`. The file is checked against the ENS public key built into the jar
-(`src/main/resources/license/ens-license-public.pem`, deliberately not configurable), so any edit to
-it invalidates it. Never bake a license into an image; mount it.
+(`error` is `license_required`, `license_read_only` or `license_limit`; `feature` only when one
+feature is refused). Browsers get a "not licensed" page instead, or the license screen while there is
+no usable license. API calls are never redirected.
 
-**Checking the status.** The application logs it at startup (`License: licensed to ...` or
-`License: no license file at ...; running with core features only`). Administrators see a one-line
-status in the page footer, and any signed-in user can read `GET /api/license` (the file path is shown
-to administrators only).
+**The Windows client** (`powershell/Update-WorkStatus.ps1`) makes one POST per logon, lock, unlock or
+logoff and does not retry. A refusal makes it log the HTTP status and the server's `error` and
+`message` to `%ProgramData%\InOutWorker\logs\` and exit with code 3; the next event simply tries
+again, so nothing loops. Because the API answers with JSON rather than a redirect, a refused event
+can never be mistaken for success.
 
-**Expiry and renewal.** A license is good through the end of its expiry date (UTC). After that the
-application falls back to its core features; it keeps running. The file is re-read when it changes,
-checked at most every 30 seconds, so dropping in a renewed license takes effect without a restart.
+**Size.** A license covers a number of *tracked people*: user records. The license screen shows
+`<count> of <limit> tracked people`. Up to 10% over the limit new people are still added, with a
+warning in the log; beyond that new people are not added: the directory sync skips them (and adds
+them on a later run once the license has room), and a new person's first check-in is refused with
+`license_limit` (they can still sign in to the web pages, without a record being stored). Nobody
+already tracked is ever removed. The limit applies only in full mode, so an administrator can always
+sign in to install a license.
+
+**The license screen** is *Administration &rarr; License* at `/app/admin/license`, for the `ADMIN`
+authority (`application.super-user-dns`, or the ADMIN role). It shows the state and why, the licensee,
+edition, expiry, grace and maintenance, every catalog feature ticked or not, the size in use, and this
+installation's id (for example `RR-7F3K-29QD`), which customers enter on the portal to bind a license
+to this installation. Upload a `.lic` file there (or paste it); it takes effect at once. A license for
+another product, bound to another installation, or an older revision of one already installed is
+refused with the reason, and the installed one stays. Anyone else sent there while there is no usable
+license sees "ReadyRoom is not licensed, ask your administrator" (and can sign out).
+`GET /api/license` reports the state to any signed-in user; administrators also get the installation
+id and the file path.
+
+**Where the license lives.** Two environment variables (not Spring properties):
+
+| Variable | In the images | Outside a container (library default) |
+|---|---|---|
+| `ENS_LICENSE_FILE` | `/var/lib/ens/readyroom/license.lic` | `/etc/ens/readyroom.lic` |
+| `ENS_LICENSE_STATE_DIR` | `/var/lib/ens/readyroom` | `/var/lib/ens/readyroom` |
+
+The state directory holds the installation id and the highest revision seen of each license (so an
+older file cannot be put back). It must be writable and persistent: lose it and the installation
+gets a new id, so licenses bound to the old one stop working. The upload writes the license file, so
+in the images both live in one writable volume. For `./gradlew bootRun`, point both somewhere you can
+write, for example `ENS_LICENSE_STATE_DIR=$PWD/license-state ENS_LICENSE_FILE=$PWD/license-state/license.lic`.
+The file is re-read whenever it changes, so a license copied in by hand also takes effect without a
+restart.
+
+The release date that a perpetual license's maintenance is compared with is the build time from
+Spring Boot's build-info (`springBoot { buildInfo() }` in `build.gradle`); without build-info (running
+from an IDE) a perpetual license covers every build.
 
 ### Production image
 
@@ -279,12 +337,15 @@ docker build -t readyroom:latest .
 docker run -d --name readyroom -p 8181:8181 \
     -e DB_HOST=db.internal -e DB_PASSWORD=... \
     -e LDAP_HOST=ldap.internal -e LDAP_PASSWORD=... \
-    -v /path/to/license.lic:/etc/ens/license/license.lic:ro \
+    -v readyroom-license:/var/lib/ens/readyroom \
     readyroom:latest
 ```
 
-Mount a directory instead with `-v /path/to/license-dir:/etc/ens/license:ro`, or a Docker/Kubernetes
-secret with `ENS_LICENSE_FILE` pointing at it. Leave the mount out to run with the core features.
+`/var/lib/ens/readyroom` (declared a `VOLUME`, owned by user 185 and group 0 with group rwx for
+OpenShift) holds the license and the licensing state; keep it on a persistent, writable volume.
+Start it without a license, sign in as an administrator and upload one at `/app/admin/license`, or
+copy one in: `docker cp license.lic readyroom:/var/lib/ens/readyroom/license.lic` (it must be
+readable by user 185). Never bake a license into an image.
 The base images can be swapped for a mirror with `--build-arg BUILD_IMAGE=...` and
 `--build-arg RUNTIME_IMAGE=...`.
 
@@ -292,9 +353,11 @@ The health check reports what actuator reports, which includes the mail server: 
 `spring.mail` cannot be reached the container shows as unhealthy. Point it at a reachable server, or
 set `MANAGEMENT_HEALTH_MAIL_ENABLED=false`.
 
-Both compose files mount `./license` at `/etc/ens/license`: put `license.lic` there. `license/` and
-`*.lic` are git-ignored. The compose stacks build from `test/Dockerfile`, the same build without the
-production defaults.
+Both compose files keep the license in a named volume (`ens-license`, `demo_ens_license` in the demo)
+at `/var/lib/ens/readyroom`. A `license-init` service copies `./license/license.lic` into it before the
+app starts, when that file is newer than the one in the volume; or upload the license on the license
+screen. `license/` and `*.lic` are git-ignored. The compose stacks build from `test/Dockerfile`, the
+same build without the production defaults.
 
 ---
 
@@ -435,9 +498,12 @@ Two things demo mode does **not** stop:
 
 ### The demo stack: one command
 
-The demo is licensed like any other deployment: metrics, reports, the org chart and absence alerts
-appear only with a license in `./license` (mounted at `/etc/ens/license`); without one it shows the
-core features. See [Licensing](#licensing).
+The demo needs a license like any other deployment; without one it shows only the license screen.
+Download an evaluation license for ReadyRoom from the ENS portal and save it as
+`./license/license.lic` before `up`: the `license-init` service copies it into the demo's license
+volume. The demo is read-only, so the license screen's upload is refused there; to change the
+license, replace the file and run `up` again. No license is committed to this repository. See
+[Licensing](#licensing).
 
 `docker-compose.demo.yml` brings up the whole thing and populates it, with nothing to configure and
 the credentials waiting on the login page:
@@ -516,7 +582,9 @@ The `demo` profile turns demo mode on and carries the account list, so it is one
 
 ```bash
 cd test && docker compose up -d && ./seed-mock-data.sh   # data first
-./gradlew bootRun --args='--spring.profiles.active=demo'
+mkdir -p license-state && cp ~/Downloads/readyroom-evaluation.lic license-state/license.lic   # the license
+ENS_LICENSE_STATE_DIR=$PWD/license-state ENS_LICENSE_FILE=$PWD/license-state/license.lic \
+    ./gradlew bootRun --args='--spring.profiles.active=demo'
 ```
 
 Seed the data first: the accounts on the tile are the seeded ones, and without them the login page
@@ -786,8 +854,9 @@ src/main/java/com/winllc/innoutwork/
   data/        DTOs, form objects, chart and report shapes
   cron/        Scheduled jobs
   security/    AppUserDetailsService, PermissionEvaluator
-  license/     ENS license check, the licensed-feature list and the gate in front of it
-Dockerfile     Production image, built from source; mount the license at run time
+  license/     ENS license wiring: features, gate, license screen, job guard, size limit
+src/main/java/com/enssolutions/license/  The ENS portal's license verifier, copied unchanged
+Dockerfile     Production image, built from source; the license lives in the /var/lib/ens volume
 docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from source
 docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions

@@ -33,7 +33,7 @@
         </div>
 
         <div class="col-md-6" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')" id="group-report"
-             th:if="${licenseInfo == null or licenseInfo.isEnabled('reports')}">
+             th:if="${licenseInfo == null or licenseInfo.isEnabled('metrics')}">
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Generate Group Report</h3>

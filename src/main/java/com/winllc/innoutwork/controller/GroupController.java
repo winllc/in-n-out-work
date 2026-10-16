@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.data.GenerateReportForm;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.reports.GroupReport;
@@ -25,6 +27,7 @@ public class GroupController {
         this.reportService = reportService;
     }
 
+    @RequiresFeature(LicensedFeature.METRICS)
     @PostMapping("/report")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")

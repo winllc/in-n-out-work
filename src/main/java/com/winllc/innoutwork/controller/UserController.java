@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.RoleUpdateForm;
@@ -90,6 +92,7 @@ public class UserController {
      * because reporting lines come from the directory rather than the application role -- someone
      * with only USER can still have reports -- and the table only ever shows the caller's own team.
      */
+    @RequiresFeature(LicensedFeature.METRICS)
     @GetMapping("/reports")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
