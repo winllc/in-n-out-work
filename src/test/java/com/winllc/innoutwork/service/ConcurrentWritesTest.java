@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Writes that used to race, run for real against PostgreSQL with the migration applied: concurrent first
  * sign-ins creating a user record, and concurrent unlocks deciding who checked in.
  */
-@Import(CheckInOutService.class)
+@Import({CheckInOutService.class, ConcurrentWritesTest.NoPeopleLimit.class})
 class ConcurrentWritesTest extends PostgresTestSupport {
 
     private static final String BOB = "cn=Bob Barker,ou=Users,dc=winllc,dc=com";
@@ -65,7 +65,7 @@ class ConcurrentWritesTest extends PostgresTestSupport {
     void insertingARecordThatAlreadyExistsReturnsTheExistingOne() {
         UserRecord existing = userRecords.save(UserRecord.builder().dn(BOB).notes("first").build());
 
-        UserRecordStore.Result result = new UserRecordStore(userRecords)
+        UserRecordStore.Result result = new UserRecordStore(userRecords, TrackedPeopleLimit.NONE)
                 .insertOrFind(BOB.toUpperCase(), () -> UserRecord.builder().dn(BOB.toUpperCase()).build());
 
         assertFalse(result.inserted());
@@ -84,7 +84,7 @@ class ConcurrentWritesTest extends PostgresTestSupport {
                 String spelling = i % 2 == 0 ? BOB : BOB.toUpperCase();
                 ids.add(pool.submit(() -> {
                     go.await();
-                    return new UserRecordStore(userRecords)
+                    return new UserRecordStore(userRecords, TrackedPeopleLimit.NONE)
                             .findOrCreate(spelling, () -> UserRecord.builder().dn(spelling).build()).getId();
                 }));
             }
@@ -157,5 +157,14 @@ class ConcurrentWritesTest extends PostgresTestSupport {
         List<CheckInOutEnum> actions = checkIns.findAll().stream().map(CheckInOutRecord::getAction).toList();
         assertEquals(threads, actions.size());
         assertEquals(1, actions.stream().filter(a -> a == CheckInOutEnum.CHECK_IN).count(), actions.toString());
+    }
+
+    /** CheckInOutService asks the license's size about untracked people; not what these tests are about. */
+    @org.springframework.boot.test.context.TestConfiguration
+    static class NoPeopleLimit {
+        @org.springframework.context.annotation.Bean
+        TrackedPeopleLimit trackedPeopleLimit() {
+            return TrackedPeopleLimit.NONE;
+        }
     }
 }

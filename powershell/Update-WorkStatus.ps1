@@ -463,12 +463,24 @@ function Send-StatusPost {
 
 function Get-HttpStatus {
     param([System.Management.Automation.ErrorRecord]$ErrorRecord)
+    $text = ''
     try {
         if ($ErrorRecord.Exception.Response) {
-            return " (HTTP $([int]$ErrorRecord.Exception.Response.StatusCode))"
+            $text = " (HTTP $([int]$ErrorRecord.Exception.Response.StatusCode))"
         }
     } catch { }
-    return ''
+    # The server explains refusals in JSON: {"error":"license_required"|"license_read_only"|"license_limit",
+    # "message":"..."}. Log that, since Windows PowerShell's own message only says "(403) Forbidden". The
+    # event is not retried: the next logon, lock or unlock simply tries again.
+    try {
+        if ($ErrorRecord.ErrorDetails -and $ErrorRecord.ErrorDetails.Message) {
+            $body = $ErrorRecord.ErrorDetails.Message | ConvertFrom-Json -ErrorAction Stop
+            if ($body.error) {
+                $text += " [$($body.error)] $($body.message)"
+            }
+        }
+    } catch { }
+    return $text
 }
 
 # ---------------------------------------------------------------------------

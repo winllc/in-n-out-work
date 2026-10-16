@@ -3,11 +3,12 @@
 #     docker build -t readyroom:latest .
 #     docker run -d --name readyroom -p 8181:8181 \
 #         -e DB_HOST=db.internal -e LDAP_HOST=ldap.internal ... \
-#         -v /path/to/license.lic:/etc/ens/license/license.lic:ro \
+#         -v readyroom-license:/var/lib/ens/readyroom \
 #         readyroom:latest
 #
-# Without a license the application runs with its core features only; see Licensing in the README.
-# test/Dockerfile is the same build for the compose stacks.
+# Without a license only sign-in and the license screen (/app/admin/license) work: an administrator
+# signs in and uploads the ENS license there. See Licensing in the README. test/Dockerfile is the same
+# build for the compose stacks.
 
 # The base images, overridable for a registry mirror (--build-arg BUILD_IMAGE=mirror.example/...).
 ARG BUILD_IMAGE=eclipse-temurin:21-jdk
@@ -37,7 +38,7 @@ LABEL org.opencontainers.image.title="ReadyRoom" \
       org.opencontainers.image.description="ReadyRoom workforce check-in/out and accountability" \
       org.opencontainers.image.vendor="ENS Solutions, LLC" \
       org.opencontainers.image.url="https://ens-solutions.com/" \
-      com.enssolutions.license.path="/etc/ens/license/license.lic"
+      com.enssolutions.license.path="/var/lib/ens/readyroom/license.lic"
 
 # krb5-workstation: Kerberos configuration and the klist/kinit tools for checking the keytab used by Windows
 # sign-in (application.windows-auth). The JVM validates tickets itself. /etc/in-n-out is where the keytab is
@@ -49,12 +50,17 @@ RUN microdnf install -y --nodocs krb5-workstation \
  && chgrp 0 /etc/in-n-out && chmod 0750 /etc/in-n-out \
  && chgrp 0 /app && chmod 0775 /app
 
-# The ENS Solutions license. Never COPY one into the image; mount it read-only:
-#   -v /path/to/license.lic:/etc/ens/license/license.lic:ro
-#   or a directory:             -v /path/to/license-dir:/etc/ens/license:ro
-#   or a Docker/K8s secret, with ENS_LICENSE_FILE pointing at it.
-ENV ENS_LICENSE_FILE=/etc/ens/license/license.lic
-RUN mkdir -p /etc/ens/license && chmod 0755 /etc/ens/license
+# The ENS Solutions license and this installation's licensing state, in one persistent, WRITABLE
+# directory: the license screen's upload writes license.lic here, and the installation id (which
+# licenses can be bound to) and the highest revision seen of each license live beside it. Keep it on a
+# volume that survives upgrades; lose it and the installation gets a new id. Never COPY a license into
+# the image. Owned by the runtime user, group 0 with rwx for OpenShift's arbitrary UIDs.
+ENV ENS_LICENSE_STATE_DIR=/var/lib/ens/readyroom \
+    ENS_LICENSE_FILE=/var/lib/ens/readyroom/license.lic
+RUN mkdir -p /var/lib/ens/readyroom \
+ && chown -R 185:0 /var/lib/ens \
+ && chmod -R 0770 /var/lib/ens
+VOLUME /var/lib/ens
 
 # Windows sign-in, when enabled, reads mounted files (never bake these into the image):
 #   /etc/krb5.conf                your realm and domain controllers

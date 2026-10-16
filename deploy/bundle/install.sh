@@ -8,6 +8,8 @@
 #    kerberos/ directories.
 # 3. Stops and lists what to edit while .env still has CHANGE_ME values; run it again afterwards.
 # 4. Starts ReadyRoom with "docker compose up -d".
+# 5. Copies license/license.lic into the license volume if there is one and the volume has none;
+#    otherwise says where to upload the license (the license screen, /app/admin/license).
 set -euo pipefail
 
 cd "$(dirname "$0")"
@@ -68,16 +70,11 @@ if grep -q '^[^#]*CHANGE_ME' .env; then
     say "                         and at least one administrator DN"
     say "  SPRING_MAIL_*          your SMTP server (or set MANAGEMENT_HEALTH_MAIL_ENABLED=false)"
     say ""
-    say "Put the ENS Solutions license at $(pwd)/license/license.lic"
-    say "(without one ReadyRoom runs with its core features only)."
+    say "Optionally put the ENS Solutions license at $(pwd)/license/license.lic; it can also be"
+    say "uploaded on ReadyRoom's license screen once it is running."
     say ""
     say "Then run ./install.sh again."
     exit 0
-fi
-
-if [ ! -f license/license.lic ]; then
-    say "Note: no license/license.lic yet - ReadyRoom will run with its core features only."
-    say "      Copy the license there at any time; it is picked up within 30 seconds."
 fi
 
 # --- optional pieces named in COMPOSE_FILE -----------------------------------------------------------
@@ -94,9 +91,59 @@ case "$compose_file" in
         ;;
 esac
 
+# --- license -----------------------------------------------------------------------------------------
+# The license, the installation id it can be bound to and the licensing state live in the ens-license
+# volume (/var/lib/ens/readyroom in the app container), which every release shares. license/license.lic
+# is copied in when the volume holds no license yet; after that, licenses are replaced on the license
+# screen, so an older file left here never overwrites a newer one installed there.
+license_screen() {
+    printf '%s/app/admin/license' "$(sed -n 's/^APPLICATION_BASE_URL=//p' .env | tail -n 1)"
+}
+
+install_license() {
+    local target=/var/lib/ens/readyroom/license.lic installed=0
+    if docker compose exec -T app test -s "$target" > /dev/null 2>&1; then
+        installed=1
+    fi
+    if [ ! -f license/license.lic ]; then
+        if [ "$installed" = 1 ]; then
+            say "License: keeping the one installed in the license volume."
+        else
+            say "No license is installed yet, so ReadyRoom offers only sign-in and its license screen."
+            say "Sign in as an administrator and upload the license file (from your ENS portal account) at:"
+            say "    $(license_screen)"
+        fi
+        return 0
+    fi
+    if ! grep -q -- '-----BEGIN ENS LICENSE-----' license/license.lic; then
+        say "license/license.lic is a license in the old format, which this release does not read."
+        say "Download the license from your account on the ENS portal and upload it at:"
+        say "    $(license_screen)"
+        return 0
+    fi
+    if [ "$installed" = 1 ]; then
+        say "License: one is already installed in the license volume, so license/license.lic was not copied."
+        say "         To replace it, upload the new file at $(license_screen)"
+        return 0
+    fi
+    # Written by the app's own user (so it can read and later replace it), then moved into place; the
+    # same as "docker compose cp license/license.lic app:$target" without the ownership fix-up.
+    if ! docker compose exec -T app sh -c 'umask 007 && cat > "$1.tmp" && mv "$1.tmp" "$1"' sh "$target" \
+            < license/license.lic; then
+        say "Could not copy license/license.lic into the app container (is it running? docker compose ps)."
+        say "Run this script again once it is, or upload the license at $(license_screen)"
+        return 0
+    fi
+    say "Copied license/license.lic into the license volume; ReadyRoom uses it at once."
+    say "Check it, or replace it later, at $(license_screen)"
+}
+
 # --- start -------------------------------------------------------------------------------------------
 docker compose config --quiet
 docker compose up -d
+
+say ""
+install_license
 
 port="$(sed -n 's/^READYROOM_PORT=//p' .env | tail -n 1)"
 say ""

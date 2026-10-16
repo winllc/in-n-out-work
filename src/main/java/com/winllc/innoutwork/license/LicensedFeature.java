@@ -1,40 +1,53 @@
 package com.winllc.innoutwork.license;
 
-import java.util.List;
-
 /**
- * The features an ENS Solutions license unlocks. Everything not listed here is core and always on:
- * the Windows client's check-in/out calls, the home dashboard, profile and calendar, groups, user
- * search, in-app notifications, settings and sign-in.
+ * ReadyRoom's features as the ENS licensing portal's catalog names them (products-page
+ * src/data/licensing.ts, product {@code readyroom}). A license file lists the ones it unlocks as
+ * {@code "readyroom.<id>"}. Every feature is gated, even those every license includes today, so a
+ * feature can move to another tier by changing the catalog alone. Never rename an id.
  *
- * <p>This is the one place the split is decided. The ids are what a license's {@code features} line
- * names, and the URL patterns are what {@link LicenseInterceptor} refuses while a feature is off.
- * Templates ask by id ({@code licenseInfo.isEnabled('metrics')}) to hide what leads to them.
+ * <p>Where each one is enforced:
+ * <ul>
+ *   <li>{@code @RequiresFeature} on the controllers and endpoints, which {@link LicenseInterceptor}
+ *       refuses with 403 while the feature is off;</li>
+ *   <li>{@link LicensedJobs#mayRun} at the top of the scheduled jobs;</li>
+ *   <li>{@code licenseInfo.isEnabled('<id>')} in the templates, to hide menus, cards and buttons.</li>
+ * </ul>
  */
 public enum LicensedFeature {
 
-    METRICS("metrics", "Metrics",
-            "/app/metrics", "/app/metrics/**"),
-    REPORTS("reports", "Reports",
-            "/app/user/reports", "/app/user/reports/**",
-            "/app/group/report", "/app/group/report/**",
-            "/api/users/reports", "/api/users/reports/**"),
-    ORG_CHART("org-chart", "Org Chart",
-            "/app/orgchart", "/app/orgchart/**",
-            "/api/orgnodes", "/api/orgnodes/**"),
-    /** The absence e-mail job; see SendAbsentNotificationsCron. No pages of its own. */
-    ABSENCE_ALERTS("absence-alerts", "Absence alerts");
+    /** The Windows client's check-in/out API (/api/check/**), the home dashboard's status, auto check-out. */
+    ATTENDANCE("attendance", "Attendance tracking",
+            "Logon, lock, unlock and logoff from the Windows client, turned into daily status."),
+    /** The profile calendar, /api/event/**, the organization calendar (/api/settings/calendar/**). */
+    CALENDAR("calendar", "Calendar",
+            "Leave, telework and events on a shared calendar."),
+    /** SendAbsentNotificationsCron. No pages of its own. */
+    ABSENCE_ALERTS("absence-alerts", "Absence alerts",
+            "Emails managers when someone has not checked in."),
+    /** /app/metrics, My Reports, the group report and its PDF export, /api/users/reports. */
+    METRICS("metrics", "Metrics and reports",
+            "Accountability metrics, personal and group reports, and PDF export."),
+    /** /app/orgchart/**, /api/orgnodes/** and the organization parse rules in Settings. */
+    ORG_CHART("org-chart", "Org chart",
+            "The organization chart, with live status."),
+    /** The configured top and bottom banner (application.banner-text). */
+    CLASSIFICATION_BANNERS("classification-banners", "Classification banners",
+            "Configurable banners for classified networks.");
+
+    public static final String PRODUCT = "readyroom";
 
     private final String id;
     private final String label;
-    private final List<String> urlPatterns;
+    private final String description;
 
-    LicensedFeature(String id, String label, String... urlPatterns) {
+    LicensedFeature(String id, String label, String description) {
         this.id = id;
         this.label = label;
-        this.urlPatterns = List.of(urlPatterns);
+        this.description = description;
     }
 
+    /** The id after "readyroom." in a license file. */
     public String id() {
         return id;
     }
@@ -43,7 +56,7 @@ public enum LicensedFeature {
         return label;
     }
 
-    public List<String> urlPatterns() {
-        return urlPatterns;
+    public String description() {
+        return description;
     }
 }

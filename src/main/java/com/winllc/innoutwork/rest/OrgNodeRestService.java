@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.data.UserStatus;
@@ -23,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 
+@RequiresFeature(LicensedFeature.ORG_CHART)
 @RestController
 @RequestMapping("/api/orgnodes")
 public class OrgNodeRestService {

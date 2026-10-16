@@ -2,6 +2,8 @@ package com.winllc.innoutwork.cron;
 
 import com.winllc.innoutwork.config.RefreshUserRecordsCronProperties;
 import com.winllc.innoutwork.data.DirectorySyncResult;
+import com.winllc.innoutwork.license.LicensedFeature;
+import com.winllc.innoutwork.license.LicensedJobs;
 import com.winllc.innoutwork.service.UserService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,10 +23,18 @@ public class RefreshUserRecordsCron {
 
     private final UserService userService;
     private final RefreshUserRecordsCronProperties properties;
+    /**
+     * The sync builds the list of tracked people, so it is part of attendance tracking and pauses
+     * without a full license. While it runs, people beyond the licensed size are not added (see
+     * UserService and TrackedPeopleLimit); nobody is ever removed.
+     */
+    private final LicensedJobs licensedJobs;
 
-    public RefreshUserRecordsCron(UserService userService, RefreshUserRecordsCronProperties properties) {
+    public RefreshUserRecordsCron(UserService userService, RefreshUserRecordsCronProperties properties,
+                                  LicensedJobs licensedJobs) {
         this.userService = userService;
         this.properties = properties;
+        this.licensedJobs = licensedJobs;
     }
 
     // Not @Async: with it the scheduler returned at once, so the fixed delay never waited for a run to
@@ -36,13 +46,16 @@ public class RefreshUserRecordsCron {
             log.debug("RefreshUserRecordsCron is disabled; skipping run");
             return;
         }
+        if (!licensedJobs.mayRun(LicensedFeature.ATTENDANCE, "RefreshUserRecordsCron")) {
+            return;
+        }
 
         try {
             DirectorySyncResult result = userService.syncUserRecordsFromDirectory();
 
             // The service logs the detail; this line is about the job having run at all.
-            log.debug("RefreshUserRecordsCron finished: {} scanned, {} written",
-                    result.scanned(), result.written());
+            log.debug("RefreshUserRecordsCron finished: {} scanned, {} written, {} not added (license size)",
+                    result.scanned(), result.written(), result.notAdded());
         } catch (Exception e) {
             // Unattended and periodic: swallow so one bad run does not kill the schedule.
             log.error("RefreshUserRecordsCron failed; the next run will retry", e);

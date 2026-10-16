@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<!--
+  What anyone but an administrator sees while there is no usable license: every page sends them to the
+  license screen, which they may not use. Standalone rather than in the layout, whose menu would only
+  lead back here. Signing out still works.
+-->
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Not licensed &middot; ReadyRoom</title>
+    <link rel="stylesheet" th:href="@{/libs/tabler/tabler.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/icons/tabler-icons/tabler-icons.css}"/>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<body class="d-flex flex-column no-classification">
+<div class="page page-center">
+    <div class="container container-tight py-4">
+        <div class="text-center mb-4">
+            <img th:src="@{/images/logos/readyroom_logo_1.svg}" alt="ReadyRoom"
+                 style="max-width:140px;height:auto;" onerror="this.style.display='none'"/>
+        </div>
+        <div class="card card-md">
+            <div class="card-body text-center" id="license-unavailable">
+                <div class="mb-3 text-secondary"><i class="ti ti-lock fs-1"></i></div>
+                <h2 class="h2 mb-2">ReadyRoom is not licensed</h2>
+                <p class="text-secondary mb-4">
+                    This installation has no license it can use, so ReadyRoom is unavailable until an
+                    administrator installs one. Please ask your administrator.
+                </p>
+                <form th:action="@{/logout}" method="post" class="m-0" th:if="${passwordLogin}">
+                    <button type="submit" class="btn btn-outline-secondary">
+                        <i class="ti ti-logout me-1"></i>Sign out
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

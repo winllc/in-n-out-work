@@ -207,7 +207,7 @@
             </div>
 
         </div>
-        <div class="col-lg-6">
+        <div class="col-lg-6" th:if="${licenseInfo == null or licenseInfo.isEnabled('calendar')}">
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Calendar</h3>
@@ -229,6 +229,7 @@
 
         document.addEventListener('DOMContentLoaded', function () {
             var calendarEl = document.getElementById('calendar');
+            if (!calendarEl) return; // calendar not licensed
 
             const calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',

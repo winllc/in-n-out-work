@@ -64,9 +64,9 @@ class UserStatusLookupTest {
     @BeforeEach
     @SuppressWarnings("unchecked")
     void setUp() {
-        CheckInOutService checkInOutService = new CheckInOutService(checkInOutRecordRepository, userRecordRepository);
+        CheckInOutService checkInOutService = new CheckInOutService(checkInOutRecordRepository, userRecordRepository, TrackedPeopleLimit.NONE);
         userService = new UserService(userRecordRepository, mock(LdapService.class), new ApplicationProperties(),
-                (LoadingCache<String, LdapUser>) mock(LoadingCache.class), checkInOutService, userEventRecordRepository);
+                (LoadingCache<String, LdapUser>) mock(LoadingCache.class), checkInOutService, userEventRecordRepository, TrackedPeopleLimit.NONE);
 
         // The date picker stores the day being viewed on the session.
         session = new MockHttpSession();

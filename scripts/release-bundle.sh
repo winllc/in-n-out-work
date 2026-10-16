@@ -98,6 +98,12 @@ cp "$REPO_ROOT/db/migrations/"*.sql "$B/migrations/"
 if grep -q '__[A-Z_]*__' "$B/docker-compose.yml" "$B/README.md"; then
     die "an unreplaced placeholder is left in the staged files."
 fi
+# The license lives in the ens-license volume; the old read-only ./license mount must not come back.
+grep -q 'ens-license:/var/lib/ens/readyroom' "$B/docker-compose.yml" \
+    || die "the bundled docker-compose.yml does not keep the license in the ens-license volume."
+if grep -q '/etc/ens/license' "$B/docker-compose.yml"; then
+    die "the bundled docker-compose.yml still mounts the old /etc/ens/license directory."
+fi
 
 echo "Saving images: ${images[*]}"
 docker save -o "$B/images/$PRODUCT-images-$VERSION.tar" "${images[@]}"

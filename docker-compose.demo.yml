@@ -18,8 +18,12 @@
 #
 #     docker compose -f docker-compose.demo.yml -f demo-ports.yml -p readyroom-demo up --build
 #
+# It needs a license: download an evaluation license for ReadyRoom from the ENS portal and save it as
+# ./license/license.lic first. Without one the demo shows only the license screen.
+#
 # What comes up:
 #   postgres, openldap   the backing services
+#   license-init         copies ./license/license.lic into the license volume, then exits
 #   app                  built from source, running with the demo profile
 #   demo-seed-ldap       loads the mock users and groups into the directory, then exits
 #   demo-seed-db         loads the check-in/out history and the manager role once the tables exist
@@ -90,6 +94,35 @@ services:
     networks:
       - demo
 
+  # Copies ./license/license.lic, when there is one, into the ens-license volume the app keeps its
+  # license and licensing state in (installation id, revisions), and hands that directory to the app's
+  # user. Only when the file here is newer than the one in the volume, so a license uploaded on the
+  # license screen is not overwritten by an older file. Runs and exits before the app starts; reuses
+  # the postgres image, so nothing else is pulled.
+  license-init:
+    image: postgres:16
+    container_name: demo-license-init
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set -e
+        dir=/var/lib/ens/readyroom
+        if [ -f /license/license.lic ]; then
+          cp -u /license/license.lic "$$dir/license.lic"
+          echo "license/license.lic is in the ens-license volume"
+        else
+          echo "No license/license.lic: sign in as an administrator and upload one at /app/admin/license"
+        fi
+        chown -R 185:0 "$$dir" && chmod 0770 "$$dir"
+        [ ! -f "$$dir/license.lic" ] || chmod 0660 "$$dir/license.lic"
+    volumes:
+      - ./license:/license:ro
+      - demo_ens_license:/var/lib/ens/readyroom
+    restart: "no"
+    networks:
+      - demo
+
   app:
     build:
       context: .
@@ -101,17 +134,20 @@ services:
         condition: service_healthy
       openldap:
         condition: service_healthy
+      license-init:
+        condition: service_completed_successfully
     environment:
       # Read-only, no sign-in, presented as the seeded Demo Admin. See application-demo.yml.
       SPRING_PROFILES_ACTIVE: demo
       # The packaged defaults already name the postgres and openldap services, so there is
       # nothing to override here and no mounted config file.
       JAVA_OPTS: ""
-      ENS_LICENSE_FILE: /etc/ens/license/license.lic
-    # Optional: a demo shows the licensed features (metrics, reports, org chart, absence alerts) only
-    # with a license in ./license; without one it runs with the core features.
+    # The demo needs a license like any other deployment: without one it shows only the license
+    # screen. Download an evaluation license for ReadyRoom from the ENS portal and save it as
+    # ./license/license.lic before "up"; license-init copies it into this volume. (The demo is
+    # read-only, so the license screen's upload is refused here.)
     volumes:
-      - ./license:/etc/ens/license:ro
+      - demo_ens_license:/var/lib/ens/readyroom
     # No port published to the host. Demo mode has no authentication, so binding it to the host by
     # default would put an unauthenticated copy of the application on the machine's interfaces for
     # anything that can reach them. It listens on 8181 inside the demo network, which is where
@@ -178,3 +214,4 @@ volumes:
   demo_postgres_data:
   demo_openldap_data:
   demo_openldap_config:
+  demo_ens_license:
