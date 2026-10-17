@@ -95,7 +95,9 @@ and logoff. Its check-in, lock and unlock calls sign in with the user's client c
 logon, which needs ReadyRoom itself to speak TLS:
 
 1. Put your server keystore at `tls/keystore.p12` and the CA certificates for client certificates at
-   `tls/truststore.p12` (readable by group 0: `chgrp 0 tls/*.p12 && chmod 0640 tls/*.p12`).
+   `tls/truststore.p12` (readable by group 0: `chgrp 0 tls/*.p12 && chmod 0640 tls/*.p12`). Both are
+   required: the image contains neither, and ReadyRoom refuses to start with TLS on until both are
+   there. Put only the CAs that issue your users' certificates in the truststore.
 2. In `.env`: `SSL_ENABLED=true`, `SERVER_SSL_KEYSTOREPASSWORD`, `SERVER_SSL_TRUSTSTOREPASSWORD`,
    `COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml`, and an `https://` `APPLICATION_BASE_URL`.
 3. `docker compose up -d`.

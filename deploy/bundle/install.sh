@@ -79,9 +79,17 @@ fi
 
 # --- optional pieces named in COMPOSE_FILE -----------------------------------------------------------
 compose_file="$(sed -n 's/^COMPOSE_FILE=//p' .env | tail -n 1)"
+# The image holds no keystore or truststore, and ReadyRoom refuses to start with TLS on without them.
+if [ "$(sed -n 's/^SSL_ENABLED=//p' .env | tail -n 1)" = true ]; then
+    case "$compose_file" in
+        *docker-compose.tls.yml*) ;;
+        *) die "SSL_ENABLED=true needs your own keystore and truststore: add docker-compose.tls.yml to COMPOSE_FILE and put them in tls/." ;;
+    esac
+fi
 case "$compose_file" in
     *docker-compose.tls.yml*)
         [ -f tls/keystore.p12 ] || die "COMPOSE_FILE includes the TLS file but tls/keystore.p12 is missing."
+        [ -f tls/truststore.p12 ] || die "COMPOSE_FILE includes the TLS file but tls/truststore.p12 (the CAs whose client certificates may sign in) is missing."
         ;;
 esac
 case "$compose_file" in

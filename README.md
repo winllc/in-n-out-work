@@ -284,7 +284,7 @@ is reachable with no certificate setup.
 | Variable | Default | Purpose |
 |---|---|---|
 | `SERVER_PORT` | `8181` | Listen port |
-| `SSL_ENABLED` | `false` | TLS, using the keystore settings already in `application.yml` |
+| `SSL_ENABLED` | `false` | TLS; needs `SERVER_SSL_KEYSTORE` and, while `SERVER_SSL_CLIENTAUTH` is `want` (the default) or `need`, `SERVER_SSL_TRUSTSTORE` |
 | `APPLICATION_BASE_URL` | `http://localhost:8181` | The URL notification emails link to |
 
 **What is off with TLS.** Client-certificate (X.509) sign-in needs TLS, so with
@@ -293,7 +293,10 @@ Windows client's logon, lock and unlock calls cannot authenticate at all. Any
 deployment relying on either needs `SSL_ENABLED=true` and its own keystore and
 truststore (`SERVER_SSL_KEYSTORE`, `SERVER_SSL_TRUSTSTORE` and their passwords):
 `docker-compose.tls.yml` in the release package, or the `tls` values of the Helm
-chart. The keystore packaged in the jar is a development certificate.
+chart. Nothing is packaged in the jar: with `SSL_ENABLED=true` and no key store,
+or no trust store while client certificates are asked for, the application
+refuses to start (`config.SslStoresCheck`) instead of falling back to a default.
+Put only the CAs that issue your users' certificates in the truststore.
 
 ### Application settings
 
@@ -1025,11 +1028,11 @@ test/          Backing services alone, the app's Dockerfile and mounted config,
 
 ## A note on committed credentials
 
-This repository contains development credentials in source control: PKCS#12
-keystores under `src/main/resources/` with their passwords in `application.yml`,
-and the local CA's signing keys and password under `test/step-ca-data/`.
+This repository contains development credentials in source control: the local
+CA's signing keys and password, and keystores it issued, under
+`test/step-ca-data/` (see its README).
 
 They exist so the test stack works out of the box. Treat them as compromised —
 generate fresh key material for anything real, and supply production settings
 through environment variables or an external config rather than editing
-`application.yml`.
+`application.yml`. Nothing in the jar or image trusts this CA.
