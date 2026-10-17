@@ -78,7 +78,7 @@ public class GroupRestService {
 
     @GetMapping("/managers/{groupName}")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) and @accessPolicy.canViewGroup(authentication, #groupName)")
     public List<UserRecord> groupManagers(@PathVariable String groupName) {
         Optional<GroupRecord> byDnIgnoreCase = groupRecordRepository.findByGroupDnIgnoreCase(groupName);
 
@@ -94,9 +94,10 @@ public class GroupRestService {
         }
     }
 
+    /** Who manages a group, and so sees its members' details: ADMIN or one of its current managers (AccessPolicy). */
     @PostMapping("/managers/update/{groupName}")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) and @accessPolicy.canManageGroup(authentication, #groupName)")
     public void updateManagersForUser(@PathVariable String groupName,
                                       Authentication authentication, @RequestBody List<String> managerDns){
         //todo implement

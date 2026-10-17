@@ -47,4 +47,11 @@ public interface UserRecordRepository extends JpaRepository<UserRecord, Long>, P
 
     @Query("select u.dn from UserRecord u")
     List<String> findAllDns();
+
+    /**
+     * Records whose alternate managers mention {@code pattern}, a lower-cased LIKE pattern escaped with '!'. A
+     * substring match, so the caller checks each record's list for the exact DN.
+     */
+    @Query("select u from UserRecord u where lower(u.alternateManagers) like :pattern escape '!'")
+    List<UserRecord> findByAlternateManagersLike(@Param("pattern") String pattern);
 }

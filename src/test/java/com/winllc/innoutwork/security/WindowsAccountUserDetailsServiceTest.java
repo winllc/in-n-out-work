@@ -92,6 +92,9 @@ class WindowsAccountUserDetailsServiceTest {
     void serviceAndMachinePrincipalsAreNotUsers() {
         assertThrows(UsernameNotFoundException.class, () -> service().loadUserByUsername("HTTP/inout.winllc.com@WINLLC.COM"));
         assertThrows(UsernameNotFoundException.class, () -> service().loadUserByUsername("host/pc01@WINLLC.COM"));
+        // A computer account, as a task running as SYSTEM signs in: never taken for a person.
+        assertThrows(UsernameNotFoundException.class, () -> service().loadUserByUsername("PC01$@WINLLC.COM"));
+        verifyNoInteractions(appUsers);
     }
 
     @Test
@@ -130,7 +133,7 @@ class WindowsAccountUserDetailsServiceTest {
 
     @Test
     void aDirectoryUserTheAppCannotLoadIsRefused() {
-        doReturn(User.withUsername("NOTFOUND").password("").roles().build())
+        doThrow(new UsernameNotFoundException("No directory user"))
                 .when(appUsers).loadUserByUsername(anyString());
 
         assertThrows(UsernameNotFoundException.class, () -> service().loadUserByUsername("bob@WINLLC.COM"));

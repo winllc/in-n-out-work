@@ -25,7 +25,7 @@ import com.winllc.innoutwork.data.metrics.StatusMixEntry;
 import com.winllc.innoutwork.data.metrics.StoppedAgent;
 import com.winllc.innoutwork.data.metrics.UserRef;
 import com.winllc.innoutwork.model.NotificationRecord;
-import com.winllc.innoutwork.service.PermissionService;
+import com.winllc.innoutwork.security.AccessPolicy;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -54,6 +54,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -87,14 +88,12 @@ class HomeControllerTest {
     @MockitoBean
     private UserRecordRepository userRecordRepository;
     @MockitoBean
-    private PermissionService permissionService;
-    @MockitoBean
     private LdapService ldapService;
     @MockitoBean
     private HomeService homeService;
     /** Referenced by name from the @PreAuthorize expression on /app/users/{group}. */
-    @MockitoBean(name = "permissionEvaluator")
-    private com.winllc.innoutwork.security.PermissionEvaluator permissionEvaluator;
+    @MockitoBean(name = "accessPolicy")
+    private AccessPolicy accessPolicy;
 
     @Configuration
     @EnableWebSecurity
@@ -225,7 +224,7 @@ class HomeControllerTest {
     }
 
     /**
-     * A plain USER only sees the parts of the tree their group permissions whitelist.
+     * A non-administrator only sees the parts of the tree they can open: groups they are in or manage.
      */
     @Test
     void groupsRendersTheFilteredTreeForANonAdmin() throws Exception {
@@ -236,7 +235,7 @@ class HomeControllerTest {
         when(properties.isGroupsInitiallyExpanded()).thenReturn(true);
         when(cacheService.getGroup(GROUPS_BASE_DN))
                 .thenReturn(new LdapGroup(GROUPS_BASE_DN, "Groups"));
-        when(permissionService.getUserGroupPermissions(any())).thenReturn(List.of());
+        when(accessPolicy.viewableGroups(any())).thenReturn(List.of());
         when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/app/groups").with(x509(mockCert(USER_DN))))
@@ -257,7 +256,7 @@ class HomeControllerTest {
         when(properties.getGroups()).thenReturn(List.of(topLevel));
         when(cacheService.getGroup(GROUPS_BASE_DN))
                 .thenReturn(new LdapGroup(GROUPS_BASE_DN, "Groups"));
-        when(permissionService.getUserGroupPermissions(any())).thenReturn(List.of());
+        when(accessPolicy.viewableGroups(any())).thenReturn(List.of());
         when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.of(record));
 
         mockMvc.perform(get("/app/groups").with(x509(mockCert(USER_DN))))
@@ -265,7 +264,26 @@ class HomeControllerTest {
                 .andExpect(model().attributeExists("favoriteMap"));
     }
 
-    /** The user's permissions are the same for every top-level group, so they are read once per page. */
+    /** ADMIN, and only ADMIN, gets every group: the MANAGER role no longer opens the whole tree. */
+    @Test
+    void anAdministratorSeesEveryGroup() throws Exception {
+        TopLevelGroupProperties topLevel = new TopLevelGroupProperties();
+        topLevel.setGroupsBaseDn(GROUPS_BASE_DN);
+        LdapGroup tree = new LdapGroup(GROUPS_BASE_DN, "Groups");
+
+        when(properties.getGroups()).thenReturn(List.of(topLevel));
+        when(cacheService.getGroup(GROUPS_BASE_DN)).thenReturn(tree);
+        when(accessPolicy.isAdmin(any())).thenReturn(true);
+        when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+
+        mockMvc.perform(get("/app/groups").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(model().attribute("groups", List.of(tree)));
+
+        verify(accessPolicy, never()).viewableGroups(any());
+    }
+
+    /** The groups a user can open are the same for every top-level group, so they are read once per page. */
     @Test
     void groupsReadsTheUsersPermissionsOnceHoweverManyTopLevelGroups() throws Exception {
         TopLevelGroupProperties groups = new TopLevelGroupProperties();
@@ -275,22 +293,22 @@ class HomeControllerTest {
 
         when(properties.getGroups()).thenReturn(List.of(groups, companies));
         when(cacheService.getGroup(anyString())).thenAnswer(inv -> new LdapGroup(inv.getArgument(0), "Top"));
-        when(permissionService.getUserGroupPermissions(any())).thenReturn(List.of());
+        when(accessPolicy.viewableGroups(any())).thenReturn(List.of());
         when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
 
         mockMvc.perform(get("/app/groups").with(x509(mockCert(USER_DN))))
                 .andExpect(status().isOk());
 
-        verify(permissionService, times(1)).getUserGroupPermissions(any());
+        verify(accessPolicy, times(1)).viewableGroups(any());
     }
 
     /**
-     * /app/users/{group} is gated by @PreAuthorize; a plain USER without a matching group
-     * permission must not get through.
+     * /app/users/{group} is gated by @PreAuthorize; someone who is neither in the group nor
+     * manages it must not get through.
      */
     @Test
-    void usersIsForbiddenForANonAdminWithoutGroupPermission() throws Exception {
-        when(permissionEvaluator.groupCheck(anyString(), any())).thenReturn(false);
+    void usersIsForbiddenToSomeoneWhoCannotViewTheGroup() throws Exception {
+        when(accessPolicy.canViewGroup(any(), anyString())).thenReturn(false);
 
         mockMvc.perform(get("/app/users/some-group").with(x509(mockCert(USER_DN))))
                 .andExpect(status().isForbidden());
@@ -298,7 +316,7 @@ class HomeControllerTest {
 
     @Test
     void usersRendersWhenTheGroupCheckPasses() throws Exception {
-        when(permissionEvaluator.groupCheck(anyString(), any())).thenReturn(true);
+        when(accessPolicy.canViewGroup(any(), anyString())).thenReturn(true);
         when(cacheService.getGroup("some-group"))
                 .thenReturn(new LdapGroup(GROUPS_BASE_DN, "Groups"));
         when(userRecordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());

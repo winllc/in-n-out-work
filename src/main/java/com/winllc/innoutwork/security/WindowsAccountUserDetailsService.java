@@ -64,8 +64,9 @@ public class WindowsAccountUserDetailsService implements UserDetailsService {
         String account = at < 0 ? principal : principal.substring(0, at);
         String realm = at < 0 ? null : principal.substring(at + 1).toUpperCase(Locale.ROOT);
 
-        // Service and host principals (HTTP/server, host/pc) are not people.
-        if (account.isBlank() || account.contains("/")) {
+        // Service and host principals (HTTP/server, host/pc) are not people, and nor are computer accounts (PC01$),
+        // which is what a task running as SYSTEM, such as the logoff, presents.
+        if (account.isBlank() || account.contains("/") || account.endsWith("$")) {
             throw rejected(principal, "not a user account");
         }
         if (!allowedRealms.isEmpty() && (realm == null || !allowedRealms.contains(realm))) {
@@ -77,8 +78,10 @@ public class WindowsAccountUserDetailsService implements UserDetailsService {
                 .orElseThrow(() -> rejected(principal,
                         "no single directory user has " + settings.getAccountAttribute() + "=" + value));
 
-        UserDetails details = appUserDetailsService.loadUserByUsername(user.getDn());
-        if ("NOTFOUND".equals(details.getUsername())) {
+        UserDetails details;
+        try {
+            details = appUserDetailsService.loadUserByUsername(user.getDn());
+        } catch (UsernameNotFoundException e) {
             throw rejected(principal, "directory user " + user.getDn() + " could not be loaded");
         }
 

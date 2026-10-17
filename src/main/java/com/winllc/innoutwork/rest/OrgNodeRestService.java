@@ -5,6 +5,7 @@ import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.data.UserStatus;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.OrgChartService;
 import com.winllc.innoutwork.service.UserService;
@@ -36,13 +37,15 @@ public class OrgNodeRestService {
     private final ApplicationProperties props;
     private final LdapService ldapService;
     private final UserService userService;
+    private final AccessPolicy accessPolicy;
 
     public OrgNodeRestService(OrgChartService orgChartService, ApplicationProperties props,
-                              LdapService ldapService, UserService userService) {
+                              LdapService ldapService, UserService userService, AccessPolicy accessPolicy) {
         this.orgChartService = orgChartService;
         this.props = props;
         this.ldapService = ldapService;
         this.userService = userService;
+        this.accessPolicy = accessPolicy;
     }
 
     @GetMapping("/hierarchy")
@@ -56,6 +59,7 @@ public class OrgNodeRestService {
         return top;
     }
 
+    /** An organization's people, open to everyone like the org chart: details only of those the viewer may see. */
     @GetMapping("/users/{orgName}")
     public List<UserStatus> getUsers(Authentication authentication,
                             HttpSession session,
@@ -72,7 +76,8 @@ public class OrgNodeRestService {
                 .and(new EqualsFilter(props.getUserLdapDutySubOrganizationAttribute(), orgName));
 
         List<UserStatus> result = ldapService.search(filter.encode());
-        return userService.getUserStatuses(result.stream().map(UserStatus::getDn).toList(), session);
+        return accessPolicy.scope(authentication)
+                .show(userService.getUserStatuses(result.stream().map(UserStatus::getDn).toList(), session));
     }
 
 }

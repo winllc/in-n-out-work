@@ -13,7 +13,6 @@ import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -39,9 +38,21 @@ public class AppUserDetailsService implements UserDetailsService {
         this.userCache = userCache;
     }
 
+    /**
+     * The directory user {@code username} (a DN) names, with their roles.
+     *
+     * @throws UsernameNotFoundException when no directory user has that DN. Such a principal, a certificate issued
+     *                                   to a machine or to someone not in the directory, does not sign in at all:
+     *                                   it used to sign in as a role-less "NOTFOUND" user.
+     */
     @Override
     public UserDetails loadUserByUsername(@NonNull String username) throws UsernameNotFoundException {
-        LdapDn dn = LdapDn.builder().dn(username).build();
+        LdapDn dn;
+        try {
+            dn = LdapDn.builder().dn(username).build();
+        } catch (IllegalArgumentException e) {
+            throw new UsernameNotFoundException("Not a directory DN: " + username);
+        }
 
         // Runs on every authentication.
         log.debug("Looking up user: {}", dn);
@@ -81,10 +92,8 @@ public class AppUserDetailsService implements UserDetailsService {
             return details;
 
         } else {
-            return User.withUsername("NOTFOUND")
-                    .password("") // not used with X.509
-                    .roles(new String[]{})
-                    .build();
+            log.debug("Refused sign-in for {}: no such user in the directory", dn);
+            throw new UsernameNotFoundException("No directory user " + dn);
         }
     }
 

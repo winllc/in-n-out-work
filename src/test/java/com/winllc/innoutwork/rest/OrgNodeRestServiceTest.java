@@ -2,6 +2,7 @@ package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.UserStatus;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.OrgChartService;
 import com.winllc.innoutwork.service.UserService;
@@ -35,6 +36,8 @@ class OrgNodeRestServiceTest {
     private LdapService ldapService;
     @Mock
     private UserService userService;
+    @Mock
+    private AccessPolicy accessPolicy;
 
     private ApplicationProperties props;
     private OrgNodeRestService service;
@@ -42,9 +45,10 @@ class OrgNodeRestServiceTest {
     @BeforeEach
     void setUp() {
         props = new ApplicationProperties();
-        service = new OrgNodeRestService(orgChartService, props, ldapService, userService);
+        service = new OrgNodeRestService(orgChartService, props, ldapService, userService, accessPolicy);
 
         when(ldapService.search(anyString())).thenReturn(List.of());
+        when(accessPolicy.scope(any())).thenReturn(AccessPolicy.Scope.of(dn -> true));
     }
 
     private String filterSentFor(String orgName) {

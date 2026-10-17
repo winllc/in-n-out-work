@@ -6,7 +6,7 @@ import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.rest.CheckInOutRestService;
 import com.winllc.innoutwork.security.AppUserDetailsService;
-import com.winllc.innoutwork.security.PermissionEvaluator;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.CheckInOutService;
 import com.winllc.innoutwork.service.DirectReportsService;
 import com.winllc.innoutwork.service.UserService;
@@ -58,7 +58,7 @@ class CsrfProtectionTest {
     @MockitoBean AppUserDetailsService appUsers;
     @MockitoBean BaseLdapPathContextSource contextSource;
     @MockitoBean UserService userService;
-    @MockitoBean PermissionEvaluator permissionEvaluator;
+    @MockitoBean AccessPolicy accessPolicy;
     @MockitoBean DirectReportsService directReportsService;
     @MockitoBean CheckInOutService checkIns;
 
