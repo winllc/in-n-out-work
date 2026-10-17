@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.audit.SecurityAudit;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.config.SecurityConfig;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
@@ -24,6 +25,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.ldap.core.support.BaseLdapPathContextSource;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.User;
@@ -37,12 +39,19 @@ import tools.jackson.databind.json.JsonMapper;
 import javax.security.auth.x500.X500Principal;
 import java.security.cert.X509Certificate;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -55,7 +64,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Whose status event a request records: the Windows client's calls over HTTP, through the application's own
  * security chain, stored for real (H2). Only the logoff may be identified by a session id, and only once, while
  * the session is fresh, and never against the signed-in user; the id goes back in the logon's answer and nowhere
- * else.
+ * else. Refused logoffs are limited per address; accepted ones never are.
  */
 @WebMvcTest(properties = {
         "spring.datasource.url=jdbc:h2:mem:checkinout;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH",
@@ -64,7 +73,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password=",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
         "spring.jpa.hibernate.ddl-auto=create-drop",
-        "application.logoff.anonymous-requests-per-minute=" + CheckInOutRestServiceTest.RATE_LIMIT
+        "application.logoff.refused-per-minute=" + CheckInOutRestServiceTest.RATE_LIMIT
 })
 @AutoConfigureJdbc
 @AutoConfigureDataJpa
@@ -84,8 +93,11 @@ class CheckInOutRestServiceTest {
     @Autowired private CheckInOutRecordRepository records;
     @Autowired private UserRecordRepository users;
 
+    @Autowired private JdbcTemplate jdbc;
+
     @MockitoBean AppUserDetailsService appUsers;
     @MockitoBean BaseLdapPathContextSource contextSource;
+    @MockitoBean SecurityAudit securityAudit;
 
     @Configuration
     @EnableWebSecurity
@@ -242,22 +254,24 @@ class CheckInOutRestServiceTest {
         assertEquals(1, stored(CheckInOutEnum.CHECK_OUT).size(), "the second logoff stored nothing");
     }
 
+    /** Older than the default maximum age, a week. */
     @Test
     void anExpiredSessionIsRefused() throws Exception {
         records.save(CheckInOutRecord.builder().dn(ALICE).action(CheckInOutEnum.CHECK_IN)
-                .timestamp(ZonedDateTime.now().minusHours(25)).sessionId("yesterdays-session").build());
+                .timestamp(ZonedDateTime.now().minusHours(169)).sessionId("last-weeks-session").build());
 
-        report("out", anonymous(), "yesterdays-session").andExpect(status().isUnauthorized());
+        report("out", anonymous(), "last-weeks-session").andExpect(status().isUnauthorized());
 
         assertTrue(stored(CheckInOutEnum.CHECK_OUT).isEmpty());
     }
 
+    /** A workstation left logged on over a weekend or a long shift still records its logoff. */
     @Test
     void aSessionYoungerThanTheMaximumAgeIsAccepted() throws Exception {
         records.save(CheckInOutRecord.builder().dn(ALICE).action(CheckInOutEnum.CHECK_IN)
-                .timestamp(ZonedDateTime.now().minusHours(23)).sessionId("this-mornings-session").build());
+                .timestamp(ZonedDateTime.now().minusHours(167)).sessionId("monday-weeks-session").build());
 
-        report("out", anonymous(), "this-mornings-session").andExpect(status().isOk());
+        report("out", anonymous(), "monday-weeks-session").andExpect(status().isOk());
     }
 
     /** Lock and unlock records carry ids too, but only a check-in's identifies a logoff. */
@@ -278,20 +292,65 @@ class CheckInOutRestServiceTest {
         assertEquals(0, records.count(), "no record without a DN");
     }
 
+    // --- the limit on refused logoffs ----------------------------------------------------------------------
+
+    /** Behind an ingress or NAT every workstation shares one address, and end of day is a burst. */
     @Test
-    void anonymousLogoffsAreLimitedPerAddress() throws Exception {
+    void aBurstOfValidLogoffsFromOneAddressIsAllAccepted() throws Exception {
+        List<String> sessions = new ArrayList<>();
+        for (int i = 0; i < 3 * RATE_LIMIT; i++) {
+            sessions.add(logon("CN=Worker " + i + ",OU=Users,DC=winllc,DC=com"));
+        }
+
+        for (String session : sessions) {
+            report("out", anonymous(), session).andExpect(status().isOk());
+        }
+
+        assertEquals(3 * RATE_LIMIT, stored(CheckInOutEnum.CHECK_OUT).size());
+        verify(securityAudit, never()).refusedClientSessionsLimited(any(), anyInt());
+    }
+
+    @Test
+    void refusedLogoffsOverTheLimitGet429AndAreAuditedOnce() throws Exception {
         for (int i = 0; i < RATE_LIMIT; i++) {
             report("out", anonymous(), "guess-" + i).andExpect(status().isUnauthorized());
         }
 
-        report("out", anonymous(), "guess-again")
-                .andExpect(status().isTooManyRequests())
-                .andExpect(header().string("Retry-After", "60"))
-                .andExpect(jsonPath("$.error").value("rate_limited"));
+        for (int i = 0; i < 3; i++) {
+            report("out", anonymous(), "guess-again-" + i)
+                    .andExpect(status().isTooManyRequests())
+                    .andExpect(header().string("Retry-After", "60"))
+                    .andExpect(jsonPath("$.error").value("rate_limited"));
+        }
+
+        // Each refusal within the limit is audited; past it, only the address going over.
+        verify(securityAudit, times(RATE_LIMIT)).unknownClientSession(any());
+        verify(securityAudit, times(1)).refusedClientSessionsLimited(any(), eq(RATE_LIMIT));
 
         // Another workstation is unaffected.
         address = "10.1.0.1";
         report("out", anonymous(), "guess-elsewhere").andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void aValidLogoffFromALimitedAddressIsStillAccepted() throws Exception {
+        String alices = logon(ALICE);
+        for (int i = 0; i <= RATE_LIMIT; i++) {
+            report("out", anonymous(), "guess-" + i);
+        }
+        report("out", anonymous(), "guess-again").andExpect(status().isTooManyRequests());
+
+        report("out", anonymous(), alices).andExpect(status().isOk()).andExpect(jsonPath("$.dn").value(ALICE));
+    }
+
+    /** Every logoff without a sign-in looks its check-in up by session id, under a lock. */
+    @Test
+    void theSessionLookupIsIndexed() {
+        Integer columns = jdbc.queryForObject("select count(*) from information_schema.index_columns"
+                + " where lower(index_name) = 'ix_check_in_out_session_id' and lower(table_name) = 'check_in_out_records'"
+                + " and lower(column_name) = 'session_id'", Integer.class);
+
+        assertEquals(1, columns, "the index db/migrations/001 creates, under the same name");
     }
 
     @Test

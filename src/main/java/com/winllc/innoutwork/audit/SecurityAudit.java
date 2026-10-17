@@ -140,6 +140,21 @@ public class SecurityAudit {
         denials.collapse("auth.login|" + request.getRemoteAddr() + "|unknown session", entry);
     }
 
+    /**
+     * A source past the limit on refused logoff session ids. Recorded once per source and minute, when it goes over;
+     * its refusals after that are not recorded one by one.
+     */
+    public void refusedClientSessionsLimited(HttpServletRequest request, int perMinute) {
+        AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
+                .failure("too many unknown sessions")
+                .actor(AuditEntry.Actor.anonymous(null))
+                .source(AuditRequestInfo.source(request))
+                .detail("method", "session-id")
+                .detail("path", request.getRequestURI())
+                .detail("perMinute", perMinute);
+        denials.collapse("auth.login|" + request.getRemoteAddr() + "|too many unknown sessions", entry);
+    }
+
     static String method(Authentication auth) {
         if (auth instanceof UsernamePasswordAuthenticationToken) {
             return "ldap";

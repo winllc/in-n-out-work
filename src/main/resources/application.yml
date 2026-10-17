@@ -223,9 +223,11 @@ application:
   logoff:
     # The Windows client's logoff (POST /api/check/out) runs after the user's profile has gone and cannot sign
     # in, so it sends back the session id its logon was answered with. That id identifies one logoff, of the
-    # user who logged on, for this long after the logon; a later or second logoff with it is refused.
-    session-max-age-hours: 24
-    # Logoffs without a sign-in accepted from one client address per minute; the rest get 429. Many
-    # workstations behind one NAT address, or a proxy whose forwarded headers ReadyRoom does not read
-    # (server.forward-headers-strategy), share one count: raise it for them. 0 turns the limit off.
-    anonymous-requests-per-minute: 120
+    # user who logged on, for this long after the logon (a week: workstations stay logged on over weekends
+    # and long shifts); a later or second logoff with it is refused.
+    session-max-age-hours: 168
+    # Refused logoffs without a sign-in (unknown, used or expired session id) from one client address per
+    # minute. Past it, refused ones get 429 and only the first is audited. A logoff with a usable session id
+    # is always accepted and never counted, so workstations behind one NAT address or proxy are not held
+    # back. 0 turns the limit off.
+    refused-per-minute: 30

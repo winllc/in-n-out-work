@@ -19,7 +19,10 @@ import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_TIME_FORMAT;
 @Builder
 @AllArgsConstructor
 @Entity
-@Table(name = "check_in_out_records")
+// Every logoff without a sign-in looks its check-in up by session id, under a lock. The same index, by name, as
+// db/migrations/001: whichever of Hibernate and the script gets there first creates it, and the other leaves it.
+@Table(name = "check_in_out_records",
+        indexes = @Index(name = "ix_check_in_out_session_id", columnList = "sessionId"))
 public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
