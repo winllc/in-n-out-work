@@ -110,6 +110,27 @@ logLevel: info
 csp:
   reportOnly: false
 
+# The DoD notice-and-consent banner, shown and acknowledged before any sign-in (ENS_CONSENT_BANNER_*).
+# The Windows client's API is exempt.
+consentBanner:
+  enabled: false
+  # Empty: "U.S. Government (USG) Information System (IS) Notice and Consent".
+  title: ""
+  # Plain text, blank lines between paragraphs. Empty: the standard DoD notice-and-consent text.
+  text: ""
+  # Or the text from a ConfigMap of your own (mounted, ENS_CONSENT_BANNER_FILE); wins over text.
+  existingConfigMap: ""
+  existingConfigMapKey: banner.txt
+
+# Browser session lifetimes (ENS_SESSION_*), as durations: 30m, 12h. STIG suggests adminIdleTimeout 15m and
+# maxPerUser 3. Past maxPerUser (0: no limit) a user's oldest session ends.
+session:
+  idleTimeout: 30m
+  # Empty: the same as idleTimeout.
+  adminIdleTimeout: ""
+  absoluteTimeout: 12h
+  maxPerUser: 0
+
 # Users always treated as administrators, by full DN (APPLICATION_SUPERUSERDNS_n). At least one, or
 # nobody can administer ReadyRoom or reach the license screen.
 superUserDns: []

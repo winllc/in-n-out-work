@@ -117,6 +117,43 @@ either rule.
 | `ENS_COOKIE_SECURE` | `false` | Always mark the session cookie `Secure` (it is anyway with `SSL_ENABLED=true`) |
 | `SERVER_FORWARD_HEADERS_STRATEGY` | (none) | `framework` behind a proxy that terminates TLS: ReadyRoom then takes the scheme, host and client address from `X-Forwarded-*`, so it knows a request was HTTPS. Only when every request comes through that proxy. The Helm chart sets it, and `ENS_COOKIE_SECURE=true`, whenever an ingress or route terminates TLS. |
 
+### Notice-and-consent banner
+
+For DoD and other U.S. Government sites (DISA STIG), ReadyRoom can show the notice-and-consent banner
+before any sign-in. It is enforced on the server (`security.ConsentFilter`): while it is on, nothing signs
+in — the password form, a client certificate, anything — until the browser session has pressed **I agree**
+on `/consent`. Before that, pages redirect to the banner, browser API calls get `401`
+(`{"error":"consent_required"}`), and a client certificate is ignored. Agreeing is recorded in the session
+and audited as `auth.consent-acknowledged`; signing out, or the session ending, means agreeing again.
+
+Machine endpoints are not browser sessions and are exempt: the Windows client's API (`/api/check/**`), the
+audit pull API (`/api/audit/events`, bearer tokens) and `/actuator/health`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_CONSENT_BANNER_ENABLED` | `false` | Show and enforce the banner before sign-in |
+| `ENS_CONSENT_BANNER_TITLE` | `U.S. Government (USG) Information System (IS) Notice and Consent` | |
+| `ENS_CONSENT_BANNER_TEXT` | the standard DoD notice-and-consent text | Plain text; blank lines separate paragraphs |
+| `ENS_CONSENT_BANNER_FILE` | (none) | Read the text from this file instead (wins over `_TEXT`); an unreadable file stops startup |
+
+### Session lifetime
+
+Signed-in browser sessions end after a period of inactivity, at an absolute limit after sign-in however
+busy, and optionally when the user has too many (`security.SessionControls`). An ended session goes back
+to sign-in (`/login?expired`; API calls get `401`) and is audited as `auth.session-expired` with `reason`
+`idle`, `absolute` or `concurrent`. The Windows client's API is exempt.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_SESSION_IDLE_TIMEOUT` | `30m` | Idle timeout (a Spring duration: `15m`, `1h`) |
+| `ENS_SESSION_ADMIN_IDLE_TIMEOUT` | same as idle | A shorter idle timeout for administrators (STIG suggests `15m`) |
+| `ENS_SESSION_ABSOLUTE_TIMEOUT` | `12h` | A session ends this long after sign-in |
+| `ENS_SESSION_MAX_PER_USER` | `0` (no limit) | Concurrent sessions per user; past it the oldest is ended (STIG suggests `3`) |
+
+Timeouts under a minute, or a negative limit, stop startup with the setting's name. ReadyRoom had no idle
+setting of its own before; Spring Boot's `SERVER_SERVLET_SESSION_TIMEOUT` no longer decides how long a
+signed-in session lasts, `ENS_SESSION_IDLE_TIMEOUT` does.
+
 ### Roles
 
 `USER`, `MANAGER`, `ADMIN` (`UserRoleEnum`). Roles open pages (metrics, settings and
@@ -588,7 +625,7 @@ append-only in the database itself: a trigger refuses every UPDATE (see [Databas
 
 | Category | Actions |
 |---|---|
-| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout` |
+| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout`, `auth.consent-acknowledged` (the notice-and-consent banner, with the client address), `auth.session-expired` (`reason` `idle`, `absolute` or `concurrent`) |
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
 | account | `person.created` (a new tracked person, at first sign-in or lookup), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
 | configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |

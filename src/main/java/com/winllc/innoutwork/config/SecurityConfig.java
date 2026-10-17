@@ -3,6 +3,9 @@ package com.winllc.innoutwork.config;
 import com.winllc.innoutwork.audit.SecurityAudit;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.security.AppUserDetailsService;
+import com.winllc.innoutwork.security.ConsentBanner;
+import com.winllc.innoutwork.security.ConsentFilter;
+import com.winllc.innoutwork.security.SessionControls;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -60,9 +63,13 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AppUserDetailsService appUserDetailsService,
                                                    LdapAuthenticationProvider ldapAuthenticationProvider,
-                                                   ObjectProvider<SecurityAudit> securityAudit) throws Exception {
+                                                   ObjectProvider<SecurityAudit> securityAudit,
+                                                   ObjectProvider<ConsentBanner> consentBanner,
+                                                   ObjectProvider<SessionControls> sessionControls) throws Exception {
         // Preferred: HTTPS with a client certificate (X.509).
         configureX509(http, appUserDetailsService);
+        // The notice-and-consent banner before any sign-in, and the session lifetimes after it.
+        BrowserSessionConfig.apply(http, consentBanner, sessionControls);
         http
                 // Fallback when no client certificate is presented: username/password
                 // validated against LDAP (see ldapAuthenticationProvider below).
@@ -73,7 +80,7 @@ public class SecurityConfig {
                         .requestMatchers(ACTUATOR_HEALTH).permitAll()
                         .requestMatchers("/actuator/**").hasAuthority(UserRoleEnum.ADMIN.name())
                         .requestMatchers("/api/check/out").permitAll()
-                        .requestMatchers("/login", "/error").permitAll()
+                        .requestMatchers("/login", "/error", ConsentFilter.CONSENT_URL).permitAll()
                         .anyRequest().authenticated()
                 )
                 // Branded login page (GET /login served by LoginController); the POST is

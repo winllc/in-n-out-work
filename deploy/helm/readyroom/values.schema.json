@@ -142,6 +142,47 @@
         }
       }
     },
+    "consentBanner": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "existingConfigMap": {
+          "type": "string"
+        },
+        "existingConfigMapKey": {
+          "type": "string"
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "properties": {
+        "idleTimeout": {
+          "type": "string",
+          "pattern": "^([0-9]+(ms|s|m|h|d))?$"
+        },
+        "adminIdleTimeout": {
+          "type": "string",
+          "pattern": "^([0-9]+(ms|s|m|h|d))?$"
+        },
+        "absoluteTimeout": {
+          "type": "string",
+          "pattern": "^([0-9]+(ms|s|m|h|d))?$"
+        },
+        "maxPerUser": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "superUserDns": {
       "type": "array",
       "items": {

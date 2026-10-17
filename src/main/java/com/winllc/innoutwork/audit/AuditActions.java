@@ -13,7 +13,7 @@ public final class AuditActions {
 
     public static final List<String> ALL = List.of(
             // authentication
-            "auth.login", "auth.logout",
+            "auth.login", "auth.logout", "auth.consent-acknowledged", "auth.session-expired",
             // authorization
             "access.denied",
             // account

@@ -37,3 +37,6 @@ route:
     termination: passthrough
 license:
   existingSecret: readyroom-license
+consentBanner:
+  enabled: true
+  existingConfigMap: readyroom-consent-banner

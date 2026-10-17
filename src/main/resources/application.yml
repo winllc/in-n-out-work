@@ -20,6 +20,9 @@ server:
     trust-store-type: PKCS12
   servlet:
     session:
+      # Sessions before sign-in (the consent banner, the login form) expire like signed-in ones; signed-in
+      # sessions follow ens.session (ENS_SESSION_IDLE_TIMEOUT, and the administrators' own).
+      timeout: ${ENS_SESSION_IDLE_TIMEOUT:30m}
       cookie:
         http-only: true
         # Lax: the browser leaves the session cookie off another site's posts and scripted requests (the CSRF
@@ -132,6 +135,20 @@ ens:
   # escape hatch for a page the policy breaks (web.SecurityHeadersFilter).
   csp:
     report-only: ${ENS_CSP_REPORT_ONLY:false}
+  # The DoD notice-and-consent banner before sign-in (security.ConsentFilter). The text: ENS_CONSENT_BANNER_FILE
+  # wins over ENS_CONSENT_BANNER_TEXT; both empty, the standard DoD text.
+  consent-banner:
+    enabled: ${ENS_CONSENT_BANNER_ENABLED:false}
+    title: ${ENS_CONSENT_BANNER_TITLE:}
+    text: ${ENS_CONSENT_BANNER_TEXT:}
+    file: ${ENS_CONSENT_BANNER_FILE:}
+  # Browser session lifetimes (security.SessionControls), as Spring durations (30m, 12h). The administrators'
+  # idle timeout defaults to everyone's; max-per-user 0 is no limit, otherwise the oldest session is ended.
+  session:
+    idle-timeout: ${ENS_SESSION_IDLE_TIMEOUT:30m}
+    admin-idle-timeout: ${ENS_SESSION_ADMIN_IDLE_TIMEOUT:}
+    absolute-timeout: ${ENS_SESSION_ABSOLUTE_TIMEOUT:12h}
+    max-per-user: ${ENS_SESSION_MAX_PER_USER:0}
   audit:
     # Each event as one raw JSON line on stdout, logger ens.audit (Docker logs, Splunk UF).
     stdout: ${ENS_AUDIT_STDOUT:true}

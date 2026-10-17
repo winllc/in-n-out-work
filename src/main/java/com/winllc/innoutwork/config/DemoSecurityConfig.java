@@ -2,6 +2,9 @@ package com.winllc.innoutwork.config;
 
 import com.winllc.innoutwork.audit.SecurityAudit;
 import com.winllc.innoutwork.security.AppUserDetailsService;
+import com.winllc.innoutwork.security.ConsentBanner;
+import com.winllc.innoutwork.security.ConsentFilter;
+import com.winllc.innoutwork.security.SessionControls;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,7 +57,9 @@ public class DemoSecurityConfig {
                                                AppUserDetailsService appUserDetailsService,
                                                LdapAuthenticationProvider ldapAuthenticationProvider,
                                                ApplicationProperties properties,
-                                               ObjectProvider<SecurityAudit> securityAudit) throws Exception {
+                                               ObjectProvider<SecurityAudit> securityAudit,
+                                               ObjectProvider<ConsentBanner> consentBanner,
+                                               ObjectProvider<SessionControls> sessionControls) throws Exception {
         log.warn("DEMO MODE IS ON: the application is read-only, and the credentials for {} account(s) "
                         + "are published on the login page. Everything those accounts can see is readable "
                         + "by anyone who can reach this URL.",
@@ -63,20 +68,21 @@ public class DemoSecurityConfig {
         // Signing in works exactly as it does normally: a client certificate if one is presented,
         // otherwise the directory-backed login form.
         SecurityConfig.configureX509(http, appUserDetailsService);
+        BrowserSessionConfig.apply(http, consentBanner, sessionControls);
 
         http
                 .authenticationProvider(ldapAuthenticationProvider)
                 .authorizeHttpRequests(auth -> auth
-                        // Sign-in and sign-out first: they are posts, and the read-only rule below
-                        // would otherwise refuse them and leave no way into the demo at all.
-                        .requestMatchers(HttpMethod.POST, LOGIN_URL, LOGOUT_URL).permitAll()
+                        // Sign-in, sign-out and the consent banner's "I agree" first: they are posts, and the
+                        // read-only rule below would otherwise refuse them and leave no way into the demo at all.
+                        .requestMatchers(HttpMethod.POST, LOGIN_URL, LOGOUT_URL, ConsentFilter.CONSENT_URL).permitAll()
                         // The read-only boundary. By method rather than by path, so an endpoint added
                         // later is covered without anyone remembering to come back here.
                         .requestMatchers(HttpMethod.POST, "/**").denyAll()
                         .requestMatchers(HttpMethod.PUT, "/**").denyAll()
                         .requestMatchers(HttpMethod.PATCH, "/**").denyAll()
                         .requestMatchers(HttpMethod.DELETE, "/**").denyAll()
-                        .requestMatchers(LOGIN_URL, "/error").permitAll()
+                        .requestMatchers(LOGIN_URL, "/error", ConsentFilter.CONSENT_URL).permitAll()
                         .requestMatchers(SecurityConfig.ACTUATOR_HEALTH).permitAll()
                         .requestMatchers("/actuator/**").denyAll()
                         // Everything else still needs a signed-in visitor: demo mode publishes the

@@ -33,6 +33,11 @@ ingress:
   tls:
     - secretName: readyroom-ingress-tls
       hosts: [readyroom.example.com]
+consentBanner:
+  enabled: true
+session:
+  adminIdleTimeout: 15m
+  maxPerUser: 3
 networkPolicy:
   enabled: true
   ingressFrom:

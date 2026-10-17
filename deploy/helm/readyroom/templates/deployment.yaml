@@ -175,6 +175,11 @@ spec:
             - name: audit
               mountPath: {{ dir $v.audit.file.path }}
             {{- end }}
+            {{- if $v.consentBanner.existingConfigMap }}
+            - name: consent
+              mountPath: /etc/in-n-out/consent
+              readOnly: true
+            {{- end }}
             {{- with $v.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
@@ -242,6 +247,14 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- end }}
+        {{- if $v.consentBanner.existingConfigMap }}
+        - name: consent
+          configMap:
+            name: {{ $v.consentBanner.existingConfigMap }}
+            items:
+              - key: {{ $v.consentBanner.existingConfigMapKey }}
+                path: banner.txt
         {{- end }}
         {{- with $v.extraVolumes }}
         {{- toYaml . | nindent 8 }}

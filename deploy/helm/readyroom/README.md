@@ -292,6 +292,10 @@ delete it.
 | `updateProfileUrl` | `""` | `APPLICATION_UPDATEPROFILEURL` |
 | `logLevel` | `info` | `LOGGING_LEVEL_COM_WINLLC_INNOUTWORK` |
 | `csp.reportOnly` | `false` | `ENS_CSP_REPORT_ONLY`: report the Content-Security-Policy instead of enforcing it |
+| `consentBanner.enabled` | `false` | `ENS_CONSENT_BANNER_ENABLED`: the DoD notice-and-consent banner before any sign-in |
+| `consentBanner.title`, `.text` | `""` | `ENS_CONSENT_BANNER_TITLE`, `_TEXT`; empty: the standard DoD title and text |
+| `consentBanner.existingConfigMap`, `.existingConfigMapKey` | `""`, `banner.txt` | The text from your ConfigMap (`ENS_CONSENT_BANNER_FILE`); wins over `text` |
+| `session.idleTimeout`, `.adminIdleTimeout`, `.absoluteTimeout`, `.maxPerUser` | `30m`, `""`, `12h`, `0` | `ENS_SESSION_*`; STIG suggests `adminIdleTimeout: 15m`, `maxPerUser: 3` |
 | `superUserDns` | `[]` | `APPLICATION_SUPERUSERDNS_n`: administrators by DN; at least one |
 | `database.host` | `""` | Required unless embedded |
 | `database.port`, `.name`, `.username` | `5432`, `readyroom`, `readyroom` | |

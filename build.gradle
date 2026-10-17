@@ -23,6 +23,8 @@ dependencies {
     // --- Core Web + REST ---
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    // @Validated configuration properties: a setting with an impossible value stops startup with its name.
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
 
     // --- Security ---
     implementation 'org.springframework.boot:spring-boot-starter-security'
