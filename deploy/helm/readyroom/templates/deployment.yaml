@@ -1,10 +1,5 @@
 {{- $v := .Values -}}
-{{- if and $v.tls.enabled (not $v.tls.keystore.secretName) -}}
-{{- fail "tls.keystore.secretName is required when tls.enabled: a Secret holding your PKCS#12 keystore (the image's built-in one is a development certificate)" -}}
-{{- end -}}
-{{- if and $v.windowsAuth.enabled (not $v.windowsAuth.keytab.secretName) -}}
-{{- fail "windowsAuth.keytab.secretName is required when windowsAuth.enabled: a Secret holding the service principal's keytab" -}}
-{{- end -}}
+{{- include "readyroom.validate" . -}}
 {{- $licenseSecret := include "readyroom.licenseSecretName" . -}}
 apiVersion: apps/v1
 kind: Deployment
