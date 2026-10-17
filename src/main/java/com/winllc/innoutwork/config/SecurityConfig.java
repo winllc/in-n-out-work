@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.config;
 
 import com.winllc.innoutwork.audit.SecurityAudit;
+import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +43,9 @@ public class SecurityConfig {
      */
     public static final String CLIENT_API = "/api/check/**";
 
+    /** Actuator's health endpoint and its groups (/liveness, /readiness): the only actuator paths open to anyone. */
+    public static final String[] ACTUATOR_HEALTH = {"/actuator/health", "/actuator/health/**"};
+
 
     /**
      * The normal chain. Absent while demo mode is on, where {@link DemoSecurityConfig} defines the
@@ -60,7 +64,10 @@ public class SecurityConfig {
                 // validated against LDAP (see ldapAuthenticationProvider below).
                 .authenticationProvider(ldapAuthenticationProvider)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**").permitAll()
+                        // Health, for the container healthcheck and the Kubernetes probes, is all application.yml
+                        // exposes. Anything an operator exposes besides (metrics, env) needs ADMIN.
+                        .requestMatchers(ACTUATOR_HEALTH).permitAll()
+                        .requestMatchers("/actuator/**").hasAuthority(UserRoleEnum.ADMIN.name())
                         .requestMatchers("/api/check/out").permitAll()
                         .requestMatchers("/login", "/error").permitAll()
                         .anyRequest().authenticated()

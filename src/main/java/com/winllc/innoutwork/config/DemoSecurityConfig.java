@@ -34,8 +34,7 @@ import org.springframework.security.web.SecurityFilterChain;
  * they are not the boundary.
  *
  * <p>Actuator is refused apart from health, because a demo is usually reachable by people who should
- * not be reading the application's configuration, and the management configuration exposes
- * {@code env}.
+ * not be reading the application's configuration, should an operator expose more than health.
  *
  * <p><b>Point this at demo data only.</b> The listed credentials are readable by anyone who can reach
  * the login page, so everything those accounts can see is effectively public.
@@ -78,7 +77,7 @@ public class DemoSecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/**").denyAll()
                         .requestMatchers(HttpMethod.DELETE, "/**").denyAll()
                         .requestMatchers(LOGIN_URL, "/error").permitAll()
-                        .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers(SecurityConfig.ACTUATOR_HEALTH).permitAll()
                         .requestMatchers("/actuator/**").denyAll()
                         // Everything else still needs a signed-in visitor: demo mode publishes the
                         // credentials, it does not remove the sign-in.

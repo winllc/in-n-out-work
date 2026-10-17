@@ -144,6 +144,17 @@ class DemoSecurityConfigTest {
         mockMvc.perform(get("/actuator/env").with(SIGNED_IN)).andExpect(status().isForbidden());
     }
 
+    /** The probes' health groups are health too: past the chain without a sign-in. */
+    @Test
+    void healthAndItsProbeGroupsAreOpen() throws Exception {
+        for (String path : java.util.List.of("/actuator/health", "/actuator/health/liveness", "/actuator/health/readiness")) {
+            mockMvc.perform(get(path)).andExpect(result -> {
+                int status = result.getResponse().getStatus();
+                assertTrue(status != 302 && status != 403, path + " answered " + status);
+            });
+        }
+    }
+
     @Configuration
     @EnableWebSecurity
     static class DemoTestConfig {

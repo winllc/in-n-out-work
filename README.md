@@ -70,7 +70,7 @@ Everything requires authentication except:
 | Path | Why |
 |---|---|
 | `/api/check/out` | Runs at logoff, after the user profile — and their certificate store — is gone |
-| `/actuator/**` | Health and metrics |
+| `/actuator/health` | Health checks and probes; the only actuator endpoint exposed (others need `ADMIN`) |
 | `/login`, `/error` | Sign-in and error pages |
 
 That single exception drives the client design: since logoff cannot authenticate,
