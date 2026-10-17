@@ -21,6 +21,7 @@ import com.winllc.innoutwork.service.ReportService;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -61,7 +62,9 @@ public class UserEventRestService {
     }
 
 
+    /** A person's calendar statuses: as their details (AccessPolicy). */
     @GetMapping("/all")
+    @PreAuthorize("@accessPolicy.canViewDetails(authentication, #dn)")
     public List<CalendarEvent> getEventForDay(Authentication authentication,
                                         @RequestParam String dn,
                                         @RequestParam Instant from,
@@ -95,7 +98,9 @@ public class UserEventRestService {
                 .toList();
     }
 
+    /** The same with the hours they were online: as their details (AccessPolicy). */
     @GetMapping("/allWithLogins")
+    @PreAuthorize("@accessPolicy.canViewDetails(authentication, #dn)")
     public List<CalendarEvent> getEventForDayWithLogins(Authentication authentication,
                                               @RequestParam String dn,
                                               @RequestParam Instant from,

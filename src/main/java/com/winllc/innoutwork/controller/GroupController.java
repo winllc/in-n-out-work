@@ -40,10 +40,11 @@ public class GroupController {
         this.audit = audit;
     }
 
+    /** Every member's attendance over a period: ADMIN, or a manager of the group (AccessPolicy). */
     @RequiresFeature(LicensedFeature.METRICS)
     @PostMapping("/report")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) and @accessPolicy.canManageGroup(authentication, #form.groupDn)")
     public ModelAndView generateReport(@ModelAttribute("form") GenerateReportForm form){
         ModelAndView mav = new ModelAndView("groupReport");
 
@@ -74,7 +75,7 @@ public class GroupController {
     @RequiresFeature(LicensedFeature.METRICS)
     @PostMapping("/report/exported")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) and @accessPolicy.canManageGroup(authentication, #groupDn)")
     @ResponseBody
     public ResponseEntity<Void> reportExported(@RequestParam String groupDn,
                                                @RequestParam(required = false) String fromDate,

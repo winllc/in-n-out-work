@@ -91,9 +91,24 @@ meta tags. The Windows client's `/api/check/**` is exempt. The session cookie is
 
 ### Roles
 
-`USER`, `MANAGER`, `ADMIN` (`UserRoleEnum`). Access to a group's users is granted
-either by role or per-group through `PermissionRecord`, evaluated by
-`PermissionEvaluator.groupCheck()` in `@PreAuthorize` expressions.
+`USER`, `MANAGER`, `ADMIN` (`UserRoleEnum`). Roles open pages (metrics, settings and
+group reports need `MANAGER` or `ADMIN`); whose data a page shows is decided by
+`AccessPolicy`, in `@PreAuthorize` expressions and the controllers:
+
+- A person's details (arrival, departure and status-change times, notes, average
+  login time, check-in history, calendar, alternate managers): themselves; `ADMIN`;
+  and the people the viewer is responsible for, whatever their role: members of the
+  groups they manage (the group's directory `owner` or an alternate manager set in
+  ReadyRoom), their direct reports in the directory, and people who named them as an
+  alternate manager. Indirect reports are not included.
+- Everyone else, as a coworker: found by search, a group or the org chart, with their
+  directory details and whether they are in, never their times, notes or history. A
+  status a manager recorded (absent, unscheduled leave) shows as `OUT_OF_OFFICE`.
+- Groups: opened by their members, their managers and `ADMIN`; managed (managers,
+  report, access) only by `ADMIN` and their current managers.
+- Absence notifications: the manager they were sent to, and `ADMIN`.
+
+A principal with no directory user (a machine certificate, say) does not sign in.
 
 ---
 

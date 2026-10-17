@@ -7,7 +7,7 @@ import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.RoleUpdateForm;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.data.team.DirectReportsSummary;
-import com.winllc.innoutwork.security.PermissionEvaluator;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.DirectReportsService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
@@ -19,8 +19,6 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.ModelAndView;
 
-import java.util.List;
-import java.util.Objects;
 import java.util.stream.Stream;
 
 @Controller
@@ -30,13 +28,13 @@ public class UserController {
     private static final Logger log = LoggerFactory.getLogger(UserController.class);
 
     private final UserService userRecordService;
-    private final PermissionEvaluator permissionEvaluator;
+    private final AccessPolicy accessPolicy;
     private final DirectReportsService directReportsService;
 
-    public UserController(UserService userRecordService, PermissionEvaluator permissionEvaluator,
+    public UserController(UserService userRecordService, AccessPolicy accessPolicy,
                           DirectReportsService directReportsService) {
         this.userRecordService = userRecordService;
-        this.permissionEvaluator = permissionEvaluator;
+        this.accessPolicy = accessPolicy;
         this.directReportsService = directReportsService;
     }
 
@@ -49,19 +47,14 @@ public class UserController {
 
         UserStatus userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(dn).build(), session);
 
-        boolean isGroupManager = auth.getAuthorities().stream()
-                .anyMatch(a ->
-                        Objects.requireNonNull(a.getAuthority()).equalsIgnoreCase(UserRoleEnum.ADMIN.name())
-                        || a.getAuthority().equalsIgnoreCase(UserRoleEnum.MANAGER.name()));
-
-        if(!isGroupManager) {
-            isGroupManager = permissionEvaluator.userManagerCheck(dn, auth);
+        // Anyone may look a person up; their attendance, notes, history and calendar only those the viewer may see
+        // the details of (AccessPolicy). The page shows the history and calendar when isGroupManager is set.
+        boolean isGroupManager = accessPolicy.canViewDetails(auth, userDetails.getDn());
+        if (!isGroupManager) {
+            userDetails = AccessPolicy.presenceOnly(userDetails);
         }
 
-        boolean isSelf = auth.getName().equalsIgnoreCase(userDetails.getDn());
-
-       //todo if manager
-       // groupService.getManagersForGroup()
+        boolean isSelf = accessPolicy.isSelf(auth, userDetails.getDn());
 
         ModelAndView mav = new ModelAndView("userdetails");
         mav.addObject("user", userDetails);

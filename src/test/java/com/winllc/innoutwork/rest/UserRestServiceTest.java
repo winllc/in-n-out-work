@@ -6,6 +6,7 @@ import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,6 +83,9 @@ class UserRestServiceTest {
     ApplicationProperties properties;
     @MockitoBean
     UserService userService;
+    /** Referenced by name from the @PreAuthorize expressions; ScopedEndpointsTest covers its decisions here. */
+    @MockitoBean(name = "accessPolicy")
+    AccessPolicy accessPolicy;
 
     @Configuration
     @EnableWebSecurity
@@ -115,6 +119,9 @@ class UserRestServiceTest {
         when(userService.getUserStatuses(any(), any()))
                 .thenAnswer(inv -> ((java.util.Collection<String>) inv.getArgument(0)).stream()
                         .map(dn -> UserStatus.builder().dn(dn).status("IN").build()).toList());
+        // The rows here are about the response's shape, so the viewer may see every detail.
+        when(accessPolicy.scope(any())).thenReturn(AccessPolicy.Scope.of(dn -> true));
+        when(accessPolicy.canViewDetails(any(), anyString())).thenReturn(true);
     }
 
     private String filterSentFor(String search) throws Exception {

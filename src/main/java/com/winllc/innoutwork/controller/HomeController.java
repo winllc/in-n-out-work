@@ -2,14 +2,13 @@ package com.winllc.innoutwork.controller;
 
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.config.TopLevelGroupProperties;
-import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.HomeService;
-import com.winllc.innoutwork.service.PermissionService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,16 +37,16 @@ public class HomeController {
     private final CacheService cacheService;
     private final ApplicationProperties properties;
     private final UserRecordRepository userRecordRepository;
-    private final PermissionService permissionService;
+    private final AccessPolicy accessPolicy;
     private final HomeService homeService;
 
     public HomeController(CacheService cacheService, ApplicationProperties properties,
-                          UserRecordRepository userRecordRepository, PermissionService permissionService,
+                          UserRecordRepository userRecordRepository, AccessPolicy accessPolicy,
                           HomeService homeService) {
         this.cacheService = cacheService;
         this.properties = properties;
         this.userRecordRepository = userRecordRepository;
-        this.permissionService = permissionService;
+        this.accessPolicy = accessPolicy;
         this.homeService = homeService;
     }
 
@@ -69,9 +68,9 @@ public class HomeController {
         return "home";
     }
 
+    /** A group's page: for its members, its managers and ADMIN (AccessPolicy). */
     @GetMapping("/app/users/{group}")
-    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) or @permissionEvaluator.groupCheck(#group, #authentication)")
+    @PreAuthorize("@accessPolicy.canViewGroup(authentication, #group)")
     public String users(Authentication authentication, Model model, @PathVariable String group) {
         LdapGroup ldapGroup = cacheService.getGroup(group);
         if (ldapGroup == null) {
@@ -82,6 +81,8 @@ public class HomeController {
 
         model.addAttribute("group", ldapGroup.getName());
         model.addAttribute("groupDn", ldapGroup.getDn());
+        // The managers and report cards: for ADMIN and the group's own managers only.
+        model.addAttribute("canManageGroup", accessPolicy.canManageGroup(authentication, group));
 
         Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(authentication.getName());
         if(recordOptional.isPresent()) {
@@ -99,12 +100,10 @@ public class HomeController {
     public String groups(Authentication authentication, Model model) {
         List<LdapGroup> topLevelGroups = new ArrayList<>();
 
-        boolean isAdmin = authentication.getAuthorities().stream()
-                .anyMatch(a -> a.getAuthority().equalsIgnoreCase(UserRoleEnum.ADMIN.toString())
-                || a.getAuthority().equalsIgnoreCase(UserRoleEnum.MANAGER.toString()));
+        // ADMIN sees every group; everyone else the groups they can open: those they are in and those they manage.
+        boolean isAdmin = accessPolicy.isAdmin(authentication);
         // The same for every top-level group, so read once.
-        List<LdapDn> groupWhitelist = isAdmin ? List.of()
-                : permissionService.getUserGroupPermissions(new LdapDn(authentication.getName()));
+        List<LdapDn> groupWhitelist = isAdmin ? List.of() : accessPolicy.viewableGroups(authentication);
 
         for(TopLevelGroupProperties topProps: properties.getGroups()) {
             LdapGroup groupHierarchy = cacheService.getGroup(topProps.getGroupsBaseDn());
