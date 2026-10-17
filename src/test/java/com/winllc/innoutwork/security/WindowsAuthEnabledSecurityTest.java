@@ -40,7 +40,6 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -206,13 +205,14 @@ class WindowsAuthEnabledSecurityTest {
 
     // --- everything else: unchanged -----------------------------------------------------------------------
 
-    /** Only the three check-in calls take tickets; other URLs keep the sign-in page and ignore the header. */
+    /** Only the three check-in calls take tickets; other URLs ignore the header. */
     @Test
-    void otherUrlsIgnoreTicketsAndStillRedirectToSignIn() throws Exception {
+    void otherUrlsIgnoreTicketsAndAreUnauthorized() throws Exception {
+        // API calls are answered 401 rather than sent to the sign-in page; the ticket still signs nobody in.
         mockMvc.perform(get("/api/check/records").header("Authorization", TICKET))
-                .andExpect(redirectedUrl("/login"));
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/check/in").header("Authorization", TICKET))
-                .andExpect(redirectedUrl("/login"));
+                .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(ticketValidator);
     }
