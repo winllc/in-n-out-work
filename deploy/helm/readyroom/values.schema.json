@@ -297,13 +297,21 @@
     "ldap": {
       "type": "object",
       "properties": {
+        "scheme": {
+          "type": "string",
+          "enum": [
+            "ldaps",
+            "ldap"
+          ]
+        },
         "host": {
           "type": "string"
         },
         "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535
+          "type": [
+            "integer",
+            "string"
+          ]
         },
         "url": {
           "type": "string"
@@ -470,6 +478,89 @@
             },
             "existingSecretKey": {
               "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "x509": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "servlet",
+            "header"
+          ]
+        },
+        "header": {
+          "type": "string"
+        },
+        "trustedProxies": {
+          "type": "string"
+        },
+        "proxySecret": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
+        },
+        "trustedCa": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
+        },
+        "userFilter": {
+          "type": "string"
+        },
+        "allowedIssuers": {
+          "type": "string"
+        },
+        "revocation": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "ocsp",
+                "crl",
+                "ocsp-then-crl"
+              ]
+            },
+            "ocspResponderUrl": {
+              "type": "string"
+            },
+            "crlConfigMap": {
+              "type": "string"
+            },
+            "fail": {
+              "type": "string",
+              "enum": [
+                "closed",
+                "open"
+              ]
+            },
+            "cache": {
+              "type": "string",
+              "pattern": "^[0-9]+(ms|s|m|h|d)$"
             }
           }
         }

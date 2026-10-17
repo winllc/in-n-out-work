@@ -1,7 +1,7 @@
 {{- if .Values.networkPolicy.enabled -}}
 {{- $v := .Values -}}
 {{- $np := $v.networkPolicy -}}
-{{- $ports := list (int $v.database.port) (int $v.ldap.port) (int $v.smtp.port) -}}
+{{- $ports := list (int $v.database.port) (int (include "readyroom.ldapPort" .)) (int $v.smtp.port) -}}
 {{- if $v.ldap.url -}}
 {{- $m := regexFind ":[0-9]+$" (trimSuffix "/" $v.ldap.url) -}}
 {{- $ports = append $ports (ternary (int (trimPrefix ":" $m)) 636 (ne $m "")) -}}

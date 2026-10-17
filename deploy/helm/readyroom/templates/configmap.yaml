@@ -56,12 +56,10 @@ data:
   {{- end }}
 
   # Directory
-  {{- with $v.ldap.host }}
-  LDAP_HOST: {{ . | quote }}
-  {{- end }}
-  LDAP_PORT: {{ $v.ldap.port | quote }}
-  {{- with $v.ldap.url }}
-  SPRING_LDAP_URLS: {{ . | quote }}
+  {{- if $v.ldap.url }}
+  SPRING_LDAP_URLS: {{ $v.ldap.url | quote }}
+  {{- else if $v.ldap.host }}
+  SPRING_LDAP_URLS: {{ printf "%s://%s:%s" $v.ldap.scheme $v.ldap.host (include "readyroom.ldapPort" .) | quote }}
   {{- end }}
   {{- with $v.ldap.bindDn }}
   LDAP_USERNAME: {{ . | quote }}
@@ -129,6 +127,34 @@ data:
   SERVER_SSL_TRUSTSTORETYPE: {{ $v.tls.truststore.type | quote }}
   {{- end }}
   {{- end }}
+
+  # Client certificates (X.509)
+  ENS_X509_SOURCE: {{ $v.x509.source | quote }}
+  {{- if eq $v.x509.source "header" }}
+  {{- with $v.x509.header }}
+  ENS_X509_HEADER: {{ . | quote }}
+  {{- end }}
+  ENS_X509_TRUSTED_PROXIES: {{ $v.x509.trustedProxies | quote }}
+  ENS_X509_PROXY_SECRET_FILE: /etc/in-n-out/x509/proxy-secret
+  {{- end }}
+  {{- if or $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret }}
+  ENS_X509_TRUSTED_CA_FILE: /etc/in-n-out/x509/ca.pem
+  {{- end }}
+  {{- with $v.x509.userFilter }}
+  ENS_X509_USER_FILTER: {{ . | quote }}
+  {{- end }}
+  {{- with $v.x509.allowedIssuers }}
+  ENS_X509_ALLOWED_ISSUERS: {{ . | quote }}
+  {{- end }}
+  ENS_X509_REVOCATION: {{ $v.x509.revocation.mode | quote }}
+  {{- with $v.x509.revocation.ocspResponderUrl }}
+  ENS_X509_OCSP_RESPONDER_URL: {{ . | quote }}
+  {{- end }}
+  {{- if $v.x509.revocation.crlConfigMap }}
+  ENS_X509_CRL_DIR: /etc/in-n-out/crl
+  {{- end }}
+  ENS_X509_REVOCATION_FAIL: {{ $v.x509.revocation.fail | quote }}
+  ENS_X509_REVOCATION_CACHE: {{ $v.x509.revocation.cache | quote }}
 
   # Windows (Kerberos) sign-in
   APPLICATION_WINDOWSAUTH_ENABLED: {{ $v.windowsAuth.enabled | quote }}

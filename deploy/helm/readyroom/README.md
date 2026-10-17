@@ -44,7 +44,7 @@ database:
   host: postgres.example.com
   password: change-me             # or database.existingSecret
 ldap:
-  host: dc1.example.com
+  host: dc1.example.com           # ldaps://dc1.example.com:636 (ldap.scheme: ldaps is the default)
   bindDn: CN=readyroom-svc,OU=Service Accounts,DC=example,DC=com
   bindPassword: change-me
   userBaseDn: DC=example,DC=com
@@ -307,8 +307,8 @@ delete it.
 | `database.embedded.resources` | 100m / 256Mi, limit 1Gi | |
 | `database.migration.username` | `""` | `SPRING_FLYWAY_USER`: a separate account that owns the schema and migrates it at startup; empty: `database.username` |
 | `database.migration.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `migration-password` | `SPRING_FLYWAY_PASSWORD`; required with `database.migration.username` |
-| `ldap.host`, `ldap.port` | `""`, `389` | `LDAP_HOST`, `LDAP_PORT` |
-| `ldap.url` | `""` | `SPRING_LDAP_URLS`, e.g. `ldaps://dc1.example.com:636`; overrides host and port |
+| `ldap.scheme`, `ldap.host`, `ldap.port` | `ldaps`, `""`, `""` (636; 389 for `ldap`) | `SPRING_LDAP_URLS=<scheme>://<host>:<port>`. `ldap` sends sign-in passwords in clear text (warned at startup); `ldaps` with port 389 fails the render |
+| `ldap.url` | `""` | `SPRING_LDAP_URLS`, e.g. `ldaps://dc1.example.com:636`; overrides scheme, host and port |
 | `ldap.bindDn` | `""` | `LDAP_USERNAME` |
 | `ldap.bindPassword` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `ldap-password` | `LDAP_PASSWORD` |
 | `ldap.userBaseDn` | `""` | `APPLICATION_USERBASEDN` |

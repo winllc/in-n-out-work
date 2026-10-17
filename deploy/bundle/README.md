@@ -48,7 +48,7 @@ password) and lists the lines to edit. Edit `.env`, replacing every `CHANGE_ME`:
 | Setting | What |
 |---|---|
 | `APPLICATION_BASE_URL` | The address users reach ReadyRoom at (used in e-mail links) |
-| `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` | Your directory and the service account (`SPRING_LDAP_URLS=ldaps://...` for LDAPS) |
+| `SPRING_LDAP_URLS`, `LDAP_USERNAME`, `LDAP_PASSWORD` | Your directory (`ldaps://host:636`) and the service account |
 | `APPLICATION_USERBASEDN`, `APPLICATION_GROUPS_0_GROUPSBASEDN` | Where users and group trees are |
 | `APPLICATION_SUPERUSERDNS_0` | At least one administrator, by full DN |
 | `SPRING_MAIL_*`, `APPLICATION_NOTIFICATIONSENDEREMAIL` | Your SMTP server and the From address |

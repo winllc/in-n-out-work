@@ -1,4 +1,6 @@
-# Browsers through ingress-nginx with TLS at the ingress (edge); username and password sign-in.
+# Browsers and the Windows client through ingress-nginx with TLS at the ingress (edge): password sign-in,
+# and client certificates verified by the ingress and forwarded in a header (x509.source header) with the
+# proxy secret; revocation by OCSP, then CRL; CAC certificates mapped to AD users by UPN.
 database:
   host: postgres.example.internal
   password: example-db-password
@@ -25,6 +27,11 @@ ingress:
   className: nginx
   annotations:
     nginx.ingress.kubernetes.io/proxy-body-size: 2m
+    nginx.ingress.kubernetes.io/auth-tls-secret: readyroom/readyroom-user-cas
+    nginx.ingress.kubernetes.io/auth-tls-verify-client: "optional"
+    nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream: "true"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header X-ENS-Proxy-Secret "example-proxy-secret-0123456789abcdef";
   hosts:
     - host: readyroom.example.com
       paths:
@@ -38,6 +45,21 @@ consentBanner:
 session:
   adminIdleTimeout: 15m
   maxPerUser: 3
+x509:
+  source: header
+  header: ssl-client-cert
+  proxySecret:
+    value: example-proxy-secret-0123456789abcdef
+  trustedCa:
+    value: |
+      -----BEGIN CERTIFICATE-----
+      example
+      -----END CERTIFICATE-----
+  userFilter: (userPrincipalName={upn})
+  allowedIssuers: CN=DOD ID CA-59,OU=PKI,OU=DoD,O=U.S. Government,C=US;CN=DOD ID CA-62,OU=PKI,OU=DoD,O=U.S. Government,C=US
+  revocation:
+    mode: ocsp-then-crl
+    ocspResponderUrl: http://ocsp.example.internal
 networkPolicy:
   enabled: true
   ingressFrom:

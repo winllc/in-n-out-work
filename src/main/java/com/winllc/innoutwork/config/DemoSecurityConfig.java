@@ -5,6 +5,7 @@ import com.winllc.innoutwork.security.AppUserDetailsService;
 import com.winllc.innoutwork.security.ConsentBanner;
 import com.winllc.innoutwork.security.ConsentFilter;
 import com.winllc.innoutwork.security.SessionControls;
+import com.winllc.innoutwork.security.x509.X509SignIn;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -61,6 +62,7 @@ public class DemoSecurityConfig {
                                                ObjectProvider<SecurityAudit> securityAudit,
                                                ObjectProvider<ConsentBanner> consentBanner,
                                                ObjectProvider<SessionControls> sessionControls,
+                                               ObjectProvider<X509SignIn> x509SignIn,
                                                Environment environment) throws Exception {
         log.warn("DEMO MODE IS ON: the application is read-only, and the credentials for {} account(s) "
                         + "are published on the login page. Everything those accounts can see is readable "
@@ -69,7 +71,7 @@ public class DemoSecurityConfig {
 
         // Signing in works exactly as it does normally: a client certificate if one is presented,
         // otherwise the directory-backed login form.
-        SecurityConfig.configureX509(http, appUserDetailsService);
+        SecurityConfig.configureX509(http, appUserDetailsService, x509SignIn);
         BrowserSessionConfig.apply(http, consentBanner, sessionControls);
 
         http

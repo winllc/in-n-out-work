@@ -122,6 +122,32 @@ public class SecurityAudit {
         denials.collapse("auth.login|" + request.getRemoteAddr() + "|no credentials", entry);
     }
 
+    /**
+     * A client certificate refused before it could sign anyone in: revoked, revocation unknown, an issuer not on
+     * ENS_X509_ALLOWED_ISSUERS, a header from an untrusted proxy or with the wrong secret, a chain to no trusted
+     * CA, no directory user. Collapsed per source and reason, like the Windows client's other failures.
+     */
+    public void certificateRefused(HttpServletRequest request, String subject, String issuer, String serial,
+                                   String reason) {
+        EnsMetrics.authAttempt("x509", false);
+        AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
+                .failure(reason)
+                .actor(AuditEntry.Actor.anonymous(subject))
+                .detail("method", "x509")
+                .detail("certificateIssuer", issuer)
+                .detail("certificateSerial", serial);
+        if (subject != null) {
+            entry.target("certificate", subject, com.winllc.innoutwork.data.LdapDn.cnOf(subject));
+        }
+        if (request == null) {
+            audit.recordQuietly(entry);
+            return;
+        }
+        entry.source(AuditRequestInfo.source(request));
+        entry.detail("path", request.getRequestURI());
+        denials.collapse("auth.login|" + request.getRemoteAddr() + "|" + subject + "|" + reason, entry);
+    }
+
     /** A pull-API request with a wrong or revoked token: a failed sign-in, collapsed per source. */
     void apiTokenRefused(HttpServletRequest request) {
         EnsMetrics.authAttempt("api-token", false);
@@ -186,6 +212,9 @@ public class SecurityAudit {
         }
         if (e instanceof DisabledException) {
             return "account disabled";
+        }
+        if (e instanceof com.winllc.innoutwork.security.x509.CertificateRefusedException) {
+            return e.getMessage();
         }
         log.debug("Sign-in failed: {}", e.toString());
         return e.getClass().getSimpleName().replaceAll("Exception$", "") + ": " + e.getMessage();

@@ -190,11 +190,16 @@ database:
 # ---------------------------------------------------------------------------------------------------
 
 ldap:
-  # Host and port; ReadyRoom connects with ldap://host:port (LDAP_HOST, LDAP_PORT).
+  # Host, port and scheme; ReadyRoom connects to <scheme>://host:port (SPRING_LDAP_URLS). ldaps, the
+  # default, encrypts the connection, and with it the passwords the sign-in form checks against the
+  # directory; ldap sends them in clear text (ReadyRoom warns at startup). The directory's certificate must
+  # be trusted by the JVM (a public CA is; for your own CA, a trust store via javaOpts and extraVolumes).
+  scheme: ldaps
   host: ""
-  port: 389
-  # The whole URL instead, for LDAPS: ldaps://ldap.example.com:636 (SPRING_LDAP_URLS). Takes precedence
-  # over host/port. The directory's certificate must be trusted by the JVM (a public CA is).
+  # Empty: 636 for ldaps, 389 for ldap.
+  port: ""
+  # The whole URL instead (SPRING_LDAP_URLS), e.g. ldaps://dc1.example.com:636; takes precedence over the
+  # three above.
   url: ""
   # A read-only service account (bind DN, or user@domain for AD) (LDAP_USERNAME).
   bindDn: ""
@@ -253,12 +258,11 @@ smtp:
 # TLS and client certificates
 # ---------------------------------------------------------------------------------------------------
 
-# Off: plain HTTP on 8181, for browsers with username and password sign-in behind an ingress or route
-# that terminates TLS. Client-certificate (X.509) sign-in, which the Windows client's check-in, lock
-# and unlock calls use, needs ReadyRoom itself to terminate TLS: set enabled, supply the keystores,
-# and reach the pod with TLS passthrough (ingress-nginx ssl-passthrough, a route with termination:
-# passthrough) or a LoadBalancer Service. ReadyRoom does not read a client certificate from a header,
-# so an edge-terminating ingress cannot pass one on.
+# Off: plain HTTP on 8181, behind an ingress or route that terminates TLS. Client-certificate (X.509)
+# sign-in, which the Windows client's check-in, lock and unlock calls use, then needs x509.source:
+# header (the ingress forwards the certificate). Or ReadyRoom terminates TLS itself: set enabled, supply
+# the keystores, and reach the pod with TLS passthrough (ingress-nginx ssl-passthrough, a route with
+# termination: passthrough) or a LoadBalancer Service.
 tls:
   enabled: false
   # want: ask for a certificate but fall back to the password form (the default). need: require one.
@@ -285,6 +289,60 @@ tls:
     password: ""
     existingSecret: ""
     existingSecretKey: truststore-password
+
+# ---------------------------------------------------------------------------------------------------
+# Client certificates (X.509, CAC/PIV): where they come from, who they sign in as, revocation (ENS_X509_*)
+# ---------------------------------------------------------------------------------------------------
+
+x509:
+  # servlet: ReadyRoom terminates TLS itself and reads the certificate from the handshake (tls.enabled, with
+  # passthrough or a LoadBalancer). header: an ingress or route terminates TLS, verifies the client
+  # certificate and forwards it in a header, with the proxy secret; ReadyRoom takes it only from
+  # trustedProxies with that secret, and checks it chains to trustedCa. For ingress-nginx:
+  #   ingress.annotations:
+  #     nginx.ingress.kubernetes.io/auth-tls-secret: <namespace>/<Secret with ca.crt: your users' CAs>
+  #     nginx.ingress.kubernetes.io/auth-tls-verify-client: "optional"
+  #     nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream: "true"
+  #     nginx.ingress.kubernetes.io/configuration-snippet: |
+  #       proxy_set_header X-ENS-Proxy-Secret "<the proxy secret>";
+  #   x509.header: ssl-client-cert
+  # and restrict networkPolicy.ingressFrom to the ingress controller, so nothing else can reach ReadyRoom.
+  # The Windows client works the same through the ingress: it only speaks HTTPS with its certificate.
+  source: servlet
+  # Header mode: the header the certificate arrives in, URL-encoded PEM. Empty: X-SSL-Client-Cert.
+  header: ""
+  # Header mode: the addresses allowed to send it (the ingress controller's pods), ; separated.
+  trustedProxies: "10.0.0.0/8;172.16.0.0/12;192.168.0.0/16"
+  # Header mode, required: the secret (32 characters or more) the proxy sends in X-ENS-Proxy-Secret, mounted
+  # as a file (ENS_X509_PROXY_SECRET_FILE). Inline, or from your own Secret.
+  proxySecret:
+    value: ""
+    existingSecret: ""
+    existingSecretKey: proxy-secret
+  # Header mode, required unless tls.truststore is set: PEM certificates of the CAs that issue your users'
+  # certificates (ENS_X509_TRUSTED_CA_FILE). Inline (--set-file x509.trustedCa.value=ca.pem), or your Secret.
+  trustedCa:
+    value: ""
+    existingSecret: ""
+    existingSecretKey: ca.pem
+  # An LDAP filter finding the user from the certificate (ENS_X509_USER_FILTER), with {upn}, {edipi},
+  # {email}, {uuid}, {subject} and {cn}; e.g. (userPrincipalName={upn}) for Active Directory and CAC.
+  # Empty: the certificate's subject DN is the user's directory DN.
+  userFilter: ""
+  # Issuer DNs whose certificates may sign in, ; separated (ENS_X509_ALLOWED_ISSUERS). Empty: any trusted CA.
+  allowedIssuers: ""
+  revocation:
+    # off, ocsp, crl or ocsp-then-crl (ENS_X509_REVOCATION). STIG requires one of the last three.
+    mode: "off"
+    # An OCSP responder to ask instead of each certificate's own (ENS_X509_OCSP_RESPONDER_URL).
+    ocspResponderUrl: ""
+    # CRL files (DER or PEM) from your ConfigMap, mounted at /etc/in-n-out/crl (ENS_X509_CRL_DIR): the
+    # air-gapped way; CRLs are then never fetched. Updates to it reach the pod and are re-read.
+    crlConfigMap: ""
+    # closed: refuse a certificate whose status cannot be found out; open: allow it, with a warning.
+    fail: closed
+    # How long a good or revoked answer is kept per certificate.
+    cache: 10m
 
 # ---------------------------------------------------------------------------------------------------
 # Windows (Kerberos) sign-in for the Windows client's check-in, lock and unlock calls

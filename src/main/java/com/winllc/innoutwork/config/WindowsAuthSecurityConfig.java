@@ -3,6 +3,8 @@ package com.winllc.innoutwork.config;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import com.winllc.innoutwork.security.NegotiateAuthenticationFilter;
 import com.winllc.innoutwork.security.WindowsAccountUserDetailsService;
+import com.winllc.innoutwork.security.x509.X509SignIn;
+import org.springframework.beans.factory.ObjectProvider;
 import com.winllc.innoutwork.service.LdapService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -98,7 +100,8 @@ public class WindowsAuthSecurityConfig {
                                                   LdapService ldapService,
                                                   ApplicationProperties properties,
                                                   KerberosTicketValidator ticketValidator,
-                                                  ApplicationEventPublisher events) throws Exception {
+                                                  ApplicationEventPublisher events,
+                                                  ObjectProvider<X509SignIn> x509SignIn) throws Exception {
         KerberosServiceAuthenticationProvider kerberos = new KerberosServiceAuthenticationProvider();
         kerberos.setTicketValidator(ticketValidator);
         kerberos.setUserDetailsService(
@@ -116,7 +119,7 @@ public class WindowsAuthSecurityConfig {
                 new NegotiateAuthenticationFilter(windowsProviders, negotiate);
 
         http.securityMatchers(matchers -> matchers.requestMatchers(HttpMethod.POST, CHECK_IN_PATHS));
-        SecurityConfig.configureX509(http, appUserDetailsService);
+        SecurityConfig.configureX509(http, appUserDetailsService, x509SignIn);
         http
                 // Runs after the certificate filter and skips requests it already authenticated.
                 .addFilterAfter(windowsSignIn, X509AuthenticationFilter.class)

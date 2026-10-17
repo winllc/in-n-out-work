@@ -6,6 +6,7 @@ import com.winllc.innoutwork.security.AppUserDetailsService;
 import com.winllc.innoutwork.security.ConsentBanner;
 import com.winllc.innoutwork.security.ConsentFilter;
 import com.winllc.innoutwork.security.SessionControls;
+import com.winllc.innoutwork.security.x509.X509SignIn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -80,9 +81,10 @@ public class SecurityConfig {
                                                    ObjectProvider<SecurityAudit> securityAudit,
                                                    ObjectProvider<ConsentBanner> consentBanner,
                                                    ObjectProvider<SessionControls> sessionControls,
+                                                   ObjectProvider<X509SignIn> x509SignIn,
                                                    Environment environment) throws Exception {
         // Preferred: HTTPS with a client certificate (X.509).
-        configureX509(http, appUserDetailsService);
+        configureX509(http, appUserDetailsService, x509SignIn);
         // The notice-and-consent banner before any sign-in, and the session lifetimes after it.
         BrowserSessionConfig.apply(http, consentBanner, sessionControls);
         http
@@ -134,9 +136,21 @@ public class SecurityConfig {
     }
 
     /**
-     * Client certificate sign-in. Shared with WindowsAuthSecurityConfig, so certificates are accepted the same
-     * way on the check-in calls when Windows sign-in is turned on.
+     * Client certificate sign-in. Shared with WindowsAuthSecurityConfig and DemoSecurityConfig, so certificates are
+     * accepted the same way everywhere: the issuer allowlist, revocation, the mapping to a directory user and header
+     * mode all come from {@link X509SignIn} (ENS_X509_*). Without it (test slices) the subject DN is the user's DN.
      */
+    public static void configureX509(HttpSecurity http, AppUserDetailsService appUserDetailsService,
+                                     ObjectProvider<X509SignIn> x509SignIn) throws Exception {
+        X509SignIn signIn = x509SignIn.getIfAvailable();
+        if (signIn != null) {
+            signIn.configure(http);
+            return;
+        }
+        configureX509(http, appUserDetailsService);
+    }
+
+    /** Certificate sign-in by subject DN alone: the subject DN is the directory DN. */
     public static void configureX509(HttpSecurity http, AppUserDetailsService appUserDetailsService) throws Exception {
         http.x509(x509 -> x509
                 .subjectPrincipalRegex("(.*)") // full subject DN is used as the username

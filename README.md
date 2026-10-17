@@ -56,10 +56,13 @@ notes, favorites and calendar events.
 
 ### Authentication
 
-`SecurityConfig` prefers a client certificate and uses the **full subject DN as
-the username** (`subjectPrincipalRegex("(.*)")`), which `AppUserDetailsService`
-resolves against LDAP. Browsers without a certificate fall back to the branded
-form login at `/login`, validated by the LDAP authentication provider.
+`SecurityConfig` prefers a client certificate. By default the **full subject DN is
+the user's directory DN**, which `AppUserDetailsService` resolves against LDAP; a
+filter on the certificate's UPN, EDIPI, e-mail or UUID can be configured instead,
+along with an issuer allowlist, revocation checking and certificates forwarded by a
+TLS-terminating proxy (see [Client certificates](#client-certificates-cacpiv)).
+Browsers without a certificate fall back to the branded form login at `/login`,
+validated by the LDAP authentication provider.
 
 The Windows client's check-in, lock and unlock calls can also sign in with the
 user's Windows logon (Kerberos). This is off by default; see
@@ -205,11 +208,14 @@ lock and unlock sign in:
 
 > **The server needs TLS for this.** Certificate sign-in cannot work over plain
 > HTTP, and TLS is off in the defaults, so a server the Windows client talks to
-> must terminate TLS itself: `SSL_ENABLED=true` with `docker-compose.tls.yml` in
+> must terminate TLS itself (`SSL_ENABLED=true` with `docker-compose.tls.yml` in
 > the release package, or `tls.enabled` in the Helm chart, reached through TLS
-> passthrough or a LoadBalancer Service (an ingress that terminates TLS cannot
-> pass the client certificate on). Windows sign-in likewise: the ticket goes
-> over the same connection.
+> passthrough or a LoadBalancer Service), or sit behind a proxy that terminates
+> TLS, verifies the client certificate and forwards it in a header
+> (`ENS_X509_SOURCE=header`; the Helm chart's `x509.source: header` with an
+> edge-terminating ingress). The client needs no change for either: it speaks
+> HTTPS with its certificate to whatever answers `BaseUrl`. Windows sign-in
+> likewise: the ticket travels in an HTTP header.
 
 Install the script and register the scheduled tasks (login, lock, unlock,
 logout and disconnect) from an **elevated** prompt:
@@ -367,7 +373,11 @@ its own values. Two ways, both without editing the file:
 | Situation | How |
 |---|---|
 | The app on your host, services in compose | `--spring.profiles.active=local` (`application-local.yml`: localhost, published ports) |
-| A real deployment (the release package's `.env`, or the Helm chart's values) | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` |
+| A real deployment (the release package's `.env`, or the Helm chart's values) | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `SPRING_LDAP_URLS` (`ldaps://dc1.example.com:636`), `LDAP_USERNAME`, `LDAP_PASSWORD` |
+
+Use `ldaps://` for any real directory: the sign-in form checks users' passwords by binding to it, so over
+plain `ldap://` (what `LDAP_HOST`/`LDAP_PORT` build, for the development stacks) they cross the network in
+clear text, and ReadyRoom logs a WARN at startup saying so. ReadyRoom does not negotiate StartTLS.
 
 ### Port and TLS
 
@@ -497,6 +507,71 @@ The demo stacks (containers, or `bootRun` with the `demo` profile) are under
 | `demo.enabled` | The only thing that turns demo mode on. Default `false`. |
 | `demo.banner` | Banner text shown on every page. |
 | `demo.accounts` | The rows of the login page's tile: `role`, `username`, `password`, `description`. Empty by default, so a deployment that never asked for demo mode publishes nothing even if accounts are configured. |
+
+## Client certificates (CAC/PIV)
+
+Client-certificate sign-in is on whenever ReadyRoom terminates TLS and asks for certificates
+(`SSL_ENABLED=true`, `SERVER_SSL_CLIENTAUTH=want`), or whenever certificates come from a proxy
+(`ENS_X509_SOURCE=header`). Every chain that accepts certificates — the browser pages, the Windows client's
+check-ins with or without Windows sign-in, demo mode — applies the same rules (`security.x509`). Each refusal
+is audited as a failed `auth.login` (`details.method` `x509`) with its reason: `certificate revoked`,
+`revocation unknown`, `issuer not allowed`, `no single directory user matches`, `certificate has no upn`,
+`proxy secret missing or wrong`, `certificate not issued by a trusted CA`, ...
+
+**Who a certificate signs in as.** By default its subject DN must be the user's directory DN, as before.
+`ENS_X509_USER_FILTER` finds the user with an LDAP filter instead, searched under `user-base-dn` together
+with `user-ldap-filter`; exactly one entry must match, or nobody signs in. Values are LDAP-filter-escaped.
+
+| Placeholder | Value |
+|---|---|
+| `{upn}` | The subject alternative name otherName UserPrincipalName (OID 1.3.6.1.4.1.311.20.2.3) |
+| `{edipi}` | The DoD EDIPI: the digits before `@` of a UPN `1234567890@mil`, or else the trailing `.NNNNNNNNNN` of the CN (`LAST.FIRST.MI.1234567890`) |
+| `{email}` | The rfc822Name subject alternative name, or else the subject's emailAddress |
+| `{uuid}` | The UUID of a `urn:uuid:` URI subject alternative name (PIV FASC-N UUID), without the `urn:uuid:` |
+| `{subject}`, `{cn}` | The subject DN (RFC 2253), its most specific CN |
+
+For example `(userPrincipalName={upn})` for Active Directory and CAC, or
+`(|(employeeNumber={edipi})(mail={email}))`.
+
+**Revocation.** Off by default, for upgrades; with certificate sign-in on and revocation off, startup warns
+that STIG requires it. OCSP asks the certificate's responder (AIA), or `ENS_X509_OCSP_RESPONDER_URL`; CRLs
+come from the certificate's http(s) distribution points, or only from `ENS_X509_CRL_DIR` when that is set
+(air-gapped sites: drop the CA's CRLs there; changed files are re-read). Network fetches time out after 5 s
+(connect) and 10 s (response), follow no redirects, are capped at 1 MB (OCSP) and 20 MB (CRL), and never go
+to a link-local or cloud metadata address. The JDK's PKIX validator judges every answer, configured for that
+check only. The issuer's certificate must be known: in the chain the client sent, `ENS_X509_TRUSTED_CA_FILE`
+or the TLS trust store.
+
+**Certificates from a TLS-terminating proxy** (`ENS_X509_SOURCE=header`). The proxy (an ingress, a load
+balancer) verifies the client certificate and forwards it, URL-encoded PEM as nginx's
+`$ssl_client_escaped_cert` sends it, in `ENS_X509_HEADER`, together with the shared secret in
+`X-ENS-Proxy-Secret`. ReadyRoom takes the certificate only from an address in `ENS_X509_TRUSTED_PROXIES`
+with the right secret (compared in constant time), checks it chains to `ENS_X509_TRUSTED_CA_FILE` (or the
+TLS trust store) and is valid, and otherwise ignores it (audited). A certificate on the connection itself is
+not used in this mode. ReadyRoom refuses to start in header mode without a secret of 32 characters or more,
+or without a CA. Let nothing but the proxy reach ReadyRoom's port. For nginx:
+
+```nginx
+ssl_client_certificate /etc/nginx/user-cas.pem;
+ssl_verify_client optional;
+proxy_set_header X-SSL-Client-Cert $ssl_client_escaped_cert;
+proxy_set_header X-ENS-Proxy-Secret "<the secret>";
+```
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_X509_SOURCE` | `servlet` | `servlet` (ReadyRoom terminates TLS) or `header` (a trusted proxy forwards the certificate) |
+| `ENS_X509_HEADER` | `X-SSL-Client-Cert` | The header the certificate arrives in (ingress-nginx: `ssl-client-cert`) |
+| `ENS_X509_TRUSTED_PROXIES` | `127.0.0.1/32;::1/128` | Addresses (CIDRs) allowed to send it, `;` or `,` separated |
+| `ENS_X509_PROXY_SECRET_FILE` / `ENS_X509_PROXY_SECRET` | (none) | The secret the proxy sends in `X-ENS-Proxy-Secret`, 32 characters or more; the file wins. Required in header mode |
+| `ENS_X509_TRUSTED_CA_FILE` | (none) | PEM certificates of the CAs that issue user certificates: header mode's chain check (required there unless the TLS trust store is configured), and issuers for revocation |
+| `ENS_X509_USER_FILTER` | (none: subject DN = directory DN) | LDAP filter template finding the user |
+| `ENS_X509_ALLOWED_ISSUERS` | (none: any trusted CA) | Issuer DNs whose certificates may sign in, `;` separated (DNs contain commas); others are refused even when a trusted CA chains to them |
+| `ENS_X509_REVOCATION` | `off` | `off`, `ocsp`, `crl` or `ocsp-then-crl` |
+| `ENS_X509_OCSP_RESPONDER_URL` | (the certificate's AIA) | A responder to ask instead, e.g. a local OCSP relay |
+| `ENS_X509_CRL_DIR` | (none) | A directory of CRL files (DER or PEM); with it set, distribution points are never fetched |
+| `ENS_X509_REVOCATION_FAIL` | `closed` | `closed` refuses a certificate whose status cannot be determined; `open` allows it with a WARN |
+| `ENS_X509_REVOCATION_CACHE` | `10m` | How long a good or revoked answer is kept, per issuer and serial |
 
 ---
 

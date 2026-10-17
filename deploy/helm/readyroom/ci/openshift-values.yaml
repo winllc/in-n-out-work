@@ -37,6 +37,10 @@ route:
     termination: passthrough
 license:
   existingSecret: readyroom-license
+x509:
+  revocation:
+    mode: crl
+    crlConfigMap: readyroom-crls
 consentBanner:
   enabled: true
   existingConfigMap: readyroom-consent-banner

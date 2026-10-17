@@ -96,6 +96,23 @@ jobs:
           fi
           grep -q "tls.truststore.secretName is required" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
 
+      - name: Certificates from a header without the proxy secret or a CA do not render
+        run: |
+          # Header mode trusts the certificate a proxy forwards only with the shared secret, and checks it
+          # against the users' CAs; without either it would be anyone's to claim.
+          if helm template readyroom "$CHART" -f "$CHART/ci/default-values.yaml" \
+              --set x509.source=header > /dev/null 2> "$RUNNER_TEMP/err"; then
+            echo "rendered x509.source=header without a proxy secret"
+            exit 1
+          fi
+          grep -q "x509.source header needs x509.proxySecret" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
+          if helm template readyroom "$CHART" -f "$CHART/ci/default-values.yaml" --set x509.source=header \
+              --set x509.proxySecret.value=0123456789abcdef0123456789abcdef > /dev/null 2> "$RUNNER_TEMP/err"; then
+            echo "rendered x509.source=header without a CA"
+            exit 1
+          fi
+          grep -q "x509.source header needs x509.trustedCa" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
+
   image:
     # Builds the image on every push, checks it starts, and publishes what it just checked.
     # Nothing is published from a pull request: a fork's token cannot write packages, and

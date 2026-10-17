@@ -151,6 +151,24 @@ ens:
     admin-idle-timeout: ${ENS_SESSION_ADMIN_IDLE_TIMEOUT:}
     absolute-timeout: ${ENS_SESSION_ABSOLUTE_TIMEOUT:12h}
     max-per-user: ${ENS_SESSION_MAX_PER_USER:0}
+  # Client-certificate (CAC/PIV) sign-in (security.x509; README "Client certificates"). source: servlet when
+  # ReadyRoom terminates TLS, header behind a TLS-terminating proxy (which must send the certificate in
+  # header, come from trusted-proxies, and send proxy-secret in X-ENS-Proxy-Secret). user-filter blank keeps
+  # "the subject DN is the directory DN". revocation: off, ocsp, crl or ocsp-then-crl.
+  x509:
+    source: ${ENS_X509_SOURCE:servlet}
+    header: ${ENS_X509_HEADER:X-SSL-Client-Cert}
+    trusted-proxies: "${ENS_X509_TRUSTED_PROXIES:127.0.0.1/32;::1/128}"
+    proxy-secret: ${ENS_X509_PROXY_SECRET:}
+    proxy-secret-file: ${ENS_X509_PROXY_SECRET_FILE:}
+    trusted-ca-file: ${ENS_X509_TRUSTED_CA_FILE:}
+    user-filter: ${ENS_X509_USER_FILTER:}
+    allowed-issuers: ${ENS_X509_ALLOWED_ISSUERS:}
+    revocation: ${ENS_X509_REVOCATION:off}
+    ocsp-responder-url: ${ENS_X509_OCSP_RESPONDER_URL:}
+    crl-dir: ${ENS_X509_CRL_DIR:}
+    revocation-fail: ${ENS_X509_REVOCATION_FAIL:closed}
+    revocation-cache: ${ENS_X509_REVOCATION_CACHE:10m}
   audit:
     # Each event as one raw JSON line on stdout, logger ens.audit (Docker logs, Splunk UF).
     stdout: ${ENS_AUDIT_STDOUT:true}

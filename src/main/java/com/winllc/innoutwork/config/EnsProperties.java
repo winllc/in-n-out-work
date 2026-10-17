@@ -30,6 +30,9 @@ public class EnsProperties {
     @Valid
     private Session session = new Session();
 
+    @Valid
+    private X509 x509 = new X509();
+
     /** The Content-Security-Policy header (see web.SecurityHeadersFilter). */
     @Data
     public static class Csp {
@@ -120,5 +123,56 @@ public class EnsProperties {
                     && (adminIdleTimeout == null || adminIdleTimeout.compareTo(minute) >= 0)
                     && (absoluteTimeout == null || absoluteTimeout.compareTo(minute) >= 0);
         }
+    }
+
+    /**
+     * Client-certificate (X.509, CAC/PIV) sign-in: where the certificate comes from, how it maps to a directory
+     * user, which issuers and revocation checks apply (security.x509).
+     */
+    @Data
+    public static class X509 {
+
+        /** The header a TLS-terminating proxy must also send, carrying the shared secret. */
+        public static final String PROXY_SECRET_HEADER = "X-ENS-Proxy-Secret";
+
+        public enum Source { SERVLET, HEADER }
+
+        public enum Revocation { OFF, OCSP, CRL, OCSP_THEN_CRL }
+
+        public enum RevocationFail { CLOSED, OPEN }
+
+        /** ENS_X509_SOURCE: servlet (ReadyRoom terminates TLS) or header (a trusted proxy forwards the certificate). */
+        @NotNull
+        private Source source = Source.SERVLET;
+        /** ENS_X509_HEADER: the header the proxy forwards it in, URL-encoded PEM ($ssl_client_escaped_cert). */
+        private String header = "X-SSL-Client-Cert";
+        /** ENS_X509_TRUSTED_PROXIES: addresses (CIDRs) allowed to send it, separated by ; or ,. */
+        private String trustedProxies = "127.0.0.1/32;::1/128";
+        /** ENS_X509_PROXY_SECRET: what the proxy sends in X-ENS-Proxy-Secret; at least 32 characters. */
+        private String proxySecret = "";
+        /** ENS_X509_PROXY_SECRET_FILE: the same, from a file (wins). */
+        private String proxySecretFile = "";
+        /** ENS_X509_TRUSTED_CA_FILE: PEM CA certificates that issue user certificates (header mode chain check). */
+        private String trustedCaFile = "";
+        /**
+         * ENS_X509_USER_FILTER: an LDAP filter template finding the user, with {upn}, {edipi}, {email}, {uuid},
+         * {subject} and {cn}; blank: the certificate's subject DN is the user's DN (the original behaviour).
+         */
+        private String userFilter = "";
+        /** ENS_X509_ALLOWED_ISSUERS: issuer DNs whose certificates may sign in, separated by ; (DNs hold commas). */
+        private String allowedIssuers = "";
+        /** ENS_X509_REVOCATION: off, ocsp, crl or ocsp-then-crl. */
+        @NotNull
+        private Revocation revocation = Revocation.OFF;
+        /** ENS_X509_OCSP_RESPONDER_URL: ask this responder instead of the certificate's own (AIA). */
+        private String ocspResponderUrl = "";
+        /** ENS_X509_CRL_DIR: CRL files (DER or PEM), re-read when they change; CRLs are then never fetched. */
+        private String crlDir = "";
+        /** ENS_X509_REVOCATION_FAIL: closed refuses a certificate whose status is unknown; open allows it. */
+        @NotNull
+        private RevocationFail revocationFail = RevocationFail.CLOSED;
+        /** ENS_X509_REVOCATION_CACHE: how long a good or revoked answer is kept, per issuer and serial. */
+        @NotNull
+        private Duration revocationCache = Duration.ofMinutes(10);
     }
 }

@@ -180,6 +180,16 @@ spec:
             - name: audit
               mountPath: {{ dir $v.audit.file.path }}
             {{- end }}
+            {{- if or (eq $v.x509.source "header") $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret }}
+            - name: x509
+              mountPath: /etc/in-n-out/x509
+              readOnly: true
+            {{- end }}
+            {{- if $v.x509.revocation.crlConfigMap }}
+            - name: crl
+              mountPath: /etc/in-n-out/crl
+              readOnly: true
+            {{- end }}
             {{- if $v.consentBanner.existingConfigMap }}
             - name: consent
               mountPath: /etc/in-n-out/consent
@@ -252,6 +262,32 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- end }}
+        {{- if or (eq $v.x509.source "header") $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret }}
+        # The proxy secret and the CAs of user certificates, as files.
+        - name: x509
+          projected:
+            defaultMode: 0440
+            sources:
+              {{- if eq $v.x509.source "header" }}
+              - secret:
+                  name: {{ $v.x509.proxySecret.existingSecret | default (include "readyroom.fullname" .) }}
+                  items:
+                    - key: {{ ternary $v.x509.proxySecret.existingSecretKey "x509-proxy-secret" (not (empty $v.x509.proxySecret.existingSecret)) }}
+                      path: proxy-secret
+              {{- end }}
+              {{- if or $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret }}
+              - secret:
+                  name: {{ $v.x509.trustedCa.existingSecret | default (include "readyroom.fullname" .) }}
+                  items:
+                    - key: {{ ternary $v.x509.trustedCa.existingSecretKey "x509-ca.pem" (not (empty $v.x509.trustedCa.existingSecret)) }}
+                      path: ca.pem
+              {{- end }}
+        {{- end }}
+        {{- if $v.x509.revocation.crlConfigMap }}
+        - name: crl
+          configMap:
+            name: {{ $v.x509.revocation.crlConfigMap }}
         {{- end }}
         {{- if $v.consentBanner.existingConfigMap }}
         - name: consent
