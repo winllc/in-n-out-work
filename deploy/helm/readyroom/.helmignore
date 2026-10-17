@@ -1,0 +1,8 @@
+# Not packaged: the lint/CI example values.
+ci/
+.DS_Store
+*.swp
+*.bak
+*.tmp
+*.orig
+*~

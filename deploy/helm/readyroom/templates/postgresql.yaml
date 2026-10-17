@@ -1,0 +1,127 @@
+{{- if .Values.database.embedded.enabled -}}
+{{- $e := .Values.database.embedded -}}
+{{- $name := include "readyroom.postgresql.fullname" . -}}
+# EVALUATION ONLY, NO BACKUPS: a single PostgreSQL pod for trying ReadyRoom out. Use your own
+# PostgreSQL server for production.
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  clusterIP: None
+  ports:
+    - name: postgresql
+      port: {{ .Values.database.port }}
+      targetPort: postgresql
+  selector:
+    {{- include "readyroom.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  serviceName: {{ $name }}
+  revisionHistoryLimit: {{ .Values.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      {{- include "readyroom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        {{- include "readyroom.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: database
+    spec:
+      serviceAccountName: {{ include "readyroom.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "readyroom.podSecurityContext" (dict "ctx" (dict "runAsNonRoot" true "runAsUser" 999 "runAsGroup" 999 "fsGroup" 999 "seccompProfile" (dict "type" "RuntimeDefault")) "root" .) | nindent 8 }}
+      containers:
+        - name: postgresql
+          image: {{ include "readyroom.dbImage" . }}
+          imagePullPolicy: {{ $e.image.pullPolicy }}
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.database.username | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.database.name | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- include "readyroom.dbPasswordRef" . | nindent 18 }}
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          securityContext:
+            {{- include "readyroom.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml $e.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+            - name: run
+              mountPath: /var/run/postgresql
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+        {{- if $e.persistence.existingClaim }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ $e.persistence.existingClaim }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  {{- if not $e.persistence.existingClaim }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+        labels:
+          {{- include "readyroom.selectorLabels" . | nindent 10 }}
+          app.kubernetes.io/component: database
+      spec:
+        accessModes:
+          {{- toYaml $e.persistence.accessModes | nindent 10 }}
+        {{- with $e.persistence.storageClass }}
+        storageClassName: {{ if eq . "-" }}""{{ else }}{{ . }}{{ end }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ $e.persistence.size }}
+  {{- end }}
+{{- end }}

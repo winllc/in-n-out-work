@@ -1,0 +1,266 @@
+{{- $v := .Values -}}
+{{- if and $v.tls.enabled (not $v.tls.keystore.secretName) -}}
+{{- fail "tls.keystore.secretName is required when tls.enabled: a Secret holding your PKCS#12 keystore (the image's built-in one is a development certificate)" -}}
+{{- end -}}
+{{- if and $v.windowsAuth.enabled (not $v.windowsAuth.keytab.secretName) -}}
+{{- fail "windowsAuth.keytab.secretName is required when windowsAuth.enabled: a Secret holding the service principal's keytab" -}}
+{{- end -}}
+{{- $licenseSecret := include "readyroom.licenseSecretName" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "readyroom.fullname" . }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+spec:
+  # See replicaCount in values.yaml: more than one replica is not supported.
+  replicas: {{ $v.replicaCount }}
+  revisionHistoryLimit: {{ $v.revisionHistoryLimit }}
+  strategy:
+    {{- toYaml $v.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "readyroom.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- with $v.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "readyroom.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+        {{- with $v.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "readyroom.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with $v.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      securityContext:
+        {{- include "readyroom.podSecurityContext" (dict "ctx" $v.podSecurityContext "root" .) | nindent 8 }}
+      {{- if and $licenseSecret $v.persistence.license.enabled }}
+      initContainers:
+        # Copies the supplied license into the license volume only when none is installed there, as the
+        # release bundle's install.sh does: a license uploaded later on the license screen is never
+        # overwritten by an upgrade.
+        - name: license-init
+          image: {{ include "readyroom.image" (dict "image" $v.licenseInit.image "root" . "tag" "1.36.1") }}
+          imagePullPolicy: {{ $v.licenseInit.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              dir=/var/lib/ens/readyroom
+              target="$dir/license.lic"
+              src=/license-src/license.lic
+              mkdir -p "$dir"
+              if [ -s "$target" ]; then
+                echo "A license is already installed in the license volume; leaving it. Replace it on the license screen (/app/admin/license)."
+              elif ! grep -q -- '-----BEGIN ENS LICENSE-----' "$src"; then
+                echo "The supplied license is not an ENS license (ens-license/1); not copied. Download it again from the ENS portal."
+              else
+                umask 007
+                cp "$src" "$target.tmp"
+                mv "$target.tmp" "$target"
+                echo "Copied the supplied license into the license volume."
+              fi
+          securityContext:
+            {{- include "readyroom.containerSecurityContext" . | nindent 12 }}
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              memory: 64Mi
+          volumeMounts:
+            - name: license
+              mountPath: /var/lib/ens
+            - name: license-src
+              mountPath: /license-src
+              readOnly: true
+      {{- end }}
+      containers:
+        - name: readyroom
+          image: {{ include "readyroom.appImage" . }}
+          imagePullPolicy: {{ $v.image.pullPolicy }}
+          ports:
+            - name: {{ include "readyroom.portName" . }}
+              containerPort: 8181
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: {{ include "readyroom.fullname" . }}
+            {{- with $v.extraEnvFrom }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- include "readyroom.dbPasswordRef" . | nindent 18 }}
+            {{- with include "readyroom.secretEnv" (dict "root" . "env" "LDAP_PASSWORD" "value" $v.ldap.bindPassword "existingSecret" $v.ldap.existingSecret "existingSecretKey" $v.ldap.existingSecretKey "key" "ldap-password") }}{{ . | nindent 12 }}{{ end }}
+            {{- with include "readyroom.secretEnv" (dict "root" . "env" "SPRING_MAIL_PASSWORD" "value" $v.smtp.password "existingSecret" $v.smtp.existingSecret "existingSecretKey" $v.smtp.existingSecretKey "key" "smtp-password") }}{{ . | nindent 12 }}{{ end }}
+            {{- if $v.audit.splunk.url }}
+            {{- with include "readyroom.secretEnv" (dict "root" . "env" "ENS_AUDIT_SPLUNK_TOKEN" "value" $v.audit.splunk.token "existingSecret" $v.audit.splunk.existingSecret "existingSecretKey" $v.audit.splunk.existingSecretKey "key" "splunk-token") }}{{ . | nindent 12 }}{{ end }}
+            {{- end }}
+            {{- if $v.tls.enabled }}
+            {{- with include "readyroom.secretEnv" (dict "root" . "env" "SERVER_SSL_KEYSTOREPASSWORD" "value" $v.tls.keystore.password "existingSecret" $v.tls.keystore.existingSecret "existingSecretKey" $v.tls.keystore.existingSecretKey "key" "keystore-password") }}{{ . | nindent 12 }}{{ end }}
+            {{- if $v.tls.truststore.secretName }}
+            {{- with include "readyroom.secretEnv" (dict "root" . "env" "SERVER_SSL_TRUSTSTOREPASSWORD" "value" $v.tls.truststore.password "existingSecret" $v.tls.truststore.existingSecret "existingSecretKey" $v.tls.truststore.existingSecretKey "key" "truststore-password") }}{{ . | nindent 12 }}{{ end }}
+            {{- end }}
+            {{- end }}
+            {{- with $v.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: {{ include "readyroom.portName" . }}
+              scheme: {{ include "readyroom.scheme" . }}
+            {{- toYaml $v.probes.startup | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: {{ include "readyroom.portName" . }}
+              scheme: {{ include "readyroom.scheme" . }}
+            {{- toYaml $v.probes.liveness | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: {{ include "readyroom.portName" . }}
+              scheme: {{ include "readyroom.scheme" . }}
+            {{- toYaml $v.probes.readiness | nindent 12 }}
+          securityContext:
+            {{- include "readyroom.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml $v.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: var-tmp
+              mountPath: /var/tmp
+            - name: license
+              mountPath: /var/lib/ens
+            {{- if $v.tls.enabled }}
+            - name: keystore
+              mountPath: /etc/in-n-out/tls/keystore
+              readOnly: true
+            {{- if $v.tls.truststore.secretName }}
+            - name: truststore
+              mountPath: /etc/in-n-out/tls/truststore
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- if $v.windowsAuth.enabled }}
+            - name: keytab
+              mountPath: /etc/in-n-out/http.keytab
+              subPath: http.keytab
+              readOnly: true
+            {{- if or $v.windowsAuth.krb5Conf $v.windowsAuth.krb5ConfExistingConfigMap }}
+            - name: krb5
+              mountPath: /etc/krb5.conf
+              subPath: krb5.conf
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- if $v.audit.file.enabled }}
+            - name: audit
+              mountPath: {{ dir $v.audit.file.path }}
+            {{- end }}
+            {{- with $v.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: var-tmp
+          emptyDir: {}
+        - name: license
+          {{- if $v.persistence.license.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "readyroom.licenseClaimName" . }}
+          {{- else }}
+          # Not persistent: the license and installation id are lost with the pod. Testing only.
+          emptyDir: {}
+          {{- end }}
+        {{- if and $licenseSecret $v.persistence.license.enabled }}
+        - name: license-src
+          secret:
+            secretName: {{ $licenseSecret }}
+            items:
+              - key: license.lic
+                path: license.lic
+        {{- end }}
+        {{- if $v.tls.enabled }}
+        - name: keystore
+          secret:
+            secretName: {{ $v.tls.keystore.secretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ $v.tls.keystore.secretKey }}
+                path: {{ $v.tls.keystore.secretKey }}
+        {{- if $v.tls.truststore.secretName }}
+        - name: truststore
+          secret:
+            secretName: {{ $v.tls.truststore.secretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ $v.tls.truststore.secretKey }}
+                path: {{ $v.tls.truststore.secretKey }}
+        {{- end }}
+        {{- end }}
+        {{- if $v.windowsAuth.enabled }}
+        - name: keytab
+          secret:
+            secretName: {{ $v.windowsAuth.keytab.secretName }}
+            defaultMode: 0440
+            items:
+              - key: {{ $v.windowsAuth.keytab.secretKey }}
+                path: http.keytab
+        {{- if or $v.windowsAuth.krb5Conf $v.windowsAuth.krb5ConfExistingConfigMap }}
+        - name: krb5
+          configMap:
+            name: {{ default (printf "%s-krb5" (include "readyroom.fullname" .)) $v.windowsAuth.krb5ConfExistingConfigMap }}
+            items:
+              - key: {{ ternary $v.windowsAuth.krb5ConfExistingConfigMapKey "krb5.conf" (not (empty $v.windowsAuth.krb5ConfExistingConfigMap)) }}
+                path: krb5.conf
+        {{- end }}
+        {{- end }}
+        {{- if $v.audit.file.enabled }}
+        - name: audit
+          {{- if $v.audit.file.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ default (printf "%s-audit" (include "readyroom.fullname" .)) $v.audit.file.persistence.existingClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        {{- with $v.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with $v.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $v.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
