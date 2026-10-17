@@ -1055,13 +1055,14 @@ test/          Backing services alone, the app's Dockerfile and mounted config,
 
 ---
 
-## A note on committed credentials
+## A note on credentials
 
-This repository contains development credentials in source control: the local
-CA's signing keys and password, and keystores it issued, under
-`test/step-ca-data/` (see its README).
+No certificate authority keys or keystores are kept in this repository. For local TLS and
+certificate sign-in, `test/dev-ca/make-dev-certs.sh` creates a CA of your machine's own (see
+`test/dev-ca/README.md`). The `step-ca` service in `test/docker-compose.yml` initialises a fresh
+CA in its own volume. Supply production settings through environment variables or an external
+config, rather than editing `application.yml`.
 
-They exist so the test stack works out of the box. Treat them as compromised —
-generate fresh key material for anything real, and supply production settings
-through environment variables or an external config rather than editing
-`application.yml`. Nothing in the jar or image trusts this CA.
+The repository used to contain a shared development CA, "WINLLC DEV CA", including its private
+keys. They have been removed from its history, but they were public, so **treat that CA as
+compromised**: remove it from any trust store that has it.

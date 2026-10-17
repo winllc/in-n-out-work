@@ -70,17 +70,22 @@ services:
     depends_on:
       - postgres
 
+  # A certificate authority of this machine's own: created on first start in the step_ca_data
+  # volume, with a random password (printed in the container log and kept in the volume). Its keys
+  # never leave the volume; nothing here is committed. For a ready-made server keystore and client
+  # certificates without step-ca, see test/dev-ca/make-dev-certs.sh.
   ca:
     image: smallstep/step-ca:0.28.4
     container_name: step-ca
     restart: unless-stopped
     environment:
-      - STEP_CA_PASSWORD=capassword
-      - STEP_CA_CONFIG=/home/step/config/ca.json
+      - DOCKER_STEPCA_INIT_NAME=ReadyRoom Dev CA
+      - DOCKER_STEPCA_INIT_DNS_NAMES=localhost,step-ca
+      - DOCKER_STEPCA_INIT_PROVISIONER_NAME=admin
     ports:
-      - "8443:8443"
+      - "8443:9000"
     volumes:
-      - ./step-ca-data:/home/step
+      - step_ca_data:/home/step
     networks:
       - backend
 

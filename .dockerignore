@@ -9,6 +9,7 @@ node_modules
 
 # CA material and local runtime state used by the test stack
 test/step-ca-data
+test/dev-ca/out
 test/openldap_data
 test/postgres_data
 

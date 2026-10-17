@@ -51,3 +51,7 @@ bin/
 
 ### Release bundles (scripts/release-bundle.sh) ###
 /dist/
+
+### Development certificates (test/dev-ca/make-dev-certs.sh); never commit keys ###
+test/dev-ca/out/
+test/step-ca-data/

@@ -1,14 +1,14 @@
 server:
   port: 8444
   ssl:
-    # The development CA's certificates (test/step-ca-data, relative to the repository root).
-    # Its keys are public: never trust it outside a developer's machine.
+    # Certificates from this machine's own development CA, relative to the repository root: run
+    # test/dev-ca/make-dev-certs.sh first (see test/dev-ca/README.md). Nothing here is committed.
     enabled: true
-    key-store: file:test/step-ca-data/certs/winhal.p12
-    key-store-password: capassword
+    key-store: file:test/dev-ca/out/localhost.p12
+    key-store-password: changeit
     key-store-type: PKCS12
     client-auth: want
-    trust-store: file:test/step-ca-data/certs/truststore.p12
+    trust-store: file:test/dev-ca/out/truststore.p12
     trust-store-password: changeit
     trust-store-type: PKCS12
 
