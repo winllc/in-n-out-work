@@ -2,7 +2,7 @@
 # Used by docker-compose.yml and docker-compose.demo.yml. Build context is the repo root.
 
 # ---- build stage -------------------------------------------------------------
-FROM eclipse-temurin:21-jdk@sha256:23cc5734ff46e776f51ce66eb9ee08444fd47caabec0a95b7eb6e94be2d3696d AS build
+FROM eclipse-temurin:24-jdk@sha256:7493205ffe6caa8074fa8a06a276bb1c5ac41d3dd0fd43a0db66d7f776e80b3e AS build
 WORKDIR /workspace
 
 # Copy the Gradle wrapper + build scripts first for better layer caching.
