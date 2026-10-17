@@ -66,8 +66,9 @@ services:
       - "${READYROOM_BIND_ADDRESS:-0.0.0.0}:${READYROOM_PORT:-8181}:8181"
     healthcheck:
       # /actuator/health includes the mail server: see MANAGEMENT_HEALTH_MAIL_ENABLED in .env.
-      # Plain HTTP unless SSL_ENABLED=true, when the same port speaks TLS - hence the second try.
-      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:$${SERVER_PORT:-8181}/actuator/health || curl -kfsS -o /dev/null https://127.0.0.1:$${SERVER_PORT:-8181}/actuator/health"]
+      # Plain HTTP unless SSL_ENABLED=true, when the same port speaks TLS - hence the second try. With
+      # MANAGEMENT_SERVER_PORT set in .env, actuator is on that port instead, always plain HTTP.
+      test: ["CMD-SHELL", "curl -fsS -o /dev/null http://127.0.0.1:$${MANAGEMENT_SERVER_PORT:-$${SERVER_PORT:-8181}}/actuator/health || curl -kfsS -o /dev/null https://127.0.0.1:$${SERVER_PORT:-8181}/actuator/health"]
       interval: 30s
       timeout: 5s
       retries: 3
