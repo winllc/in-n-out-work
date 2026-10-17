@@ -49,8 +49,13 @@ schema at every start, so an upgrade migrates when its new pod starts):
 {{- if .Values.database.embedded.enabled }}
 
 3. Database
-   The embedded PostgreSQL (database.embedded.enabled) is for EVALUATION ONLY: one pod, NO BACKUPS.
+   The embedded PostgreSQL (database.embedded.enabled) is for EVALUATION ONLY: one pod{{ if not .Values.backup.enabled }}, NO BACKUPS{{ end }}.
    Use your own PostgreSQL server for production.
+{{- end }}
+
+{{- if .Values.backup.enabled }}
+Backups: CronJob {{ include "readyroom.fullname" . }}-backup ({{ .Values.backup.schedule }}) writes pg_dump files to PVC
+{{ default (printf "%s-backup" (include "readyroom.fullname" .)) .Values.backup.persistence.existingClaim }}; restoring is described in the chart README.
 {{- end }}
 
 Check it: helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

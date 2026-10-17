@@ -19,7 +19,7 @@ installation guide: https://winllc.github.io/ens-apps-documentation/readyroom/in
 
 | | What | Where it comes from |
 |---|---|---|
-| **Release package** | `readyroom-<version>.tar.gz`: Docker Compose deployment of ReadyRoom and PostgreSQL 16 with `install.sh`, `upgrade.sh`, `env.template`, the Windows client and the container images (works air-gapped) | The signed release download (see [Releases](#releases)); sources in [`deploy/bundle/`](deploy/bundle/) |
+| **Release package** | `readyroom-<version>.tar.gz`: Docker Compose deployment of ReadyRoom and PostgreSQL 16 with `install.sh`, `upgrade.sh`, `backup.sh`, `restore.sh`, `env.template`, the Windows client and the container images (works air-gapped) | The signed release download (see [Releases](#releases)); sources in [`deploy/bundle/`](deploy/bundle/) |
 | **Helm chart** | `readyroom` for Kubernetes and OpenShift, against your PostgreSQL (or an embedded one for evaluation) | `oci://ghcr.io/winllc/charts/readyroom`, or `readyroom-helm-<version>.tgz` in the release download; sources and every value in [`deploy/helm/readyroom/`](deploy/helm/readyroom/README.md) |
 
 ```bash
@@ -1184,7 +1184,7 @@ builds the customer release bundle with `scripts/release-bundle.sh`:
 
 | File | What |
 |---|---|
-| `readyroom-1.2.3.tar.gz` | Unpacks to `readyroom-1.2.3/`: `README.md`, `install.sh`, `upgrade.sh`, a production `docker-compose.yml` (ReadyRoom and PostgreSQL 16, the customer's LDAP and SMTP from `.env`) with optional TLS and Windows sign-in overrides, `env.template`, `license/`, the Windows client, the database migrations, and `images/readyroom-images-1.2.3.tar` (`docker save` of both images, for air-gapped sites). Sources in `deploy/bundle/`. |
+| `readyroom-1.2.3.tar.gz` | Unpacks to `readyroom-1.2.3/`: `README.md`, `install.sh`, `upgrade.sh`, `backup.sh`, `restore.sh`, a production `docker-compose.yml` (ReadyRoom and PostgreSQL 16, the customer's LDAP and SMTP from `.env`) with optional TLS and Windows sign-in overrides, `env.template`, `license/`, the Windows client, and `images/readyroom-images-1.2.3.tar` (`docker save` of both images, for air-gapped sites). Sources in `deploy/bundle/`. |
 | `readyroom-helm-1.2.3.tgz` | The Helm chart (`deploy/helm/readyroom`), packaged as version 1.2.3 and also pushed to `oci://ghcr.io/winllc/charts/readyroom` |
 | `sbom-in-n-out-work.spdx.json`, `sbom-postgres.spdx.json` | SPDX SBOMs of the two images |
 | `SHA256SUMS` | Checksums of the files above |

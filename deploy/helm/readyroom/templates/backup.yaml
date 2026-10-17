@@ -1,0 +1,121 @@
+{{- $b := .Values.backup -}}
+{{- if $b.enabled -}}
+{{- $claim := default (printf "%s-backup" (include "readyroom.fullname" .)) $b.persistence.existingClaim -}}
+{{- if not $b.persistence.existingClaim }}
+# Where the backups are kept. An ordinary release resource: "helm uninstall" deletes it, so copy the dumps
+# elsewhere too, or create the claim yourself and set backup.persistence.existingClaim.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $claim }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  accessModes:
+    {{- toYaml $b.persistence.accessModes | nindent 4 }}
+  {{- with $b.persistence.storageClass }}
+  storageClassName: {{ if eq . "-" }}""{{ else }}{{ . }}{{ end }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $b.persistence.size }}
+---
+{{- end }}
+# pg_dump of ReadyRoom's database on a schedule, in custom format (pg_restore), into the backup PVC; dumps
+# older than backup.retentionDays are deleted. The license volume is not included: back it up with your
+# volume snapshots (it holds the installation id).
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "readyroom.fullname" . }}-backup
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ $b.schedule | quote }}
+  {{- with $b.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: {{ $b.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "readyroom.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          serviceAccountName: {{ include "readyroom.serviceAccountName" . }}
+          automountServiceAccountToken: false
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- include "readyroom.podSecurityContext" (dict "ctx" (dict "runAsNonRoot" true "runAsUser" 999 "runAsGroup" 999 "fsGroup" 999 "seccompProfile" (dict "type" "RuntimeDefault")) "root" .) | nindent 12 }}
+          containers:
+            - name: pg-dump
+              # The database image: its pg_dump matches the server's major version.
+              image: {{ include "readyroom.dbImage" . }}
+              imagePullPolicy: {{ .Values.database.embedded.image.pullPolicy }}
+              command:
+                - sh
+                - -c
+                - |
+                  set -eu
+                  stamp=$(date -u +%Y%m%dT%H%M%SZ)
+                  file="/backup/readyroom-$stamp.dump"
+                  echo "Dumping $PGDATABASE on $PGHOST to $file"
+                  pg_dump --format=custom --no-owner --file="$file.partial"
+                  mv "$file.partial" "$file"
+                  ls -l "$file"
+                  echo "Removing dumps older than $RETENTION_DAYS days"
+                  find /backup -maxdepth 1 -name 'readyroom-*.dump' -mtime +"$RETENTION_DAYS" -print -delete
+                  find /backup -maxdepth 1 -name 'readyroom-*.dump.partial' -mmin +60 -delete
+              env:
+                - name: RETENTION_DAYS
+                  value: {{ $b.retentionDays | quote }}
+                - name: PGHOST
+                  value: {{ include "readyroom.dbHost" . | quote }}
+                - name: PGPORT
+                  value: {{ .Values.database.port | quote }}
+                - name: PGDATABASE
+                  value: {{ .Values.database.name | quote }}
+                - name: PGUSER
+                  value: {{ .Values.database.username | quote }}
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      {{- include "readyroom.dbPasswordRef" . | nindent 22 }}
+                - name: PGAPPNAME
+                  value: readyroom-backup
+              securityContext:
+                {{- include "readyroom.containerSecurityContext" . | nindent 16 }}
+              resources:
+                {{- toYaml $b.resources | nindent 16 }}
+              volumeMounts:
+                - name: backup
+                  mountPath: /backup
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backup
+              persistentVolumeClaim:
+                claimName: {{ $claim }}
+            - name: tmp
+              emptyDir: {}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}

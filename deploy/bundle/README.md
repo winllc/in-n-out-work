@@ -130,12 +130,8 @@ cd readyroom-<new-version>
 
 It copies `.env`, `license/`, `tls/` and `kerberos/`, loads the new images and recreates the
 containers. The database and license volumes are kept; if the license volume holds no license yet,
-`license/license.lic` is copied in, and otherwise `upgrade.sh` says where to upload one. Back the
-database up first:
-
-```bash
-docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > readyroom-backup.sql
-```
+`license/license.lic` is copied in, and otherwise `upgrade.sh` says where to upload one. Back up first,
+from the current release's directory: `./backup.sh` (see [Backups](#backups)).
 
 There are no database scripts to run by hand: ReadyRoom migrates its schema itself when it starts
 (Flyway), before it serves anything, and `docker compose ps` shows `app` as `healthy` once that is done.
@@ -149,6 +145,22 @@ Re-run `Install-InOutWorker.ps1` from the new `windows-client/` on every worksta
 arguments it keeps the existing configuration). Besides installing the new script and tasks, it
 corrects the permissions an older client left on `%ProgramData%\InOutWorker` (see the Windows client
 documentation).
+
+## Backups
+
+`./backup.sh` backs up, while ReadyRoom keeps running, the database (`pg_dump`, custom format) and the
+license volume (the license and this installation's id, which licenses are bound to) into `backups/`, or
+the directory given, and removes backups older than `BACKUP_RETENTION_DAYS` days (default 14; `0` keeps
+them all). Schedule it, and copy the files off this host:
+
+```bash
+17 2 * * * cd /opt/readyroom-__VERSION__ && ./backup.sh >> backups/backup.log 2>&1
+```
+
+`./restore.sh backups/readyroom-db-<stamp>.dump [backups/readyroom-license-<stamp>.tar.gz]` stops
+ReadyRoom, replaces the database (and the license volume) with the backup's, and starts it again; anything
+recorded since the backup is lost. Restore into the same or a newer release: on start, ReadyRoom migrates an
+older backup's schema forward.
 
 ## Everyday commands
 
@@ -164,6 +176,7 @@ docker compose down               # stop (the database and license volumes are k
 | | |
 |---|---|
 | `install.sh`, `upgrade.sh` | Install and upgrade |
+| `backup.sh`, `restore.sh` | Back up and restore the database and the license volume |
 | `docker-compose.yml` | The deployment: ReadyRoom and PostgreSQL 16 |
 | `docker-compose.tls.yml`, `docker-compose.windows-auth.yml` | Optional TLS keystore and Windows sign-in mounts |
 | `env.template` | Every setting, commented; copied to `.env` |

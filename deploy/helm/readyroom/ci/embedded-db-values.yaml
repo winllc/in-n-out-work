@@ -20,5 +20,8 @@ license:
     -----BEGIN ENS LICENSE-----
     example
     -----END ENS LICENSE-----
+backup:
+  enabled: true
+  timeZone: America/New_York
 networkPolicy:
   enabled: true

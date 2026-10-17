@@ -84,7 +84,7 @@ spec:
     {{- end }}
 {{- if $v.database.embedded.enabled }}
 ---
-# The embedded database: reachable from ReadyRoom only.
+# The embedded database: reachable from ReadyRoom and the backup job only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -104,8 +104,46 @@ spec:
             matchLabels:
               {{- include "readyroom.selectorLabels" . | nindent 14 }}
               app.kubernetes.io/component: app
+        - podSelector:
+            matchLabels:
+              {{- include "readyroom.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: backup
       ports:
         - port: 5432
           protocol: TCP
+{{- end }}
+{{- if and $v.backup.enabled (not $np.egress.allowAll) }}
+---
+# The backup job: DNS and the database only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "readyroom.fullname" . }}-backup
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "readyroom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: backup
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:
+        - port: {{ $v.database.port }}
+          protocol: TCP
+      {{- if not $v.database.embedded.enabled }}
+      to:
+        {{- range $np.egress.cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      {{- end }}
 {{- end }}
 {{- end }}

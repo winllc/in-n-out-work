@@ -155,7 +155,7 @@ database:
   existingSecretKey: password
 
   # A PostgreSQL inside the release: a single-replica StatefulSet with a PVC.
-  # EVALUATION ONLY, NO BACKUPS. Use your own PostgreSQL for production.
+  # EVALUATION ONLY (no backups unless backup.enabled). Use your own PostgreSQL for production.
   embedded:
     enabled: false
     image:
@@ -184,6 +184,29 @@ database:
     password: ""
     existingSecret: ""
     existingSecretKey: migration-password
+
+# Scheduled pg_dump of ReadyRoom's database into a PVC (custom format, for pg_restore), with the database
+# image. Works with your PostgreSQL or the embedded one; it is no substitute for your database's own backups
+# and point-in-time recovery. Restoring: see the chart README.
+backup:
+  enabled: false
+  # Cron schedule (and optionally an IANA time zone; empty: the cluster's).
+  schedule: "17 2 * * *"
+  timeZone: ""
+  # Dumps older than this many days are deleted after each backup.
+  retentionDays: 14
+  activeDeadlineSeconds: 3600
+  persistence:
+    size: 10Gi
+    storageClass: ""
+    accessModes: ["ReadWriteOnce"]
+    existingClaim: ""
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 512Mi
 
 # ---------------------------------------------------------------------------------------------------
 # Directory (your LDAP server or Active Directory)

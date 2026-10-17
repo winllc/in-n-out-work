@@ -247,12 +247,49 @@ The password is generated and kept in the release's Secret unless you set `datab
 helm upgrade readyroom oci://ghcr.io/winllc/charts/readyroom --version 1.2.4 -n readyroom -f my-values.yaml
 ```
 
-Back up the database first. The license PVC and the database are kept. ReadyRoom
+Back up the database first (see [Backups](#backups)). The license PVC and the database are kept. ReadyRoom
 migrates its schema itself when the new pod starts (Flyway, `src/main/resources/db/migration`), before it
 serves anything; the pod is ready once that is done. The first upgrade to a release with Flyway records the
 existing schema as version 0 and brings it up to date (it builds any index the old migration Job had not, so
 that one start takes longer on a large database). There is no migration Job any more; an old one from a
 previous release is removed by the upgrade.
+
+### Backups
+
+With `backup.enabled`, a CronJob runs `pg_dump` (custom format, with the database image so the version
+matches) on `backup.schedule` into a PVC (`backup.persistence`), and deletes dumps older than
+`backup.retentionDays`. It works with your PostgreSQL or the embedded one, but it is no substitute for your
+database's own backups and point-in-time recovery. The license PVC (the installation id) is not in it: snapshot
+that volume too. Copy the dumps off the cluster as well.
+
+```yaml
+backup:
+  enabled: true
+  schedule: "17 2 * * *"     # timeZone: America/New_York
+  retentionDays: 14
+  persistence:
+    size: 10Gi
+```
+
+To back up now: `kubectl -n readyroom create job --from=cronjob/readyroom-backup readyroom-backup-now`.
+
+To restore a dump (everything recorded since it is lost):
+
+```bash
+kubectl -n readyroom scale deploy/readyroom --replicas=0
+kubectl -n readyroom run readyroom-restore --rm -it --restart=Never --image=postgres:16 \
+  --overrides='{"spec":{"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"readyroom-backup"}}],
+    "containers":[{"name":"readyroom-restore","image":"postgres:16","stdin":true,"tty":true,
+    "command":["bash"],"volumeMounts":[{"name":"b","mountPath":"/backup"}]}]}}'
+# inside it:
+ls /backup
+PGPASSWORD=... pg_restore --clean --if-exists --no-owner --single-transaction --exit-on-error \
+  -h <database host> -U readyroom -d readyroom /backup/readyroom-<stamp>.dump
+exit
+kubectl -n readyroom scale deploy/readyroom --replicas=1
+```
+
+ReadyRoom migrates an older dump's schema forward when it starts; restore into the same or a newer release.
 
 ### Uninstall
 
@@ -301,7 +338,12 @@ delete it.
 | `database.host` | `""` | Required unless embedded |
 | `database.port`, `.name`, `.username` | `5432`, `readyroom`, `readyroom` | |
 | `database.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `password` | Required (generated for the embedded database) |
-| `database.embedded.enabled` | `false` | PostgreSQL StatefulSet: evaluation only, no backups |
+| `database.embedded.enabled` | `false` | PostgreSQL StatefulSet: evaluation only (no backups unless `backup.enabled`) |
+| `backup.enabled` | `false` | A CronJob running `pg_dump` into a PVC |
+| `backup.schedule`, `.timeZone` | `17 2 * * *`, `""` | When |
+| `backup.retentionDays` | `14` | Dumps older than this are deleted |
+| `backup.persistence.*` | 10Gi, RWO | `size`, `storageClass`, `accessModes`, `existingClaim` |
+| `backup.activeDeadlineSeconds`, `.resources` | `3600`, small | |
 | `database.embedded.image.*` | `postgres`, `16` | |
 | `database.embedded.persistence.*` | 8Gi, RWO | `size`, `storageClass`, `accessModes`, `existingClaim` |
 | `database.embedded.resources` | 100m / 256Mi, limit 1Gi | |
