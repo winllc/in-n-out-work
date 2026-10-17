@@ -55,6 +55,20 @@ public class ApplicationProperties {
     private Ldap ldap = new Ldap();
     private Demo demo = new Demo();
     private WindowsAuth windowsAuth = new WindowsAuth();
+    private Logoff logoff = new Logoff();
+
+    /**
+     * The Windows client's logoff call, {@code POST /api/check/out}. It runs after the user's profile has gone,
+     * so it usually cannot sign in; it is identified by the session id its logon was answered with instead.
+     * See CheckInOutRestService.
+     */
+    @Data
+    public static class Logoff {
+        /** How long after a logon its session id can still identify the logoff. Older ones are refused. */
+        private int sessionMaxAgeHours = 24;
+        /** Logoff calls without a sign-in accepted from one client address per minute; the rest get 429. 0 turns it off. */
+        private int anonymousRequestsPerMinute = 120;
+    }
 
     /**
      * Windows (Kerberos) sign-in for the Windows client's check-in, lock and unlock calls, alongside client

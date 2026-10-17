@@ -9,7 +9,6 @@ import org.springframework.security.core.userdetails.UserDetails;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.security.cert.X509Certificate;
-import java.util.Optional;
 
 import javax.security.auth.x500.X500Principal;
 
@@ -39,13 +38,17 @@ final class WindowsAuthTestSupport {
     }
 
     static String body(String windowsUserId) {
+        return body(windowsUserId, null);
+    }
+
+    static String body(String windowsUserId, String sessionId) {
         CheckInOut checkInOut = new CheckInOut();
         checkInOut.setWindowsUserId(windowsUserId);
+        checkInOut.setSessionId(sessionId);
         return JsonMapper.builder().build().writeValueAsString(checkInOut);
     }
 
     static void recordsAreSaved(CheckInOutService checkIns) {
-        when(checkIns.lookupBySessionId(any())).thenReturn(Optional.empty());
         when(checkIns.saveCheckInOutRecord(any())).thenAnswer(inv -> inv.getArgument(0));
     }
 

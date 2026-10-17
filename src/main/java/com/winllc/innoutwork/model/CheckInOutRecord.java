@@ -1,11 +1,13 @@
 package com.winllc.innoutwork.model;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.ToString;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -30,6 +32,12 @@ public class CheckInOutRecord implements Comparable<CheckInOutRecord> {
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = DATE_TIME_FORMAT)
     private ZonedDateTime timestamp;
 
+    /**
+     * Stands in for a sign-in on the Windows client's logoff, so it is a credential: it goes back to the
+     * client in the check-in response (CheckInOutResponse) and nowhere else, not in any JSON nor the log.
+     */
+    @JsonIgnore
+    @ToString.Exclude
     private String sessionId;
 
     @Column(nullable = false, columnDefinition = "text")

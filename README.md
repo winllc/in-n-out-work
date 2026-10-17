@@ -74,8 +74,14 @@ Everything requires authentication except:
 | `/login`, `/error` | Sign-in and error pages |
 
 That single exception drives the client design: since logoff cannot authenticate,
-login caches the server-issued `sessionId`, and logout echoes it back so the
-server can recover the DN via `lookupBySessionId()`.
+the answer to the login carries a server-issued `sessionId`, which the client caches
+and echoes back with the logout. The server takes it as the user's identity only on
+`/api/check/out`, only for a check-in's id that no logout has used yet, and only for
+`application.logoff.session-max-age-hours` (24) after the logon; a signed-in logout
+with someone else's id is refused. Logouts without a sign-in are limited per client
+address (`application.logoff.anonymous-requests-per-minute`, 120). Every other call
+records the signed-in user, whatever the body says, and no other response or page
+shows a `sessionId`.
 
 ### Roles
 

@@ -2,6 +2,7 @@ package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.DateTimeConstants;
+import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
@@ -12,9 +13,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -62,9 +65,15 @@ public class CheckInOutService {
      * Someone with no user record is someone ReadyRoom does not track yet. Their events are refused with
      * {@link TrackedPeopleLimitException} while the license's size leaves no room for another person
      * (sign-in then lets them in without creating a record; see AppUserDetailsService).
+     * <p>
+     * A record must name someone: one without a DN is refused rather than stored as nobody's.
      */
     @Transactional
     public CheckInOutRecord saveCheckInOutRecord(CheckInOutRecord record) {
+        if (record.getDn() == null || record.getDn().isBlank()) {
+            throw new IllegalArgumentException("A " + record.getAction() + " event must name the user it belongs to");
+        }
+
         boolean readsBeforeWriting = record.getAction() == CheckInOutEnum.UNLOCK || record.getAction() == CheckInOutEnum.CHECK_IN;
         Optional<UserRecord> lockedUser = readsBeforeWriting && record.getDn() != null
                 ? userRecordRepository.findByDnForUpdate(record.getDn())
@@ -195,8 +204,68 @@ public class CheckInOutService {
         return LocalTime.ofSecondOfDay(Math.floorMod(Math.floorDiv(sum, seconds.length), SECONDS_PER_DAY));
     }
 
-    public Optional<CheckInOutRecord> lookupBySessionId(String sessionId) {
-        return checkinInOutRecordRepository.findFirstBySessionId(sessionId);
+    /**
+     * Records a logoff that could not sign in, as the user whose logon was answered with {@code sessionId}.
+     * <p>
+     * The Windows client's logoff runs after the user's profile has gone, so it has no certificate to sign in
+     * with; it sends back the session id the logon's response carried. That id identifies the logoff only while
+     * it is a check-in's, no logoff has used it yet, and the check-in is younger than {@code maxAge}. The check-in
+     * stays locked until this transaction ends, so of two logoffs sent with the same id only the first counts.
+     *
+     * @param checkOut the CHECK_OUT to store, without a DN: it is given the check-in's
+     * @return the stored CHECK_OUT, or empty when the session id identifies nobody, in which case nothing is stored
+     */
+    @Transactional
+    public Optional<CheckInOutRecord> saveSessionCheckOut(CheckInOutRecord checkOut, String sessionId, Duration maxAge) {
+        Optional<CheckInOutRecord> session = usableSession(sessionId, maxAge);
+        if (session.isEmpty()) {
+            return Optional.empty();
+        }
+        checkOut.setDn(LdapDn.normalize(session.get().getDn()));
+        checkOut.setSessionId(sessionId);
+        return Optional.of(saveCheckInOutRecord(checkOut));
+    }
+
+    /**
+     * Records a logoff from a signed-in user. It needs no session id, but one that still identifies a logoff is
+     * used up, so that it cannot identify another; it must then be the user's own.
+     *
+     * @param checkOut the CHECK_OUT to store, with the signed-in user's DN
+     * @throws AccessDeniedException if {@code sessionId} is still usable and belongs to somebody else
+     */
+    @Transactional
+    public CheckInOutRecord saveSignedInCheckOut(CheckInOutRecord checkOut, String sessionId, Duration maxAge) {
+        Optional<CheckInOutRecord> session = usableSession(sessionId, maxAge);
+        String owner = session.map(r -> LdapDn.normalize(r.getDn())).orElse(null);
+        if (owner != null && !owner.equalsIgnoreCase(LdapDn.normalize(checkOut.getDn()))) {
+            throw new AccessDeniedException("%s sent the logoff session of %s".formatted(checkOut.getDn(), owner));
+        }
+        checkOut.setSessionId(session.isPresent() ? sessionId : null);
+        return saveCheckInOutRecord(checkOut);
+    }
+
+    /** The check-in {@code sessionId} names, locked, while it can still identify a logoff; see saveSessionCheckOut. */
+    private Optional<CheckInOutRecord> usableSession(String sessionId, Duration maxAge) {
+        if (sessionId == null || sessionId.isBlank()) {
+            return Optional.empty();
+        }
+        Optional<CheckInOutRecord> checkIn = checkinInOutRecordRepository
+                .findBySessionIdAndAction(sessionId, CheckInOutEnum.CHECK_IN).stream()
+                .filter(r -> r.getDn() != null && r.getTimestamp() != null)
+                .findFirst();
+        if (checkIn.isEmpty()) {
+            log.debug("Logoff session id matches no check-in");
+            return Optional.empty();
+        }
+        if (checkIn.get().getTimestamp().isBefore(ZonedDateTime.now().minus(maxAge))) {
+            log.debug("Logoff session of {} is from {}, older than {}", checkIn.get().getDn(), checkIn.get().getTimestamp(), maxAge);
+            return Optional.empty();
+        }
+        if (checkinInOutRecordRepository.existsBySessionIdAndAction(sessionId, CheckInOutEnum.CHECK_OUT)) {
+            log.debug("Logoff session of {} has already been used", checkIn.get().getDn());
+            return Optional.empty();
+        }
+        return checkIn;
     }
 
     public Page<CheckInOutRecord> findRecords(Pageable pageable, HttpSession session) {
