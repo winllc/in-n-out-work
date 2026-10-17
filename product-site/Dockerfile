@@ -3,7 +3,7 @@
 #
 #     docker build -t in-n-out-work/product-site product-site
 #     docker run -d -p 80:8080 in-n-out-work/product-site
-FROM nginxinc/nginx-unprivileged:1.28-alpine@sha256:7377697a821c131a924a7105fafbe7414db4e9fcc77a6f08f776f33f141ec3f8
+FROM nginxinc/nginx-unprivileged:1.31-alpine@sha256:378d0c32f6562f7fd9629170797f57d2b953aa09be983b3daaf4809bb039ca00
 
 # Where "Open the app" sends people. The app runs on the same host on port 8181, so the default
 # keeps whatever hostname the visitor used ($host is an nginx variable, filled in per request).
