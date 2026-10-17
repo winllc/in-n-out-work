@@ -70,18 +70,46 @@ Everything requires authentication except:
 | Path | Why |
 |---|---|
 | `/api/check/out` | Runs at logoff, after the user profile — and their certificate store — is gone |
-| `/actuator/**` | Health and metrics |
+| `/actuator/health` | Health checks and probes; the only actuator endpoint exposed (others need `ADMIN`) |
 | `/login`, `/error` | Sign-in and error pages |
 
 That single exception drives the client design: since logoff cannot authenticate,
-login caches the server-issued `sessionId`, and logout echoes it back so the
-server can recover the DN via `lookupBySessionId()`.
+the answer to the login carries a server-issued `sessionId`, which the client caches
+and echoes back with the logout. The server takes it as the user's identity only on
+`/api/check/out`, only for a check-in's id that no logout has used yet, and only for
+`application.logoff.session-max-age-hours` (168, a week) after the logon; a signed-in
+logout with someone else's id is refused. A logout with a usable id is always accepted;
+only refused ones count towards a per-address limit
+(`application.logoff.refused-per-minute`, 30), past which they get 429 and are no
+longer audited one by one. Every other call records the signed-in user, whatever the
+body says, and no other response or page shows a `sessionId`.
+
+Every other post, put and delete needs a CSRF token: forms built with `th:action`
+carry it, and `layout.html` adds it to the pages' `fetch()` calls from its `_csrf`
+meta tags. The Windows client's `/api/check/**` is exempt. The session cookie is
+`SameSite=Lax` and `HttpOnly`, and `Secure` with `SSL_ENABLED=true` or
+`SESSION_COOKIE_SECURE=true` (for a proxy that terminates TLS).
 
 ### Roles
 
-`USER`, `MANAGER`, `ADMIN` (`UserRoleEnum`). Access to a group's users is granted
-either by role or per-group through `PermissionRecord`, evaluated by
-`PermissionEvaluator.groupCheck()` in `@PreAuthorize` expressions.
+`USER`, `MANAGER`, `ADMIN` (`UserRoleEnum`). Roles open pages (metrics, settings and
+group reports need `MANAGER` or `ADMIN`); whose data a page shows is decided by
+`AccessPolicy`, in `@PreAuthorize` expressions and the controllers:
+
+- A person's details (arrival, departure and status-change times, notes, average
+  login time, check-in history, calendar, alternate managers): themselves; `ADMIN`;
+  and the people the viewer is responsible for, whatever their role: members of the
+  groups they manage (the group's directory `owner` or an alternate manager set in
+  ReadyRoom), their direct reports in the directory, and people who named them as an
+  alternate manager. Indirect reports are not included.
+- Everyone else, as a coworker: found by search, a group or the org chart, with their
+  directory details and whether they are in, never their times, notes or history. A
+  status a manager recorded (absent, unscheduled leave) shows as `OUT_OF_OFFICE`.
+- Groups: opened by their members, their managers and `ADMIN`; managed (managers,
+  report, access) only by `ADMIN` and their current managers.
+- Absence notifications: the manager they were sent to, and `ADMIN`.
+
+A principal with no directory user (a machine certificate, say) does not sign in.
 
 ---
 
@@ -546,7 +574,8 @@ append-only in the database itself (see [Database migrations](#database-migratio
 The Windows client's logon, lock, unlock and logoff events are attendance data, kept in the check-in
 records as before, and are not audit events. What is audited about the client API is its failed
 sign-ins: no certificate, a refused Windows ticket, an unknown logoff session id (collapsed per source
-like denials). The two jobs that run every few minutes (auto check-out and absence alerts) record
+like denials; past `application.logoff.refused-per-minute` a source's refusals are recorded once, as
+`too many unknown sessions`). The two jobs that run every few minutes (auto check-out and absence alerts) record
 `job.completed` only for runs that did something; every failure is recorded. Secrets never enter the
 trail: passwords, tokens, keys, license text and session ids are recorded as `"[redacted]"` (the session
 appears only as the first 16 hex characters of its SHA-256).

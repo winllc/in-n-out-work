@@ -7,5 +7,7 @@ import lombok.ToString;
 @ToString
 public class CheckInOut {
     private String windowsUserId;
+    /** The session id the check-in response returned; a credential, so kept out of the log. */
+    @ToString.Exclude
     private String sessionId;
 }

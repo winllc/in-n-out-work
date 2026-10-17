@@ -4,7 +4,35 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <!-- The CSRF token, for the script below. Forms built with th:action carry it already. -->
+    <meta name="_csrf" th:if="${_csrf != null}" th:content="${_csrf.token}"/>
+    <meta name="_csrf_header" th:if="${_csrf != null}" th:content="${_csrf.headerName}"/>
     <title layout:title-pattern="ReadyRoom">ReadyRoom</title>
+
+    <script>
+        // Adds the CSRF token to every same-origin fetch() that can change something, so the pages that write
+        // through fetch() rather than a form need nothing of their own. Reads, and other origins, go out as they
+        // were: the token is never sent anywhere else.
+        (function () {
+            "use strict";
+            var token = document.querySelector('meta[name="_csrf"]');
+            var header = document.querySelector('meta[name="_csrf_header"]');
+            if (!token || !header || !window.fetch) {
+                return;
+            }
+            var realFetch = window.fetch.bind(window);
+            window.fetch = function (input, init) {
+                var method = ((init && init.method) || (input && input.method) || "GET").toUpperCase();
+                var url = new URL((input && input.url) || String(input), window.location.href);
+                if (method === "GET" || method === "HEAD" || url.origin !== window.location.origin) {
+                    return realFetch(input, init);
+                }
+                var headers = new Headers((init && init.headers) || (input && input.headers) || undefined);
+                headers.set(header.content, token.content);
+                return realFetch(input, Object.assign({}, init, {headers: headers}));
+            };
+        })();
+    </script>
 
     <link rel="icon" type="image/x-icon" th:href="@{/favicon.ico}">
 

@@ -63,7 +63,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,env
+        # Health only, which anyone may read (status only, no details): the container healthcheck and the
+        # Kubernetes probes (/actuator/health/liveness, /readiness) use it. env and metrics expose the
+        # configuration and the runtime; anything added here needs an ADMIN sign-in (SecurityConfig).
+        include: health
 application:
   user-base-dn: dc=winllc,dc=com
   user-ldap-filter: (objectclass=inetOrgPerson)

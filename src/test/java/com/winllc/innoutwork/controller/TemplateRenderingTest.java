@@ -549,6 +549,7 @@ class TemplateRenderingTest {
             mav.addObject("group", "groupA");
             mav.addObject("groupDn", "cn=groupA,ou=groups");
             mav.addObject("isFavorite", true);
+            mav.addObject("canManageGroup", true);
             return mav;
         }
 

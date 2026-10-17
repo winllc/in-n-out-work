@@ -732,6 +732,36 @@ public class LdapService {
         return groups;
     }
 
+    /**
+     * The groups whose {@code owner} is {@code userDn}, under each configured groups base: the groups the directory
+     * says they manage. Not cached; asked once per request that needs it.
+     */
+    public List<LdapGroup> findGroupsOwnedBy(String userDn) {
+        List<LdapGroup> groups = new ArrayList<>();
+        if (userDn == null) {
+            return groups;
+        }
+
+        // Normalised as the stored DNs are: owner is a DN, which directories compare as one, but not all do.
+        AndFilter filter = new AndFilter();
+        filter.and(new EqualsFilter("objectClass", "groupOfUniqueNames"));
+        filter.and(new EqualsFilter("owner", LdapDn.normalize(userDn)));
+
+        for (TopLevelGroupProperties topProp : properties.getGroups()) {
+            try {
+                groups.addAll(pagedSearch(topProp.getGroupsBaseDn(), filter.encode(), subtree(GROUP_ATTRIBUTES),
+                        new LdapGroupContextMapper()));
+            } catch (NameNotFoundException e) {
+                log.warn("Groups base DN not found, skipping: {}", topProp.getGroupsBaseDn());
+            } catch (Exception e) {
+                log.error("Failed to search groups owned by {} under {}", userDn, topProp.getGroupsBaseDn(), e);
+            }
+        }
+
+        log.debug("User {} owns {} group(s)", userDn, groups.size());
+        return List.copyOf(groups);
+    }
+
     private List<LdapGroup> searchGroupsForUser(String userDn) {
         // Build LDAP filter: (&(objectClass=groupOfUniqueNames)(uniqueMember=<userDn>))
 

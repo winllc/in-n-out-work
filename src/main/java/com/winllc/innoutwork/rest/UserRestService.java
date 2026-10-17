@@ -13,6 +13,7 @@ import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
@@ -41,6 +42,7 @@ public class UserRestService {
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
     private final UserService userService;
+    private final AccessPolicy accessPolicy;
 
     private AuditLog audit = AuditLog.NOOP;
 
@@ -51,23 +53,24 @@ public class UserRestService {
 
     public UserRestService(LdapService ldapService,
                            UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
-                           ApplicationProperties properties, UserService userService) {
+                           ApplicationProperties properties, UserService userService, AccessPolicy accessPolicy) {
         this.ldapService = ldapService;
         this.userRecordRepository = userRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
         this.userService = userService;
+        this.accessPolicy = accessPolicy;
     }
 
+    /** A group's members: open to its members, its managers and ADMIN; details only of those the viewer may see. */
     @GetMapping("/group/{groupName}")
-    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) or @permissionEvaluator.groupCheck(#groupName, #authentication)")
+    @PreAuthorize("@accessPolicy.canViewGroup(authentication, #groupName)")
     public Map<String, Object> getUsers(HttpSession session, Authentication authentication,
                                         @PathVariable String groupName) {
 
         List<String> dns = ldapService.getGroupMembers(LdapDn.builder().dn(groupName).build());
 
-        List<UserStatus> users = userService.getUserStatuses(dns, session);
+        List<UserStatus> users = accessPolicy.scope(authentication).show(userService.getUserStatuses(dns, session));
 
         Map<String, Object> response = new HashMap<>();
         response.put("data", users);
@@ -94,12 +97,17 @@ public class UserRestService {
         return response;
     }
 
+    /**
+     * Find a coworker: anyone may find anyone and see whether they are in. Times, notes and the rest only for the
+     * people the viewer may see the details of (AccessPolicy).
+     */
     @GetMapping("/search")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER," +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
             "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
     public List<UserStatus> searchUsers(
             HttpSession session,
+            Authentication authentication,
             @RequestParam(defaultValue = "") String search,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
@@ -124,15 +132,13 @@ public class UserRestService {
         List<UserStatus> users = userService.getUserStatuses(pageResult.stream().map(UserStatus::getDn).toList(), session);
 
         //PagedModel<UserStatus> response = new PagedModel<>(pageResult);
-        return users;
+        return accessPolicy.scope(authentication).show(users);
     }
 
+    /** A person's check-in history: theirs, and the people they are responsible for (AccessPolicy). */
     @RequiresFeature(LicensedFeature.ATTENDANCE)
     @GetMapping("/checkinoutrecords/{dn}")
-    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)" +
-            "or @permissionEvaluator.forCurrentUser(#dn, #authentication) " +
-            "or @permissionEvaluator.userManagerCheck(#dn, #authentication)")
+    @PreAuthorize("@accessPolicy.canViewDetails(authentication, #dn)")
     public PagedModel<CheckInOutRecord> getUserCheckInOutRecords(
             Authentication authentication,
             @PathVariable String dn,
@@ -154,7 +160,9 @@ public class UserRestService {
 
 
 
+    /** Who receives a person's absence alerts besides their manager: as their details (AccessPolicy). */
     @GetMapping("/managers/{dn}")
+    @PreAuthorize("@accessPolicy.canViewDetails(authentication, #dn)")
     public List<UserRecord> getManagersForUser(@PathVariable String dn){
 
         Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(dn);

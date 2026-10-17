@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.config;
 
 import com.winllc.innoutwork.audit.SecurityAudit;
+import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -8,6 +9,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.ldap.core.DirContextAdapter;
 import org.springframework.ldap.core.DirContextOperations;
 import org.springframework.ldap.core.support.BaseLdapPathContextSource;
@@ -23,6 +25,9 @@ import org.springframework.security.ldap.userdetails.UserDetailsContextMapper;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.access.AccessDeniedHandlerImpl;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.util.Collection;
@@ -33,6 +38,17 @@ import java.util.Collection;
 public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
+    /**
+     * The Windows client's API, exempt from CSRF tokens: the client is a script with no browser session to take a
+     * token from. It signs in with a certificate or a Windows ticket, or not at all (the logoff, identified by its
+     * session id), and accepts only JSON, which another site's page cannot post without a CORS preflight that is
+     * never granted. The audit pull API has a chain of its own (bearer tokens, no session, no CSRF).
+     */
+    public static final String CLIENT_API = "/api/check/**";
+
+    /** Actuator's health endpoint and its groups (/liveness, /readiness): the only actuator paths open to anyone. */
+    public static final String[] ACTUATOR_HEALTH = {"/actuator/health", "/actuator/health/**"};
 
 
     /**
@@ -52,7 +68,10 @@ public class SecurityConfig {
                 // validated against LDAP (see ldapAuthenticationProvider below).
                 .authenticationProvider(ldapAuthenticationProvider)
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/actuator/**").permitAll()
+                        // Health, for the container healthcheck and the Kubernetes probes, is all application.yml
+                        // exposes. Anything an operator exposes besides (metrics, env) needs ADMIN.
+                        .requestMatchers(ACTUATOR_HEALTH).permitAll()
+                        .requestMatchers("/actuator/**").hasAuthority(UserRoleEnum.ADMIN.name())
                         .requestMatchers("/api/check/out").permitAll()
                         .requestMatchers("/login", "/error").permitAll()
                         .anyRequest().authenticated()
@@ -66,10 +85,21 @@ public class SecurityConfig {
                 .logout(logout -> logout
                         .logoutSuccessUrl("/login?logout")
                         .permitAll())
-                // The default 403, recorded in the audit trail as access.denied.
-                .exceptionHandling(e -> e.accessDeniedHandler(
-                        auditing(securityAudit, "permission_denied", new AccessDeniedHandlerImpl())))
-                .csrf(csrf -> csrf.disable());
+                // The default 403, recorded in the audit trail as access.denied. An API call that is not signed in
+                // gets a 401 rather than the login page: a script (the Windows client, a page's fetch) following
+                // the redirect would take the page's 200 for success, as the client did when a certificate's
+                // subject was not in the directory.
+                // Everything else still goes to the login page: registered second, for any request, so that it is
+                // what a request matching neither gets (the first registration would otherwise be that default).
+                .exceptionHandling(e -> e
+                        .accessDeniedHandler(auditing(securityAudit, "permission_denied", new AccessDeniedHandlerImpl()))
+                        .defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                                PathPatternRequestMatcher.withDefaults().matcher("/api/**"))
+                        .defaultAuthenticationEntryPointFor(new LoginUrlAuthenticationEntryPoint("/login"),
+                                AnyRequestMatcher.INSTANCE))
+                // Every post from a browser carries the token: forms built with th:action get it from Thymeleaf,
+                // scripts from the meta tags in layout.html. A missing or wrong one is a 403 (access.denied).
+                .csrf(csrf -> csrf.ignoringRequestMatchers(CLIENT_API));
 
         return http.build();
     }

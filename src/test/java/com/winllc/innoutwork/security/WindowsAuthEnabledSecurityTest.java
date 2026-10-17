@@ -34,12 +34,12 @@ import static com.winllc.innoutwork.security.WindowsAuthTestSupport.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
@@ -205,20 +205,27 @@ class WindowsAuthEnabledSecurityTest {
 
     // --- everything else: unchanged -----------------------------------------------------------------------
 
-    /** Only the three check-in calls take tickets; other URLs keep the sign-in page and ignore the header. */
+    /** Only the three check-in calls take tickets; other URLs ignore the header. */
     @Test
-    void otherUrlsIgnoreTicketsAndStillRedirectToSignIn() throws Exception {
+    void otherUrlsIgnoreTicketsAndAreUnauthorized() throws Exception {
+        // API calls are answered 401 rather than sent to the sign-in page; the ticket still signs nobody in.
         mockMvc.perform(get("/api/check/records").header("Authorization", TICKET))
-                .andExpect(redirectedUrl("/login"));
+                .andExpect(status().isUnauthorized());
         mockMvc.perform(get("/api/check/in").header("Authorization", TICKET))
-                .andExpect(redirectedUrl("/login"));
+                .andExpect(status().isUnauthorized());
 
         verifyNoInteractions(ticketValidator);
     }
 
+    /** The logoff cannot sign in; it is identified by its logon's session id instead. */
     @Test
     void checkOutStaysOpenWithoutSignIn() throws Exception {
-        mockMvc.perform(post("/api/check/out").contentType(MediaType.APPLICATION_JSON).content(body("bob")))
+        when(checkIns.saveSessionCheckOut(any(), eq("logon-session"), any()))
+                .thenAnswer(inv -> Optional.of(inv.<CheckInOutRecord>getArgument(0)));
+
+        mockMvc.perform(post("/api/check/out").contentType(MediaType.APPLICATION_JSON).content(body("bob", "logon-session")))
                 .andExpect(status().isOk());
+
+        verifyNoInteractions(ticketValidator);
     }
 }

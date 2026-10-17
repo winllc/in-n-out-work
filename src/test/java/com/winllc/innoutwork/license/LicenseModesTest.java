@@ -188,7 +188,6 @@ class LicenseModesTest {
 
     @Test
     void fullLicenseOpensEverything() throws Exception {
-        when(checkIns.lookupBySessionId(any())).thenReturn(java.util.Optional.empty());
         when(checkIns.saveCheckInOutRecord(any())).thenAnswer(inv -> inv.<CheckInOutRecord>getArgument(0));
 
         mockMvc.perform(get("/app/metrics").with(ADMIN)).andExpect(status().isOk());
@@ -250,7 +249,6 @@ class LicenseModesTest {
 
     @Test
     void overTheLicensedSizeANewPersonsCheckInIsRefusedWithJson() throws Exception {
-        when(checkIns.lookupBySessionId(any())).thenReturn(java.util.Optional.empty());
         when(checkIns.saveCheckInOutRecord(any())).thenThrow(new TrackedPeopleLimitException("CN=bob,OU=Users,DC=winllc,DC=com"));
 
         mockMvc.perform(post("/api/check/in").with(USER).contentType(MediaType.APPLICATION_JSON).content(CHECK_IN))

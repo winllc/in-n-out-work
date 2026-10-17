@@ -33,7 +33,7 @@
         </div>
 
         <div class="col-md-6" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')" id="group-report"
-             th:if="${licenseInfo == null or licenseInfo.isEnabled('metrics')}">
+             th:if="${canManageGroup == true and (licenseInfo == null or licenseInfo.isEnabled('metrics'))}">
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Generate Group Report</h3>
@@ -75,7 +75,8 @@
         </div>
     </div>
 
-    <div class="card mt-3" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+    <div class="card mt-3" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')" th:if="${canManageGroup == true}"
+         id="group-managers">
         <div class="card-header">
             <h3 class="card-title">Group Managers</h3>
         </div>
@@ -265,103 +266,104 @@
             }
         });
 
-        const selectedListEl = document.getElementById("selectedList");
-        const selectedItems = new Map();
+        // The Group Managers card is only there for ADMIN and the group's own managers.
+        if (document.getElementById("group-managers")) {
+            const selectedListEl = document.getElementById("selectedList");
+            const selectedItems = new Map();
 
-        new autoComplete({
-            selector: "#search",
-            threshold: 3,
-            debounce: 300,
-            searchEngine: "strict",
+            new autoComplete({
+                selector: "#search",
+                threshold: 3,
+                debounce: 300,
+                searchEngine: "strict",
 
-            data: {
-                src: async (query) => {
-                    if (!query) return [];
-                    const response = await fetch(`/api/users/usersearch?search=${encodeURIComponent(query)}`);
-                    return await response.json();
+                data: {
+                    src: async (query) => {
+                        if (!query) return [];
+                        const response = await fetch(`/api/users/usersearch?search=${encodeURIComponent(query)}`);
+                        return await response.json();
+                    },
+                    keys: ["dn"]
                 },
-                keys: ["dn"]
-            },
 
-            resultsList: {
-                maxResults: 10,
-                noResults: true
-            },
+                resultsList: {
+                    maxResults: 10,
+                    noResults: true
+                },
 
-            resultItem: {
-                highlight: true
-            },
+                resultItem: {
+                    highlight: true
+                },
 
-            events: {
-                input: {
-                    selection: (event) => {
-                        const item = event.detail.selection.value;
+                events: {
+                    input: {
+                        selection: (event) => {
+                            const item = event.detail.selection.value;
 
-                        // prevent duplicates
-                        if (!selectedItems.has(item.dn)) {
-                            addItemToSelectedList(item);
+                            // prevent duplicates
+                            if (!selectedItems.has(item.dn)) {
+                                addItemToSelectedList(item);
+                            }
+
+                            // clear input for next selection
+                            document.querySelector("#search").value = "";
                         }
-
-                        // clear input for next selection
-                        document.querySelector("#search").value = "";
                     }
                 }
+            });
+
+            document.addEventListener("DOMContentLoaded", loadItems);
+
+            /* ---------- LOAD ---------- */
+            async function loadItems() {
+                const response = await fetch("/api/groups/managers/" + groupDn);
+                const items = await response.json();
+                selectedListEl.innerHTML = "";
+
+                items.forEach(item => addItemToSelectedList(item));
             }
-        });
 
-        document.addEventListener("DOMContentLoaded", loadItems);
+            // Rendered as a Tabler list group row: label on the left, ghost icon button on the right.
+            function addItemToSelectedList(item) {
+                selectedItems.set(item.dn, item);
 
-        /* ---------- LOAD ---------- */
-        async function loadItems() {
-            const response = await fetch("/api/groups/managers/" + groupDn);
-            const items = await response.json();
-            selectedListEl.innerHTML = "";
+                const li = document.createElement("li");
+                li.dataset.dn = item.dn;
+                li.className = "list-group-item d-flex align-items-center justify-content-between";
 
-            items.forEach(item => addItemToSelectedList(item));
-        }
+                const label = document.createElement("span");
+                label.className = "text-truncate";
+                label.textContent = item.dn;
 
-        // Rendered as a Tabler list group row: label on the left, ghost icon button on the right.
-        function addItemToSelectedList(item) {
-            selectedItems.set(item.dn, item);
+                const removeBtn = document.createElement("button");
+                removeBtn.type = "button";
+                removeBtn.className = "btn btn-icon btn-ghost-danger";
+                removeBtn.title = "Remove";
+                removeBtn.innerHTML = '<i class="ti ti-x"></i>';
+                removeBtn.onclick = () => {
+                    selectedItems.delete(item.dn);
+                    li.remove();
+                };
 
-            const li = document.createElement("li");
-            li.dataset.dn = item.dn;
-            li.className = "list-group-item d-flex align-items-center justify-content-between";
+                li.append(label, removeBtn);
+                selectedListEl.appendChild(li);
+            }
 
-            const label = document.createElement("span");
-            label.className = "text-truncate";
-            label.textContent = item.dn;
-
-            const removeBtn = document.createElement("button");
-            removeBtn.type = "button";
-            removeBtn.className = "btn btn-icon btn-ghost-danger";
-            removeBtn.title = "Remove";
-            removeBtn.innerHTML = '<i class="ti ti-x"></i>';
-            removeBtn.onclick = () => {
-                selectedItems.delete(item.dn);
-                li.remove();
-            };
-
-            li.append(label, removeBtn);
-            selectedListEl.appendChild(li);
-        }
-
-        document.getElementById("updateManagers").addEventListener("click", async function () {
-            const managers = Array.from(selectedItems.values()).map(item => item.dn);
-            await fetch("/api/groups/managers/update/" + groupDn, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(managers)
-            })
-                .then(data => {
-                    console.log("Success:", data);
-                    showToast("Managers Updated", { type: "success" });
+            document.getElementById("updateManagers").addEventListener("click", async function () {
+                const managers = Array.from(selectedItems.values()).map(item => item.dn);
+                await fetch("/api/groups/managers/update/" + groupDn, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify(managers)
                 })
-        });
-
-
+                    .then(data => {
+                        console.log("Success:", data);
+                        showToast("Managers Updated", { type: "success" });
+                    })
+            });
+        }
 
     </script>
 </div>

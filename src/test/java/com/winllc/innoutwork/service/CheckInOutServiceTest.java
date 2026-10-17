@@ -534,16 +534,19 @@ class CheckInOutServiceTest {
                 eq(SEP_10), eq(SEP_10.plusDays(1).minusNanos(1)));
     }
 
-    // --- pass-throughs -------------------------------------------------------------------------
+    // --- a record names someone ----------------------------------------------------------------
 
+    /** The logoff used to be stored with no DN when its session id matched nothing. */
     @Test
-    void aRecordIsFoundBySessionId() {
-        CheckInOutRecord record = record(BOB, CheckInOutEnum.CHECK_IN, SEP_10);
-        when(recordRepository.findFirstBySessionId("abc")).thenReturn(Optional.of(record));
-
-        assertEquals(Optional.of(record), service.lookupBySessionId("abc"));
-        assertTrue(service.lookupBySessionId("missing").isEmpty());
+    void aRecordWithoutADnIsRefusedRatherThanStored() {
+        for (CheckInOutEnum action : CheckInOutEnum.values()) {
+            CheckInOutRecord nobodys = record(null, action, SEP_10);
+            assertThrows(IllegalArgumentException.class, () -> service.saveCheckInOutRecord(nobodys), action.name());
+        }
+        assertTrue(stored.isEmpty());
     }
+
+    // --- pass-throughs -------------------------------------------------------------------------
 
     @Test
     void theRecordCountComesFromTheRepository() {

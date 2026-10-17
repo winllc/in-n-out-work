@@ -4,7 +4,7 @@ import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.UserRecord;
-import com.winllc.innoutwork.security.PermissionEvaluator;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.data.team.DirectReportsSummary;
 import com.winllc.innoutwork.service.DirectReportsService;
 import com.winllc.innoutwork.service.UserService;
@@ -62,7 +62,7 @@ class UserControllerTest {
     @MockitoBean
     UserService userRecordService;
     @MockitoBean
-    PermissionEvaluator permissionEvaluator;
+    AccessPolicy accessPolicy;
     @MockitoBean
     DirectReportsService directReportsService;
 

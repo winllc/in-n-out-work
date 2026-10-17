@@ -176,7 +176,9 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_check_in_out_dn_ts
 -- ... everyone's records in a window (dashboard, metrics) ...
 CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_check_in_out_ts
     ON check_in_out_records ("timestamp");
--- ... and the check-out looked up by the session its check-in started.
+-- ... and the check-out looked up by the session its check-in started. CheckInOutRecord declares this index
+-- under the same name, so Hibernate creates it on a database this script never ran on, and IF NOT EXISTS
+-- leaves it be here.
 CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_check_in_out_session_id
     ON check_in_out_records (session_id);
 

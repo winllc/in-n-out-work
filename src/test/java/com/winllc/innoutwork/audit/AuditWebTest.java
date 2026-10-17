@@ -14,6 +14,7 @@ import com.winllc.innoutwork.license.LicenseExceptionHandler;
 import com.winllc.innoutwork.license.LicensingConfiguration;
 import com.winllc.innoutwork.license.TestLicenses;
 import com.winllc.innoutwork.license.TestLicensing;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.CacheService;
 import com.winllc.innoutwork.service.ReportService;
 import org.junit.jupiter.api.AfterEach;
@@ -44,6 +45,9 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.when;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -131,11 +135,14 @@ class AuditWebTest {
 
     @MockitoBean CacheService cacheService;
     @MockitoBean ReportService reportService;
+    /** GroupController's @PreAuthorize asks it; the administrators here manage every group. */
+    @MockitoBean(name = "accessPolicy") AccessPolicy accessPolicy;
 
     private ListAppender<ILoggingEvent> stdout;
 
     @BeforeEach
     void capture() {
+        when(accessPolicy.canManageGroup(any(), anyString())).thenReturn(true);
         stdout = AuditStoreSupport.captureAuditLines();
     }
 

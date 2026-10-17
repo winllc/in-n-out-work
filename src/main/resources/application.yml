@@ -18,6 +18,19 @@ server:
     key-store-type: PKCS12
     client-auth: want
     trust-store-type: PKCS12
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        # Lax: the browser leaves the session cookie off another site's posts and scripted requests (the CSRF
+        # token refuses those as well), but still sends it when someone follows a link from elsewhere. Strict
+        # would leave it off there too, and the link in an absence notification e-mail would then open the
+        # sign-in page instead of the notification.
+        same-site: lax
+        # Secure whenever ReadyRoom serves TLS itself; Tomcat also marks it Secure on any request it sees as
+        # HTTPS. Behind a proxy that terminates TLS, set SESSION_COOKIE_SECURE=true unless ReadyRoom reads the
+        # proxy's X-Forwarded-Proto (server.forward-headers-strategy).
+        secure: ${SESSION_COOKIE_SECURE:${SSL_ENABLED:false}}
 
 logging:
   level:
@@ -126,7 +139,10 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,env
+        # Health only, which anyone may read (status only, no details): the container healthcheck and the
+        # Kubernetes probes (/actuator/health/liveness, /readiness) use it. env and metrics expose the
+        # configuration and the runtime; anything added here needs an ADMIN sign-in (SecurityConfig).
+        include: health
 application:
   # Read-only demo. Visitors still sign in; what it changes is that nothing can be written and that
   # the accounts listed under demo.accounts are published on the login page for visitors to pick a
@@ -205,3 +221,14 @@ application:
     # userPrincipalName with strip-realm: false.
     account-attribute: sAMAccountName
     strip-realm: true
+  logoff:
+    # The Windows client's logoff (POST /api/check/out) runs after the user's profile has gone and cannot sign
+    # in, so it sends back the session id its logon was answered with. That id identifies one logoff, of the
+    # user who logged on, for this long after the logon (a week: workstations stay logged on over weekends
+    # and long shifts); a later or second logoff with it is refused.
+    session-max-age-hours: 168
+    # Refused logoffs without a sign-in (unknown, used or expired session id) from one client address per
+    # minute. Past it, refused ones get 429 and only the first is audited. A logoff with a usable session id
+    # is always accepted and never counted, so workstations behind one NAT address or proxy are not held
+    # back. 0 turns the limit off.
+    refused-per-minute: 30

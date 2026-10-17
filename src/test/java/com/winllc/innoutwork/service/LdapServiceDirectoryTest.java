@@ -10,6 +10,7 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.rest.OrgNodeRestService;
 import com.winllc.innoutwork.rest.UserRestService;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.support.InMemoryDirectory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -92,13 +93,20 @@ class LdapServiceDirectoryTest {
                         .map(dn -> UserStatus.builder().dn(dn).build()).toList());
     }
 
+    /** Who may see what is AccessPolicy's business; here everyone is shown in full. */
+    private static AccessPolicy seesEveryone() {
+        AccessPolicy accessPolicy = mock(AccessPolicy.class);
+        when(accessPolicy.scope(any())).thenReturn(AccessPolicy.Scope.of(dn -> true));
+        return accessPolicy;
+    }
+
     private UserRestService userRestService() {
         return new UserRestService(ldapService, mock(UserRecordRepository.class),
-                mock(CheckInOutRecordRepository.class), props, userService);
+                mock(CheckInOutRecordRepository.class), props, userService, seesEveryone());
     }
 
     private List<String> searchFor(String term) {
-        return dns(userRestService().searchUsers(session, term, 1, 10, "id", "asc"));
+        return dns(userRestService().searchUsers(session, null, term, 1, 10, "id", "asc"));
     }
 
     private static List<String> dns(List<UserStatus> users) {
@@ -157,7 +165,8 @@ class LdapServiceDirectoryTest {
 
     @Test
     void orgUsersMatchOnTheDutySubOrganizationAttribute() {
-        OrgNodeRestService orgNodes = new OrgNodeRestService(mock(OrgChartService.class), props, ldapService, userService);
+        OrgNodeRestService orgNodes = new OrgNodeRestService(mock(OrgChartService.class), props, ldapService, userService,
+                seesEveryone());
 
         assertEquals(sorted(ALICE, BOB), dns(orgNodes.getUsers(null, session, "RYS34B")));
         assertTrue(orgNodes.getUsers(null, session, "RYS34*").isEmpty(), "org name must match literally");
@@ -227,6 +236,17 @@ class LdapServiceDirectoryTest {
                 .map(LdapGroup::getDn).sorted().toList();
 
         assertEquals(sorted(ENGINEERING, PLATFORM), groups);
+    }
+
+    /** The groups AccessPolicy counts as managed by their owner, however the owner's DN is spelled. */
+    @Test
+    void findGroupsOwnedByReturnsTheGroupsWhoseOwnerIsTheUser() {
+        assertEquals(List.of(ENGINEERING),
+                ldapService.findGroupsOwnedBy(ALICE).stream().map(LdapGroup::getDn).toList());
+        assertEquals(List.of(ENGINEERING),
+                ldapService.findGroupsOwnedBy("CN=Alice Adams, OU=Users, " + BASE.toUpperCase()).stream()
+                        .map(LdapGroup::getDn).toList());
+        assertTrue(ldapService.findGroupsOwnedBy(BOB).isEmpty(), "a member is not an owner");
     }
 
     @Test

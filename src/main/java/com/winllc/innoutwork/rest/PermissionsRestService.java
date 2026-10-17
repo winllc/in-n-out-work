@@ -23,9 +23,11 @@ public class PermissionsRestService {
         this.permissionService = permissionService;
     }
 
+    /** Access to a group is granted by ADMIN or one of the group's managers (AccessPolicy). */
     @PostMapping("/update")
     @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
-            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) " +
+            "and @accessPolicy.canManageGroup(authentication, #permissionUpdate.groupDn)")
     public void addGroupToUser(@RequestBody PermissionUpdate permissionUpdate) {
         // PermissionService logs the resulting grant/revoke at info.
         log.debug("updating permission to group: {}", permissionUpdate);
