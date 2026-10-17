@@ -142,6 +142,11 @@ docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB
     < migrations/001_indexes_and_unique_user_dn.sql
 ```
 
+Re-run `Install-InOutWorker.ps1` from the new `windows-client/` on every workstation (without
+arguments it keeps the existing configuration). Besides installing the new script and tasks, it
+corrects the permissions an older client left on `%ProgramData%\InOutWorker` (see the Windows client
+documentation).
+
 ## Everyday commands
 
 ```bash
