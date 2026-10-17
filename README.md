@@ -160,9 +160,10 @@ machine.
 > Server TLS validation is **on** by default. If your server uses a self-signed
 > certificate, pass `-SkipCertificateCheck`, otherwise the tasks will fail.
 
-The superseded `login.ps1`, `logout.ps1` and `updatestatus.ps1` are still
-present for reference. `updatestatus.ps1` never worked — it uses `==`, which
-parses in PowerShell but throws at runtime.
+The superseded `login.ps1`, `logout.ps1` and `updatestatus.ps1`, and the task
+XMLs that ran them, have been removed: they accepted any server certificate.
+Remove them, and any task that runs them, from workstations that still have
+them.
 
 ---
 
