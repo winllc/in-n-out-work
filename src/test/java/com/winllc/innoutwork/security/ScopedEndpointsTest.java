@@ -118,6 +118,10 @@ class ScopedEndpointsTest {
     @MockitoBean CacheService cacheService;
     @MockitoBean HomeService homeService;
     @MockitoBean ReportService reportService;
+    @MockitoBean com.winllc.innoutwork.service.StatusPolicy statusPolicy;
+    @MockitoBean com.winllc.innoutwork.service.StatusCalendar statusCalendar;
+    @MockitoBean com.winllc.innoutwork.service.StatusRequestService statusRequestService;
+    @MockitoBean com.winllc.innoutwork.service.Approvers approvers;
 
     @Configuration
     @EnableWebSecurity

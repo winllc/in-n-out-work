@@ -18,7 +18,14 @@ import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
+import com.winllc.innoutwork.constant.StatusClass;
+import com.winllc.innoutwork.model.StatusRequest;
+import com.winllc.innoutwork.service.Approvers;
 import com.winllc.innoutwork.service.InvalidRequestException;
+import com.winllc.innoutwork.service.StatusCalendar;
+import com.winllc.innoutwork.service.StatusPolicy;
+import com.winllc.innoutwork.service.StatusRequestService;
+import org.springframework.security.access.AccessDeniedException;
 import com.winllc.innoutwork.service.ReportService;
 import org.apache.commons.lang3.StringUtils;
 import org.springframework.http.ResponseEntity;
@@ -30,10 +37,11 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
+import java.util.LinkedHashMap;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_FORMATTER;
 
@@ -48,6 +56,10 @@ public class UserEventRestService {
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
+    private final StatusPolicy statusPolicy;
+    private final StatusCalendar statusCalendar;
+    private final StatusRequestService requestService;
+    private final Approvers approvers;
 
     private AuditLog audit = AuditLog.NOOP;
 
@@ -57,11 +69,18 @@ public class UserEventRestService {
     }
 
     public UserEventRestService(UserEventRecordRepository userEventRecordRepository,
-                                CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties, GlobalCalendarRecordRepository globalCalendarRecordRepository) {
+                                CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
+                                GlobalCalendarRecordRepository globalCalendarRecordRepository, StatusPolicy statusPolicy,
+                                StatusCalendar statusCalendar, StatusRequestService requestService,
+                                Approvers approvers) {
         this.userEventRecordRepository = userEventRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
         this.globalCalendarRecordRepository = globalCalendarRecordRepository;
+        this.statusPolicy = statusPolicy;
+        this.statusCalendar = statusCalendar;
+        this.requestService = requestService;
+        this.approvers = approvers;
     }
 
 
@@ -80,7 +99,19 @@ public class UserEventRestService {
 
         List<UserEventRecord> byDnAndDateBetween = userEventRecordRepository.findByDnIgnoreCaseAndDateBetween(ldapDn.dn(), fromDate, toDate);
 
-        return byDnAndDateBetween.stream()
+        // Requests still waiting for approval, shown as such: they excuse nothing yet.
+        List<CalendarEvent> pending = new ArrayList<>();
+        for (StatusRequest request : requestService.pendingBetween(ldapDn.dn(), fromDate, toDate)) {
+            for (LocalDate day : EventRange.inclusive(request.getFromDate(), request.getToDate()).dates()) {
+                if (!day.isBefore(fromDate) && !day.isAfter(toDate)) {
+                    CalendarEvent event = new CalendarEvent(day, "Requested: " + request.getStatus().getFriendlyName());
+                    event.setBackgroundColor(properties.getCalendarRequestedEventColor());
+                    pending.add(event);
+                }
+            }
+        }
+
+        List<CalendarEvent> set = byDnAndDateBetween.stream()
                 .map(r -> {
                     CalendarEvent event = new CalendarEvent(r.getDate(), r.getStatus().getFriendlyName());
 
@@ -99,6 +130,9 @@ public class UserEventRestService {
                     return event;
                 })
                 .toList();
+        List<CalendarEvent> all = new ArrayList<>(set);
+        all.addAll(pending);
+        return all;
     }
 
     /** The same with the hours they were online: as their details (AccessPolicy). */
@@ -129,25 +163,78 @@ public class UserEventRestService {
     }
 
     /**
-     * Sets a status on the signed-in user's own days, {@code fromDate} up to (not including) {@code toDate}. The range
-     * is at most {@code application.events.max-range-days}; a longer, backwards or unreadable one is refused with 400
-     * before anything is written.
+     * Puts a status on days of a calendar, {@code fromDate} up to (not including) {@code toDate}, at most
+     * {@code application.events.max-range-days} of them (a longer, backwards or unreadable range is refused with 400
+     * before anything is written). What happens depends on whose calendar and which status (StatusPolicy):
+     * <ul>
+     *   <li>one's own, a status the person sets (normal, early leave, late arrival): set at once;</li>
+     *   <li>one's own, a status that excuses an absence (leave, telework, ...): becomes a request, which reaches the
+     *       calendar only once approved (answer {@code "outcome":"requested"} with its id);</li>
+     *   <li>one's own, a status only managers record (absent, unscheduled leave): refused, 403;</li>
+     *   <li>someone else's ({@code dn}): any status, set at once, by an administrator or the person's manager or
+     *       delegate (Approvers); anyone else is refused, 403.</li>
+     * </ul>
      */
     @PostMapping("/update")
-    public UserEventData updateEventForDay(Authentication authentication,
-                                             @RequestBody UserEventData data){
+    public Map<String, Object> updateEventForDay(Authentication authentication,
+                                                 @RequestBody UserEventData data){
 
         log.debug("updateEventForDay called by %s with data: %s".formatted(authentication.getName(), data));
 
-        String userDn = authentication.getName();
+        String me = authentication.getName();
+        String target = StringUtils.isBlank(data.getDn()) ? me : data.getDn().strip();
         UserStatusEnum status = parseStatus(data.getStatus());
         EventRange range = EventRange.parse(data.getFromDate(), data.getToDate(),
                 properties.getEvents().getMaxRangeDays());
+        LocalTime loginByTime = parseTime(data.getLateArrivalTime(), status);
 
-        // A person's leave, telework or late arrival, as they set it on their calendar: saved and audited together.
-        audit.inTransaction(() -> setStatuses(userDn, data, status, range.from(), range.toExclusive()));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("status", status.name());
+        result.put("fromDate", range.from().toString());
+        result.put("toDate", range.toExclusive().toString());
 
-        return data;
+        if (!Approvers.sameDn(target, me)) {
+            // For someone else: their manager, a delegate or an administrator, recording whatever applies.
+            if (!approvers.mayDecide(authentication, target)) {
+                throw new AccessDeniedException("%s may not set statuses for %s".formatted(me, target));
+            }
+            audit.inTransaction(() -> setStatuses(target, status, range, loginByTime, true));
+            result.put("outcome", "set");
+            return result;
+        }
+
+        StatusClass statusClass = statusPolicy.classify(status);
+        switch (statusClass) {
+            case USER_SELECTABLE -> {
+                // A person's late arrival or early leave, as they set it on their calendar: saved and audited together.
+                audit.inTransaction(() -> setStatuses(me, status, range, loginByTime, false));
+                result.put("outcome", "set");
+            }
+            case REQUEST -> {
+                StatusRequest request = requestService.create(me, status, range, loginByTime, data.getNote());
+                result.put("outcome", "requested");
+                result.put("requestId", request.getId());
+                result.put("message", status.getFriendlyName()
+                        + " needs approval: your manager has been asked. Until it is approved it does not excuse an absence.");
+            }
+            case ADMIN_ONLY -> throw new AccessDeniedException(
+                    "%s may not record %s: managers and administrators record it".formatted(me, status));
+        }
+        return result;
+    }
+
+    /** The statuses the signed-in user may put on their own calendar, and whether each needs approval. */
+    @GetMapping("/statuses")
+    public List<Map<String, Object>> ownStatuses() {
+        return statusPolicy.ownCalendarStatuses().stream()
+                .map(s -> {
+                    Map<String, Object> option = new LinkedHashMap<>();
+                    option.put("status", s.name());
+                    option.put("name", s.getFriendlyName());
+                    option.put("needsApproval", statusPolicy.classify(s) == StatusClass.REQUEST);
+                    return option;
+                })
+                .toList();
     }
 
     @ExceptionHandler(InvalidRequestException.class)
@@ -163,44 +250,31 @@ public class UserEventRestService {
         }
     }
 
-    private void setStatuses(String userDn, UserEventData data, UserStatusEnum status, LocalDate fromLocalDate,
-                             LocalDate toLocalDate) {
-        LocalDate firstDay = fromLocalDate;
-        int days = 0;
-        while(fromLocalDate.isBefore(toLocalDate)){
-            UserEventRecord record = new UserEventRecord();
-            record.setDn(userDn);
-            record.setDate(fromLocalDate);
-            if(StringUtils.isNotBlank(data.getLateArrivalTime()) && status == UserStatusEnum.LATE_ARRIVAL) {
-                record.setLoginByTime(LocalTime.parse(data.getLateArrivalTime(), DateTimeFormatter.ISO_TIME));
-            }
-
-            List<UserEventRecord> byDnAndDate = userEventRecordRepository.findByDnIgnoreCaseAndDate(
-                    userDn, fromLocalDate);
-
-            Optional<UserEventRecord> userUpdatedRecord = byDnAndDate.stream()
-                    .filter(r -> r.getStatus().isSelectable())
-                    .findFirst();
-
-            if(userUpdatedRecord.isPresent()){
-                record = userUpdatedRecord.get();
-            }
-
-            record.setStatus(status);
-
-            userEventRecordRepository.save(record);
-            days++;
-
-            fromLocalDate = fromLocalDate.plusDays(1);
-
+    static LocalTime parseTime(String time, UserStatusEnum status) {
+        if (status != UserStatusEnum.LATE_ARRIVAL || StringUtils.isBlank(time)) {
+            return null;
         }
-        audit.record(AuditEntry.of(AuditEntry.Category.DATA, "calendar.status-set")
-                .target("user", userDn, LdapDn.cnOf(userDn))
+        try {
+            return LocalTime.parse(time.strip(), DateTimeFormatter.ISO_TIME);
+        } catch (DateTimeParseException e) {
+            throw InvalidRequestException.badRequest("invalid_time", "lateArrivalTime is not a time (09:30)");
+        }
+    }
+
+    private void setStatuses(String dn, UserStatusEnum status, EventRange range, LocalTime loginByTime,
+                             boolean forSomeoneElse) {
+        int days = statusCalendar.set(dn, status, range.dates(), loginByTime, null);
+        AuditEntry entry = AuditEntry.of(AuditEntry.Category.DATA, "calendar.status-set")
+                .target("user", dn, LdapDn.cnOf(dn))
                 .detail("status", status.name())
-                .detail("lateArrivalTime", data.getLateArrivalTime())
-                .detail("from", firstDay.toString())
-                .detail("to", toLocalDate.toString())
-                .detail("days", days));
+                .detail("lateArrivalTime", loginByTime == null ? null : loginByTime.toString())
+                .detail("from", range.from().toString())
+                .detail("to", range.toExclusive().toString())
+                .detail("days", days);
+        if (forSomeoneElse) {
+            entry.detail("via", "manager");
+        }
+        audit.record(entry);
     }
 
     private List<CalendarEvent> globalCalendarRecordsToEvents(LocalDate fromDate, LocalDate toDate){

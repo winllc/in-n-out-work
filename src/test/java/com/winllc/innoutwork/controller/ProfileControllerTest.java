@@ -68,6 +68,9 @@ class ProfileControllerTest {
     @MockitoBean
     ApplicationProperties properties;
 
+    @MockitoBean
+    com.winllc.innoutwork.service.StatusPolicy statusPolicy;
+
     @Configuration
     @EnableWebSecurity
     @EnableMethodSecurity(prePostEnabled = true)

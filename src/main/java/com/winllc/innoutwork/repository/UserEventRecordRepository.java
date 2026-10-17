@@ -34,4 +34,8 @@ public interface UserEventRecordRepository  extends JpaRepository<UserEventRecor
     @Query("select e from UserEventRecord e where lower(e.dn) = lower(:dn) and e.date = :date and e.status = :status")
     Optional<UserEventRecord> findByDnIgnoreCaseAndDateAndStatusEquals(@Param("dn") String dn, @Param("date") LocalDate date,
                                                                         @Param("status") UserStatusEnum status);
+
+    /** The days an approved request put on the calendar, from {@code from} on. */
+    @Query("select e from UserEventRecord e where e.requestId = :requestId and e.date >= :from")
+    List<UserEventRecord> findByRequestIdFrom(@Param("requestId") Long requestId, @Param("from") LocalDate from);
 }

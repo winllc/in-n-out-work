@@ -29,15 +29,22 @@
 
                     <div class="mb-3">
                         <label class="form-label" for="statusSelect">Status</label>
+                        <!-- What StatusPolicy lets a person put on their own calendar; the server checks it again. -->
                         <select id="statusSelect" class="form-select">
-                            <option value="STANDARD">Standard</option>
-                            <option value="OUT_OF_OFFICE">Out of Office</option>
-                            <option value="WORK_FROM_HOME">WFH</option>
-                            <option value="TDY">TDY</option>
-                            <option value="SCHEDULED_LEAVE">Scheduled Leave</option>
-                            <option value="EARLY_LEAVE">Early Leave</option>
-                            <option value="LATE_ARRIVAL">Late Arrival</option>
+                            <option th:each="option : ${statusOptions}" th:value="${option.status}"
+                                    th:text="${option.needsApproval} ? ${option.name} + ' (needs approval)' : ${option.name}"
+                                    th:attr="data-needs-approval=${option.needsApproval}"></option>
                         </select>
+                    </div>
+
+                    <div id="approvalHint" class="mb-3" hidden>
+                        <div class="alert alert-info mb-2" role="status">
+                            This status needs your manager's approval. It is sent to them as a request and does not
+                            excuse an absence until it is approved. Follow it under
+                            <a th:href="@{/app/approvals}">Approvals</a>.
+                        </div>
+                        <label class="form-label" for="requestNote">Note for your manager (optional)</label>
+                        <input type="text" id="requestNote" class="form-control" maxlength="500">
                     </div>
 
                     <input type="text" id="late-arrival-time-picker" placeholder="Select Time.."
@@ -275,6 +282,7 @@
                 const toDate = document.getElementById("statusUpdateDateTo").value;
                 const selectedStatus = document.getElementById("statusSelect").value;
                 const lateArrivalTime = document.getElementById("late-arrival-time-picker").value;
+                const note = document.getElementById("requestNote").value;
 
                 fetch("/api/event/update", {
                     method: "POST",
@@ -285,8 +293,8 @@
                         fromDate: fromDate,
                         toDate: toDate,
                         status: selectedStatus,
-                        lateArrivalTime: lateArrivalTime
-
+                        lateArrivalTime: lateArrivalTime,
+                        note: note
                     })
                 }).then(async (response) => {
                     bootstrap.Modal.getInstance(
@@ -300,6 +308,11 @@
                         showToast(problem.message || "The status could not be set", {type: "danger", delay: 6000});
                         return;
                     }
+                    const result = await response.json().catch(() => ({}));
+                    if (result.outcome === "requested") {
+                        showToast(result.message || "Sent to your manager for approval", {type: "info", delay: 6000});
+                    }
+                    document.getElementById("requestNote").value = "";
                     calendar.refetchEvents();
                 });
 
@@ -410,13 +423,16 @@
                 })
         });
 
-        document.getElementById("statusSelect").addEventListener("change", function () {
-            if(this.value === "LATE_ARRIVAL") {
-                document.getElementById("late-arrival-time-picker").style.display = "block";
-            }else{
-                document.getElementById("late-arrival-time-picker").style.display = "none";
-            }
-        });
+        function statusChosen() {
+            const select = document.getElementById("statusSelect");
+            const chosen = select.options[select.selectedIndex];
+            document.getElementById("late-arrival-time-picker").style.display =
+                select.value === "LATE_ARRIVAL" ? "block" : "none";
+            document.getElementById("approvalHint").hidden =
+                !chosen || chosen.getAttribute("data-needs-approval") !== "true";
+        }
+        document.getElementById("statusSelect").addEventListener("change", statusChosen);
+        statusChosen();
 
         flatpickr("#late-arrival-time-picker", {
             enableTime: true,

@@ -135,6 +135,16 @@
                             <span class="nav-link-title">My Reports</span>
                         </a>
                     </li>
+                    <!-- Status requests: one's own, and those one approves (StatusRequestService). -->
+                    <li class="nav-item" sec:authorize="hasAnyAuthority('USER', 'ADMIN', 'MANAGER')"
+                        th:if="${licenseInfo == null or licenseInfo.isEnabled('calendar')}">
+                        <a class="nav-link" th:href="@{/app/approvals}">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <i class="ti ti-checkbox"></i>
+                            </span>
+                            <span class="nav-link-title">Approvals</span>
+                        </a>
+                    </li>
                     <li class="nav-item" th:if="${licenseInfo == null or licenseInfo.isEnabled('org-chart')}">
                         <a class="nav-link" th:href="@{/app/orgchart}">
                             <span class="nav-link-icon d-md-none d-lg-inline-block">

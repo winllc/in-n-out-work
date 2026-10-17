@@ -38,6 +38,24 @@ class FlywayMigrationTest extends PostgresTestSupport {
     /** What Hibernate created before Flyway; see the file's header. */
     static final Path LEGACY_SCHEMA = Path.of("src/test/resources/db/legacy-hibernate-schema.sql");
     static final Path V1 = Path.of("src/main/resources/db/migration/V1__baseline.sql");
+    static final Path MIGRATIONS = Path.of("src/main/resources/db/migration");
+
+    /** Every migration file's version, in order: V1 and those after it. */
+    static List<Integer> versions() {
+        try (var files = java.nio.file.Files.list(MIGRATIONS)) {
+            return files.map(f -> f.getFileName().toString())
+                    .filter(n -> n.matches("V\\d+__.*\\.sql"))
+                    .map(n -> Integer.parseInt(n.substring(1, n.indexOf("__"))))
+                    .sorted()
+                    .toList();
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    static String latestVersion() {
+        return String.valueOf(versions().getLast());
+    }
 
     private static final Set<String> INDEXES = Set.of(
             "ux_user_records_dn_lower", "ix_check_in_out_dn_lower_ts", "ix_check_in_out_dn_ts", "ix_check_in_out_ts",
@@ -46,7 +64,10 @@ class FlywayMigrationTest extends PostgresTestSupport {
             "ix_permission_records_user_id", "ix_group_records_group_dn_lower", "ix_global_calendar_date",
             "ux_audit_events_event_id", "ix_audit_events_time", "ix_audit_events_category", "ix_audit_events_action",
             "ix_audit_events_outcome", "ix_audit_events_severity", "ix_audit_events_actor_id",
-            "ix_audit_events_target", "ix_audit_events_source_ip", "ux_audit_api_tokens_hash");
+            "ix_audit_events_target", "ix_audit_events_source_ip", "ux_audit_api_tokens_hash",
+            // V2: status requests
+            "ix_status_requests_requester_lower", "ix_status_requests_state", "ix_status_requests_to_date",
+            "ix_user_events_request_id");
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -147,22 +168,22 @@ class FlywayMigrationTest extends PostgresTestSupport {
         MigrateResult result = migrate(db);
 
         assertTrue(result.success);
-        assertEquals(1, result.migrationsExecuted);
+        assertEquals(versions().size(), result.migrationsExecuted, "V1 and every migration after it");
         assertNull(result.initialSchemaVersion, "an empty database is not baselined, V1 just runs");
         JdbcTemplate fresh = jdbc(db);
         assertTrue(indexes(fresh).containsAll(INDEXES), () -> "missing: " + INDEXES.stream()
                 .filter(i -> !indexes(fresh).contains(i)).toList());
         assertEquals(1, fresh.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgname = 'audit_events_no_update'",
                 Integer.class));
-        assertEquals(List.of("fk_permission_records_user"), fresh.queryForList(
-                "SELECT conname FROM pg_constraint WHERE contype = 'f'", String.class));
+        assertEquals(List.of("fk_permission_records_user", "fk_user_event_records_request"), fresh.queryForList(
+                "SELECT conname FROM pg_constraint WHERE contype = 'f' ORDER BY conname", String.class));
         assertEquals(0, migrate(db).migrationsExecuted, "a second start has nothing to do");
     }
 
     /** The shared test database: Flyway ran at startup and Hibernate validated the result against the entities. */
     @Test
     void theApplicationDatabaseIsMigratedAndValidated() {
-        assertEquals("1", jdbc.queryForObject(
+        assertEquals(latestVersion(), jdbc.queryForObject(
                 "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",
                 String.class));
         assertTrue(indexes(jdbc).containsAll(INDEXES));
@@ -186,7 +207,7 @@ class FlywayMigrationTest extends PostgresTestSupport {
 
         assertTrue(result.success);
         assertEquals("0", result.initialSchemaVersion, "an existing schema is baselined at 0 ...");
-        assertEquals(1, result.migrationsExecuted, "... and V1 still runs on it");
+        assertEquals(versions().size(), result.migrationsExecuted, "... and V1 still runs on it, then the rest");
         String fresh = createDatabase("fresh_for_scripted");
         migrate(fresh);
         assertEquals(schema(fresh), schema(db));

@@ -1,11 +1,13 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.constant.StatusClass;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.ProfileForm;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.service.StatusPolicy;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
@@ -20,6 +22,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
+import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -31,10 +34,13 @@ public class ProfileController {
 
     private final UserRecordRepository recordRepository;
     private final UserService userRecordService;
+    private final StatusPolicy statusPolicy;
 
-    public ProfileController(UserRecordRepository recordRepository, UserService userRecordService) {
+    public ProfileController(UserRecordRepository recordRepository, UserService userRecordService,
+                             StatusPolicy statusPolicy) {
         this.recordRepository = recordRepository;
         this.userRecordService = userRecordService;
+        this.statusPolicy = statusPolicy;
     }
 
     @GetMapping
@@ -54,6 +60,11 @@ public class ProfileController {
         UserStatus userDetails = userRecordService.getUserDetails(LdapDn.builder().dn(authentication.getName()).build(), session);
 
         model.addAttribute("statuses", Stream.of(UserStatusEnum.values()).toList());
+        // The calendar's choices: what the user sets, then what they request (StatusPolicy); never a manager's status.
+        model.addAttribute("statusOptions", statusPolicy.ownCalendarStatuses().stream()
+                .map(s -> Map.of("status", s.name(), "name", s.getFriendlyName(),
+                        "needsApproval", statusPolicy.classify(s) == StatusClass.REQUEST))
+                .toList());
         model.addAttribute("form", form);
         model.addAttribute("userDn", authentication.getName());
         model.addAttribute("userCn", LdapDn.builder().dn(authentication.getName()).build().getCn());

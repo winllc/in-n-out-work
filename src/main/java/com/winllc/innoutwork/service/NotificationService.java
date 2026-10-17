@@ -17,17 +17,13 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.NotificationRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
-import com.winllc.innoutwork.util.ValueValidatorUtil;
-import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.thymeleaf.context.Context;
 import org.thymeleaf.spring6.SpringTemplateEngine;
 
 import java.time.LocalDate;
@@ -43,6 +39,8 @@ public class NotificationService {
 
     private final SpringTemplateEngine thymeleafTemplateEngine;
     private final JavaMailSender mailSender;
+    /** Sends on the caller's thread: the absence alert job, which runs on its own. */
+    private final Mailer mailer;
     private final NotificationRepository notificationRepository;
     private final UserService userService;
     private final ApplicationProperties properties;
@@ -73,6 +71,7 @@ public class NotificationService {
                                SpringTemplateEngine thymeleafTemplateEngine,
                                UserEventRecordRepository userEventRecordRepository) {
         this.mailSender = mailSender;
+        this.mailer = new Mailer(mailSender, thymeleafTemplateEngine, properties, Runnable::run);
         this.notificationRepository = notificationRepository;
         this.userService = userService;
         this.properties = properties;
@@ -203,46 +202,31 @@ public class NotificationService {
     }
 
     public void sendNotification(NotificationRecord notification, String email) {
-        if (mailSender == null) {
+        if (!mailer.isConfigured()) {
             log.debug("Not e-mailing notification {}: no mail server is configured", notification.getId());
             return;
         }
-        if(ValueValidatorUtil.isValidEmail(email)) {
-            try {
-                String notificationUrl = properties.getApplicationBaseUrl() + "/app/notifications/id/" + notification.getId();
+        String notificationUrl = properties.getApplicationBaseUrl() + "/app/notifications/id/" + notification.getId();
 
-                log.debug("Sending {} notification {} about {} to {}", notification.getType(),
-                        notification.getId(), notification.getAboutUserDn(), email);
+        log.debug("Sending {} notification {} about {} to {}", notification.getType(),
+                notification.getId(), notification.getAboutUserDn(), email);
 
-                Map<String, Object> templateModel = new HashMap<>();
-                templateModel.put("for", LdapDn.builder().dn(notification.getForUserDn()).build().getCn());
-                templateModel.put("expectedCheckIn", notification.getExpectedCheckInTime() == null ? null
-                        : DateTimeConstants.TIME_FORMATTER.withZone(ZoneId.systemDefault()).format(notification.getExpectedCheckInTime()));
-                templateModel.put("aboutUser", LdapDn.builder().dn(notification.getAboutUserDn()).build().getCn());
-                templateModel.put("type", notification.getType());
-                templateModel.put("notificationDate", DateTimeConstants.DATE_FORMATTER.format(notification.getNotificationDate()));
-                templateModel.put("notificationUrl", notificationUrl);
+        Map<String, Object> templateModel = new HashMap<>();
+        templateModel.put("for", LdapDn.builder().dn(notification.getForUserDn()).build().getCn());
+        templateModel.put("expectedCheckIn", notification.getExpectedCheckInTime() == null ? null
+                : DateTimeConstants.TIME_FORMATTER.withZone(ZoneId.systemDefault()).format(notification.getExpectedCheckInTime()));
+        templateModel.put("aboutUser", LdapDn.builder().dn(notification.getAboutUserDn()).build().getCn());
+        templateModel.put("type", notification.getType());
+        templateModel.put("notificationDate", DateTimeConstants.DATE_FORMATTER.format(notification.getNotificationDate()));
+        templateModel.put("notificationUrl", notificationUrl);
 
-                Context thymeleafContext = new Context();
-                thymeleafContext.setVariables(templateModel);
-                String htmlBody = thymeleafTemplateEngine.process("accountability-notification.html", thymeleafContext);
-
-                MimeMessage message = mailSender.createMimeMessage();
-                MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-                helper.setFrom(properties.getNotificationSenderEmail());
-                helper.setTo(email);
-                helper.setSubject("Accountability Notification for " + LdapDn.builder().dn(notification.getAboutUserDn()).build().getCn());
-                helper.setText(htmlBody, true);
-
-                mailSender.send(message);
-                EnsMetrics.alertSent();
-                log.info("Notification {} about {} sent to {}",
-                        notification.getId(), notification.getAboutUserDn(), email);
-            }catch (Exception e) {
-                log.error("Failed to send notification to {}", email, e);
-            }
-        }else{
-            log.error("Invalid email address: {}", email);
+        // Through the one mail path (Mailer): same sender, STARTTLS and timeouts as every other ReadyRoom mail.
+        if (mailer.send(email, "Accountability Notification for "
+                        + LdapDn.builder().dn(notification.getAboutUserDn()).build().getCn(),
+                "accountability-notification.html", templateModel)) {
+            EnsMetrics.alertSent();
+            log.info("Notification {} about {} sent to {}",
+                    notification.getId(), notification.getAboutUserDn(), email);
         }
     }
 

@@ -28,4 +28,6 @@ public class UserEventRecord {
     @Enumerated(EnumType.STRING)
     private UserStatusEnum status;
     private LocalTime loginByTime;
+    /** The approved StatusRequest this day comes from; null for a status set or recorded directly. */
+    private Long requestId;
 }

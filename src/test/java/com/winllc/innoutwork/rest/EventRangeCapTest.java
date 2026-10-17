@@ -46,6 +46,10 @@ class EventRangeCapTest {
     @MockitoBean UserEventRecordRepository userEventRecordRepository;
     @MockitoBean CheckInOutRecordRepository checkInOutRecordRepository;
     @MockitoBean GlobalCalendarRecordRepository globalCalendarRecordRepository;
+    @MockitoBean com.winllc.innoutwork.service.StatusPolicy statusPolicy;
+    @MockitoBean com.winllc.innoutwork.service.StatusCalendar statusCalendar;
+    @MockitoBean com.winllc.innoutwork.service.StatusRequestService statusRequestService;
+    @MockitoBean com.winllc.innoutwork.service.Approvers approvers;
 
     @Configuration
     @EnableWebSecurity

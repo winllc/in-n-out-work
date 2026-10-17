@@ -1,6 +1,8 @@
 package com.winllc.innoutwork.config;
 
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -63,6 +65,8 @@ public class ApplicationProperties {
     private String calendarAbsentStatusEventColor = "purple";
     private String calendarActivityEventColor = "green";
     private String calendarGlobalEventColor = "orange";
+    /** Days of a status request still waiting for approval. */
+    private String calendarRequestedEventColor = "gray";
     /**
      * The From address of absence alert e-mails. No default: required (MailConfig checks it) once a mail server
      * is configured.
@@ -97,7 +101,27 @@ public class ApplicationProperties {
         @Min(value = 1, message = "application.events.max-range-days (APPLICATION_EVENTS_MAXRANGEDAYS) must be at least 1")
         @Max(value = 3660, message = "application.events.max-range-days (APPLICATION_EVENTS_MAXRANGEDAYS) must be at most 3660")
         private int maxRangeDays = 366;
+
+        /**
+         * The statuses a person asks for rather than sets: they take effect, and stop absence alerts, only once
+         * the person's manager, a delegate or an administrator approves them. By default every status that excuses
+         * an absence (UserStatusEnum.excusable). Any other status the person can pick (UserStatusEnum.selectable)
+         * they set themselves; the rest only managers and administrators record. See service.StatusPolicy.
+         */
+        private List<UserStatusEnum> requestStatuses = new ArrayList<>(DEFAULT_REQUEST_STATUSES);
+
+        /** STANDARD clears a day's status; there is nothing to approve. */
+        @AssertTrue(message = "application.events.request-statuses (APPLICATION_EVENTS_REQUESTSTATUSES) cannot list"
+                + " STANDARD: it clears a status, so there is nothing to approve")
+        public boolean isRequestStatusesValid() {
+            return requestStatuses == null || !requestStatuses.contains(UserStatusEnum.STANDARD);
+        }
     }
+
+    /** Every status that excuses an absence: leave, telework, temporary duty, out of office, excused absence. */
+    public static final List<UserStatusEnum> DEFAULT_REQUEST_STATUSES = List.of(
+            UserStatusEnum.OUT_OF_OFFICE, UserStatusEnum.WORK_FROM_HOME, UserStatusEnum.TDY,
+            UserStatusEnum.SCHEDULED_LEAVE, UserStatusEnum.ABSENT_EXCUSED);
 
     /**
      * The Windows client's logoff call, {@code POST /api/check/out}. It runs after the user's profile has gone,

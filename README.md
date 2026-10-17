@@ -179,6 +179,49 @@ group reports need `MANAGER` or `ADMIN`); whose data a page shows is decided by
 
 A principal with no directory user (a machine certificate, say) does not sign in.
 
+### Statuses and approvals
+
+People mark days on their calendar (the profile page) with a status. Each status is in one of three classes
+(`service.StatusPolicy`), enforced by the server on every API that sets one, whatever a page offers:
+
+| Class | Statuses (default) | Who, and how |
+|---|---|---|
+| Set by the person | Normal, Early Leave, Late Arrival | The person, on their own calendar; takes effect at once and excuses nothing (a late arrival only moves the time they are expected by) |
+| Requested | Out of Office, Work From Home, TDY, Scheduled Leave, Absent Excused (`application.events.request-statuses`) | The person asks; their manager approves or rejects. Until approved it is not on the calendar, so the absence alerts treat the day as not excused |
+| Recorded by managers | Absent, Absent Unexcused, Unscheduled Leave | Only an administrator, or the person's manager or delegate, for someone else (also by answering an absence alert) |
+
+A request is `requested`, then `approved`, `rejected` or `cancelled`. **Who decides:** the person's manager in the
+directory, their delegates (alternate managers, which administrators set) and any administrator; nobody decides
+their own, administrators included. An approval writes the status on each day of the request (replacing what the
+person had set there); a rejection writes nothing. The requester can cancel a pending request, or an approved one
+until its last day has passed, which takes its days from today on off the calendar (an administrator can cancel
+anyone's). Managers, delegates and administrators can also set any status directly for someone they decide for
+(`POST /api/event/update` with `dn`).
+
+**Where:** dragging across days on the profile calendar (a requested status says it needs approval), the
+*Approvals* page (`/app/approvals`: what waits for you, your own requests, a form to ask), and the API:
+
+| Call | What |
+|---|---|
+| `POST /api/requests` | Ask: `status`, `fromDate`, `toDate` (the day after the last), optional `note` (500 characters, shown to approvers); 201 with the request |
+| `GET /api/requests/mine`, `/pending` | Your requests; the pending ones you may decide |
+| `POST /api/requests/{id}/approve`, `/reject` | Optional `{"comment": "..."}`; 403 unless you decide for the requester, 409 once decided |
+| `POST /api/requests/{id}/cancel` | The requester or an administrator |
+| `GET /api/event/statuses` | The statuses you may put on your own calendar, and which need approval |
+
+**Mail.** With a mail server configured, a new request is e-mailed to the requester's manager and delegates, a
+decision to the requester, and a cancellation to the approvers, once the change is committed and from a background
+thread, through the same mail settings as absence alerts. The mails carry the status and dates, not the notes.
+
+**Audit.** `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected` and
+`calendar.request-cancelled`, with the request id, status, dates, day count and state (never the notes); a status
+set directly stays `calendar.status-set` (`details.via` `manager` when set for someone else).
+
+**Upgrading.** Statuses already on calendars keep their effect. From the upgrade on, people can no longer set
+Out of Office, Work From Home, TDY or Scheduled Leave themselves (or Absent Excused through the API): the calendar
+sends them as requests. To let people set one of them without approval again, leave it out of
+`APPLICATION_EVENTS_REQUESTSTATUSES` (startup then warns that it excuses absences unapproved).
+
 ---
 
 ## Windows client
@@ -291,7 +334,7 @@ feature can move tier on the portal alone:
 | Feature | License id | What it gates |
 |---|---|---|
 | Attendance tracking | `readyroom.attendance` | The Windows client's API (`/api/check/**`), a user's check-in/out audit log (`/api/users/checkinoutrecords/**`), the home dashboard's status, attendance and agent cards, auto check-out (`MarkInactiveCron`) and the directory sync (`RefreshUserRecordsCron`) |
-| Calendar | `readyroom.calendar` | The profile and user-details calendars, `/api/event/**`, the organization calendar (`/api/settings/calendar/**`), the dashboard's "Coming up" cards |
+| Calendar | `readyroom.calendar` | The profile and user-details calendars, `/api/event/**`, status requests (`/api/requests/**`, the Approvals page `/app/approvals`), the organization calendar (`/api/settings/calendar/**`), the dashboard's "Coming up" cards |
 | Absence alerts | `readyroom.absence-alerts` | `SendAbsentNotificationsCron` |
 | Metrics and reports | `readyroom.metrics` | `/app/metrics`, My Reports (`/app/user/reports`, `/api/users/reports`), the group report and its PDF export (`POST /app/group/report`), and the menu entries, buttons and links to them |
 | Org chart | `readyroom.org-chart` | `/app/orgchart/**`, `/api/orgnodes/**`, the organization parse rules in Settings, the menu entry |
@@ -417,6 +460,7 @@ values that most often need changing per deployment:
 | `duty-sub-org-groups-base-dn` | Enables the org chart; blank disables it |
 | `ldap.max-pages` | Most pages one paged search reads before returning what it has (default 1000). Bounds a directory that keeps returning a paging cookie, which would otherwise hold the request open indefinitely. |
 | `checkOutAfterMinutes` | Minutes a session may stay locked before `MarkInactiveCron` checks it out (default 240; the packaged configuration used to say 2) |
+| `events.request-statuses` | The statuses people request rather than set (`APPLICATION_EVENTS_REQUESTSTATUSES`, comma-separated; default `OUT_OF_OFFICE,WORK_FROM_HOME,TDY,SCHEDULED_LEAVE,ABSENT_EXCUSED`, every status that excuses an absence). `STANDARD` is refused at startup. See [Statuses and approvals](#statuses-and-approvals). |
 | `events.max-range-days` | The most days one call may set a status, a status request or an organization calendar event on (`APPLICATION_EVENTS_MAXRANGEDAYS`, default 366). Every API that creates events checks it and refuses a longer range with 400 (`range_too_long`) before writing anything. |
 | `notification-sender-email` | The From address of absence alerts; required once `SPRING_MAIL_HOST` is set (startup stops without it) |
 | `application-base-url` | Used in notification emails |
@@ -719,7 +763,7 @@ append-only in the database itself: a trigger refuses every UPDATE (see [Databas
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
 | account | `person.created` (a new tracked person, at first sign-in or lookup), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
 | configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |
-| data | `person.updated` (profile notes and expected login time, alternate managers), `calendar.status-set` (leave, telework, late arrival), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download) |
+| data | `person.updated` (profile notes and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download) |
 | license | `license.installed`, `license.rejected`, `license.mode-changed` (also across restarts), `license.limit-exceeded` |
 | system | `system.started`, `system.stopped`, `job.completed` / `job.failed` (one per run, with counts and duration), `job.skipped` (once per license mode change) |
 | audit | `audit.exported`, `audit.verified`, `audit.token-created`, `audit.token-revoked`, `audit.pruned`, `audit.delivery-failed`, `audit.delivery-recovered` |
@@ -803,6 +847,12 @@ created it adds only what is missing. That covers what the old psql scripts did
 merged before the unique index is built (the lowest id is kept, the first non-empty value of each field
 wins, the highest role wins, and favourite groups, alternate managers and permissions are combined), and an
 index an interrupted script left invalid is rebuilt.
+
+**After the baseline:**
+
+| Migration | What |
+|---|---|
+| `V2__status_requests.sql` | The `status_requests` table, and `user_event_records.request_id`, the approved request a calendar day comes from (see [Statuses and approvals](#statuses-and-approvals)). Existing rows are untouched. |
 
 **Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
 Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the

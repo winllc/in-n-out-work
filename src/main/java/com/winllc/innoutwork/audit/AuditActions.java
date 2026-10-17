@@ -23,7 +23,8 @@ public final class AuditActions {
             "group.managers-changed",
             // data
             "person.updated", "calendar.status-set", "absence.alert-responded", "absence.alerts-dismissed",
-            "data.exported",
+            "data.exported", "calendar.request-created", "calendar.request-approved", "calendar.request-rejected",
+            "calendar.request-cancelled",
             // license
             "license.installed", "license.rejected", "license.mode-changed", "license.limit-exceeded",
             // system

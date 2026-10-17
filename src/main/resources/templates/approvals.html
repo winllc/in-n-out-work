@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Approvals</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">Approvals</span>
+
+<div layout:fragment="content">
+
+    <div th:if="${message}" class="alert alert-success" role="alert">
+        <span th:text="${message}"></span>
+    </div>
+    <div th:if="${error}" class="alert alert-danger" role="alert">
+        <span th:text="${error}"></span>
+    </div>
+
+    <div class="row row-cards">
+
+        <!-- What the signed-in user decides: their reports', their delegators', or everyone's as an administrator. -->
+        <div class="col-12" id="pending-requests">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Waiting for your approval</h3>
+                    <div class="card-actions text-secondary small" th:if="${isAdmin}">
+                        As an administrator you see everyone's, except your own.
+                    </div>
+                </div>
+                <div class="card-body" th:if="${#lists.isEmpty(pending)}">
+                    <p class="text-secondary mb-0">Nothing is waiting for you.</p>
+                </div>
+                <div class="table-responsive" th:unless="${#lists.isEmpty(pending)}">
+                    <table class="table table-vcenter card-table">
+                        <thead>
+                        <tr>
+                            <th>Person</th>
+                            <th>Status</th>
+                            <th>From</th>
+                            <th>Until</th>
+                            <th>Days</th>
+                            <th>Note</th>
+                            <th>Asked</th>
+                            <th class="w-1"></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="r : ${pending}">
+                            <td><a th:href="@{'/app/user/details/' + ${r.requesterDn}}" th:text="${r.requesterCn}"></a></td>
+                            <td th:text="${r.statusName}"></td>
+                            <td th:text="${r.fromDate}"></td>
+                            <td th:text="${r.toDate}"></td>
+                            <td th:text="${r.days}"></td>
+                            <td class="text-wrap" th:text="${r.note}"></td>
+                            <td class="text-secondary" th:text="${#temporals.format(r.createdAt, 'yyyy-MM-dd HH:mm')}"></td>
+                            <td>
+                                <div class="d-flex gap-2 align-items-start">
+                                    <form th:action="@{'/app/approvals/' + ${r.id} + '/approve'}" method="post"
+                                          class="d-flex gap-1">
+                                        <input type="text" name="comment" class="form-control form-control-sm"
+                                               maxlength="500" placeholder="Comment (optional)" aria-label="Comment">
+                                        <button type="submit" class="btn btn-sm btn-success">Approve</button>
+                                    </form>
+                                    <form th:action="@{'/app/approvals/' + ${r.id} + '/reject'}" method="post"
+                                          class="d-flex gap-1" data-confirm="Reject this request?">
+                                        <input type="text" name="comment" class="form-control form-control-sm"
+                                               maxlength="500" placeholder="Reason (optional)" aria-label="Reason">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">Reject</button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-4" id="new-request">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Ask for a status</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary small">
+                        Leave, telework and the other statuses that excuse an absence need your manager's approval.
+                        Until then they do not stop absence alerts. You can also drag across days on your
+                        <a th:href="@{/app/profile}">profile calendar</a>.
+                    </p>
+                    <form th:action="@{/app/approvals/request}" method="post">
+                        <div class="mb-2">
+                            <label class="form-label" for="request-status">Status</label>
+                            <select class="form-select" id="request-status" name="status" required>
+                                <option th:each="s : ${requestStatuses}" th:value="${s.name()}"
+                                        th:text="${s.friendlyName}"></option>
+                            </select>
+                        </div>
+                        <div class="row g-2 mb-2">
+                            <div class="col">
+                                <label class="form-label" for="request-from">First day</label>
+                                <input class="form-control" type="date" id="request-from" name="fromDate" required>
+                            </div>
+                            <div class="col">
+                                <label class="form-label" for="request-last">Last day</label>
+                                <input class="form-control" type="date" id="request-last" name="lastDate" required>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="request-note">Note for your manager (optional)</label>
+                            <input class="form-control" type="text" id="request-note" name="note" maxlength="500">
+                            <small class="form-hint">
+                                Kept with the request and shown to whoever approves it. At most
+                                <span th:text="${maxRangeDays}">366</span> days at a time.
+                            </small>
+                        </div>
+                        <button type="submit" class="btn btn-primary" th:disabled="${#lists.isEmpty(requestStatuses)}">
+                            Send request
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-8" id="my-requests">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">My requests</h3>
+                </div>
+                <div class="card-body" th:if="${#lists.isEmpty(mine)}">
+                    <p class="text-secondary mb-0">You have not asked for anything.</p>
+                </div>
+                <div class="table-responsive" th:unless="${#lists.isEmpty(mine)}">
+                    <table class="table table-vcenter card-table">
+                        <thead>
+                        <tr>
+                            <th>Status</th>
+                            <th>From</th>
+                            <th>Until</th>
+                            <th>State</th>
+                            <th>Decided by</th>
+                            <th>Comment</th>
+                            <th class="w-1"></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="r : ${mine}">
+                            <td th:text="${r.statusName}"></td>
+                            <td th:text="${r.fromDate}"></td>
+                            <td th:text="${r.toDate}"></td>
+                            <td>
+                                <span class="badge"
+                                      th:classappend="${r.state.name() == 'APPROVED'} ? 'bg-green-lt' : (${r.state.name() == 'REQUESTED'} ? 'bg-yellow-lt' : (${r.state.name() == 'REJECTED'} ? 'bg-red-lt' : 'bg-secondary-lt'))"
+                                      th:text="${#strings.capitalize(#strings.toLowerCase(r.state.name()))}"></span>
+                            </td>
+                            <td th:text="${r.decidedByCn}"></td>
+                            <td class="text-wrap" th:text="${r.decisionNote}"></td>
+                            <td>
+                                <form th:if="${r.state.name() == 'REQUESTED' or (r.state.name() == 'APPROVED' and !r.toDate.isBefore(today))}"
+                                      th:action="@{'/app/approvals/' + ${r.id} + '/cancel'}" method="post"
+                                      data-confirm="Cancel this request? Approved days from today on come off your calendar.">
+                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Cancel</button>
+                                </form>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
