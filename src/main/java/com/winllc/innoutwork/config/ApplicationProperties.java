@@ -2,6 +2,7 @@ package com.winllc.innoutwork.config;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
@@ -80,6 +81,23 @@ public class ApplicationProperties {
     private WindowsAuth windowsAuth = new WindowsAuth();
     @Valid
     private Logoff logoff = new Logoff();
+    @Valid
+    private Events events = new Events();
+
+    /**
+     * Statuses people put on calendars ({@code /api/event/**}, the organization calendar). See UserEventRestService.
+     */
+    @Data
+    public static class Events {
+        /**
+         * The most days one call may set a status or an organization calendar event on. A year (366, for a leap
+         * year), so a mistaken drag or a scripted call cannot fill a calendar for ever. Checked by every API that
+         * creates events.
+         */
+        @Min(value = 1, message = "application.events.max-range-days (APPLICATION_EVENTS_MAXRANGEDAYS) must be at least 1")
+        @Max(value = 3660, message = "application.events.max-range-days (APPLICATION_EVENTS_MAXRANGEDAYS) must be at most 3660")
+        private int maxRangeDays = 366;
+    }
 
     /**
      * The Windows client's logoff call, {@code POST /api/check/out}. It runs after the user's profile has gone,

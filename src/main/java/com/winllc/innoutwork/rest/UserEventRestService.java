@@ -8,6 +8,7 @@ import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.CalendarEvent;
+import com.winllc.innoutwork.data.EventRange;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.UserEventData;
 import com.winllc.innoutwork.data.reports.UserDayReport;
@@ -17,8 +18,10 @@ import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
+import com.winllc.innoutwork.service.InvalidRequestException;
 import com.winllc.innoutwork.service.ReportService;
 import org.apache.commons.lang3.StringUtils;
+import org.springframework.http.ResponseEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -125,6 +128,11 @@ public class UserEventRestService {
         return allEvents;
     }
 
+    /**
+     * Sets a status on the signed-in user's own days, {@code fromDate} up to (not including) {@code toDate}. The range
+     * is at most {@code application.events.max-range-days}; a longer, backwards or unreadable one is refused with 400
+     * before anything is written.
+     */
     @PostMapping("/update")
     public UserEventData updateEventForDay(Authentication authentication,
                                              @RequestBody UserEventData data){
@@ -132,22 +140,34 @@ public class UserEventRestService {
         log.debug("updateEventForDay called by %s with data: %s".formatted(authentication.getName(), data));
 
         String userDn = authentication.getName();
-        LocalDate fromLocalDate = LocalDate.parse(data.getFromDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
-        LocalDate toLocalDate = LocalDate.parse(data.getToDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
-        LocalDate firstDay = fromLocalDate;
-        LocalDate endDay = toLocalDate;
+        UserStatusEnum status = parseStatus(data.getStatus());
+        EventRange range = EventRange.parse(data.getFromDate(), data.getToDate(),
+                properties.getEvents().getMaxRangeDays());
 
         // A person's leave, telework or late arrival, as they set it on their calendar: saved and audited together.
-        audit.inTransaction(() -> setStatuses(userDn, data, firstDay, endDay));
+        audit.inTransaction(() -> setStatuses(userDn, data, status, range.from(), range.toExclusive()));
 
         return data;
     }
 
-    private void setStatuses(String userDn, UserEventData data, LocalDate fromLocalDate, LocalDate toLocalDate) {
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<Map<String, String>> invalid(InvalidRequestException e) {
+        return ApiErrors.of(e);
+    }
+
+    static UserStatusEnum parseStatus(String status) {
+        try {
+            return UserStatusEnum.valueOf(status == null ? "" : status.strip());
+        } catch (IllegalArgumentException e) {
+            throw InvalidRequestException.badRequest("invalid_status", "Unknown status: " + status);
+        }
+    }
+
+    private void setStatuses(String userDn, UserEventData data, UserStatusEnum status, LocalDate fromLocalDate,
+                             LocalDate toLocalDate) {
         LocalDate firstDay = fromLocalDate;
         int days = 0;
         while(fromLocalDate.isBefore(toLocalDate)){
-            UserStatusEnum status = UserStatusEnum.valueOf(data.getStatus());
             UserEventRecord record = new UserEventRecord();
             record.setDn(userDn);
             record.setDate(fromLocalDate);
@@ -176,7 +196,7 @@ public class UserEventRestService {
         }
         audit.record(AuditEntry.of(AuditEntry.Category.DATA, "calendar.status-set")
                 .target("user", userDn, LdapDn.cnOf(userDn))
-                .detail("status", data.getStatus())
+                .detail("status", status.name())
                 .detail("lateArrivalTime", data.getLateArrivalTime())
                 .detail("from", firstDay.toString())
                 .detail("to", toLocalDate.toString())

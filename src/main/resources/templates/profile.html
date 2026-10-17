@@ -250,8 +250,9 @@
                 },
                 selectable: true,
                 select: function (info) {
-                    const start = info.start.toISOString();
-                    const end = info.end.toISOString();
+                    // All-day selections: plain dates, the end being the day after the last one.
+                    const start = info.startStr;
+                    const end = info.endStr;
 
                     document.getElementById("statusUpdateDateFrom").value = start;
                     document.getElementById("statusUpdateDateTo").value = end;
@@ -287,13 +288,18 @@
                         lateArrivalTime: lateArrivalTime
 
                     })
-                }).then(() => {
-                    // Optionally, refresh the calendar to show updated events
+                }).then(async (response) => {
                     bootstrap.Modal.getInstance(
                         document.getElementById("selectionModal")
                     ).hide();
-
                     calendar.unselect();
+
+                    if (!response.ok) {
+                        // The server says why: too long a range, a status that is not yours to set, ...
+                        const problem = await response.json().catch(() => ({}));
+                        showToast(problem.message || "The status could not be set", {type: "danger", delay: 6000});
+                        return;
+                    }
                     calendar.refetchEvents();
                 });
 

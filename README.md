@@ -417,6 +417,7 @@ values that most often need changing per deployment:
 | `duty-sub-org-groups-base-dn` | Enables the org chart; blank disables it |
 | `ldap.max-pages` | Most pages one paged search reads before returning what it has (default 1000). Bounds a directory that keeps returning a paging cookie, which would otherwise hold the request open indefinitely. |
 | `checkOutAfterMinutes` | Minutes a session may stay locked before `MarkInactiveCron` checks it out (default 240; the packaged configuration used to say 2) |
+| `events.max-range-days` | The most days one call may set a status, a status request or an organization calendar event on (`APPLICATION_EVENTS_MAXRANGEDAYS`, default 366). Every API that creates events checks it and refuses a longer range with 400 (`range_too_long`) before writing anything. |
 | `notification-sender-email` | The From address of absence alerts; required once `SPRING_MAIL_HOST` is set (startup stops without it) |
 | `application-base-url` | Used in notification emails |
 
