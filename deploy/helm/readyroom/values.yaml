@@ -1,0 +1,458 @@
+# ReadyRoom Helm chart - default values.
+#
+# Every setting of the release bundle's env.template has a value here; anything else from the ReadyRoom
+# documentation can be added with extraEnv (property name upper-cased, dots and dashes dropped or turned
+# into underscores: application.check-out-after-minutes -> APPLICATION_CHECKOUTAFTERMINUTES).
+#
+# The minimum for a working install: database.host and database.password (or database.existingSecret),
+# the ldap block, superUserDns, and publicUrl. See README.md for examples.
+
+global:
+  # Registry that replaces the registry part of every image this chart runs (ReadyRoom, PostgreSQL,
+  # the migration job and the busybox license helper), for an air-gapped site with a mirror. Images
+  # are then pulled as <imageRegistry>/<path>: ghcr.io/winllc/in-n-out-work becomes
+  # <imageRegistry>/winllc/in-n-out-work, postgres becomes <imageRegistry>/postgres.
+  imageRegistry: ""
+
+image:
+  repository: ghcr.io/winllc/in-n-out-work
+  # Empty: the chart's appVersion (the ReadyRoom release this chart was published with).
+  tag: ""
+  pullPolicy: IfNotPresent
+
+# Secrets for pulling from a private registry: [{name: my-pull-secret}]
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+# One replica only. ReadyRoom keeps single-writer state: the license and installation id in the
+# license volume (ReadWriteOnce), and its scheduled jobs (directory sync, auto check-out, absence
+# e-mails) run in every instance, so a second replica would send duplicate e-mails and race the first
+# on the same records. More than 1 is not supported.
+replicaCount: 1
+
+# Recreate: the old pod releases the license volume before the new one mounts it.
+strategy:
+  type: Recreate
+
+revisionHistoryLimit: 3
+
+serviceAccount:
+  create: true
+  # Empty: the release's full name.
+  name: ""
+  annotations: {}
+
+podAnnotations: {}
+podLabels: {}
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 768Mi
+  limits:
+    memory: 1536Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints: []
+priorityClassName: ""
+
+# Pod security. The image runs as user 185, group 0 (Red Hat UBI OpenJDK).
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 185
+  runAsGroup: 0
+  fsGroup: 185
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container security. The root filesystem is read-only; the chart mounts emptyDirs at /tmp (Tomcat's
+# work directory, JVM perf data) and /var/tmp (the Kerberos replay cache).
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+openshift:
+  # true: leave runAsUser, runAsGroup and fsGroup out of every pod, so the restricted SCC assigns them.
+  enabled: false
+
+# JVM options. The default uses up to 75% of the container's memory limit.
+javaOpts: "-XX:MaxRAMPercentage=75.0"
+
+# ---------------------------------------------------------------------------------------------------
+# Public address and general settings
+# ---------------------------------------------------------------------------------------------------
+
+# The URL users reach ReadyRoom at (APPLICATION_BASE_URL); notification e-mails link to it. Empty: built
+# from the first ingress host (https:// when the ingress has TLS) or the route host, else ReadyRoom's
+# own default (http://localhost:8181).
+publicUrl: ""
+
+# Banner shown at the top of every page (needs the classification-banners license feature).
+bannerText: ReadyRoom
+# Time zone for dates on pages and in e-mails, and what "today" means for the jobs
+# (SPRING_JACKSON_TIMEZONE and APPLICATION_TIMEZONE).
+timezone: America/New_York
+# Minutes of inactivity before an open session is checked out automatically.
+checkOutAfterMinutes: 240
+# Where the "update my profile" link sends users (your directory's self-service page). Empty: unchanged.
+updateProfileUrl: ""
+# Application log level (LOGGING_LEVEL_COM_WINLLC_INNOUTWORK): info, or debug when diagnosing.
+logLevel: info
+
+# Users always treated as administrators, by full DN (APPLICATION_SUPERUSERDNS_n). At least one, or
+# nobody can administer ReadyRoom or reach the license screen.
+superUserDns: []
+#  - CN=Jane Admin,OU=Users,DC=example,DC=com
+
+# ---------------------------------------------------------------------------------------------------
+# Database (PostgreSQL)
+# ---------------------------------------------------------------------------------------------------
+
+database:
+  # Your PostgreSQL server. Ignored when embedded.enabled is true.
+  host: ""
+  port: 5432
+  name: readyroom
+  username: readyroom
+  # The password: inline (stored in a Secret the chart creates), or from your own Secret.
+  password: ""
+  existingSecret: ""
+  existingSecretKey: password
+
+  # A PostgreSQL inside the release: a single-replica StatefulSet with a PVC.
+  # EVALUATION ONLY, NO BACKUPS. Use your own PostgreSQL for production.
+  embedded:
+    enabled: false
+    image:
+      # The same image and tag the release bundle runs.
+      repository: postgres
+      tag: "16"
+      pullPolicy: IfNotPresent
+    persistence:
+      size: 8Gi
+      storageClass: ""
+      accessModes: ["ReadWriteOnce"]
+      existingClaim: ""
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        memory: 1Gi
+
+# The scripts in db/migrations (indexes and constraints Hibernate does not create). ReadyRoom creates its
+# tables itself on start (Hibernate ddl-auto: update); this Job then waits for them and runs every
+# script with psql, on each install and upgrade. The scripts are safe to run again and run with the
+# application up (CREATE INDEX CONCURRENTLY). The Job uses the database image, which has psql.
+migrations:
+  enabled: true
+  # How long the Job waits for ReadyRoom to create the tables.
+  waitSeconds: 900
+  backoffLimit: 3
+  # Finished Jobs are removed after this many seconds.
+  ttlSecondsAfterFinished: 86400
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# ---------------------------------------------------------------------------------------------------
+# Directory (your LDAP server or Active Directory)
+# ---------------------------------------------------------------------------------------------------
+
+ldap:
+  # Host and port; ReadyRoom connects with ldap://host:port (LDAP_HOST, LDAP_PORT).
+  host: ""
+  port: 389
+  # The whole URL instead, for LDAPS: ldaps://ldap.example.com:636 (SPRING_LDAP_URLS). Takes precedence
+  # over host/port. The directory's certificate must be trusted by the JVM (a public CA is).
+  url: ""
+  # A read-only service account (bind DN, or user@domain for AD) (LDAP_USERNAME).
+  bindDn: ""
+  # Its password (LDAP_PASSWORD): inline, or from your own Secret.
+  bindPassword: ""
+  existingSecret: ""
+  existingSecretKey: ldap-password
+  # Where users are (APPLICATION_USERBASEDN), and which entries are users (APPLICATION_USERLDAPFILTER;
+  # empty keeps (objectclass=inetOrgPerson); AD: (&(objectCategory=person)(objectClass=user))).
+  userBaseDn: ""
+  userFilter: ""
+  # Top-level group trees shown in the UI (APPLICATION_GROUPS_n_GROUPSBASEDN).
+  groupBaseDns: []
+  #  - OU=Groups,DC=example,DC=com
+  # Directory attributes ReadyRoom reads. Empty keeps the default shown.
+  attributes:
+    organization: ""         # o
+    location: ""             # l
+    employeeType: ""         # employeeType
+    managerId: ""            # title   (on a user: the id of their manager)
+    managerLdapId: ""        # street  (on a manager: their own id)
+    dutySubOrganization: ""  # departmentNumber
+
+# The org chart: the group tree it is built from (APPLICATION_DUTYSUBORGGROUPSBASEDN). Empty turns the
+# org chart off.
+orgChart:
+  groupsBaseDn: ""
+
+# ---------------------------------------------------------------------------------------------------
+# Mail (absence notifications)
+# ---------------------------------------------------------------------------------------------------
+
+smtp:
+  # Your SMTP server (SPRING_MAIL_HOST, SPRING_MAIL_PORT). Set it: the packaged default is a
+  # development host.
+  host: ""
+  port: 587
+  username: ""
+  # SMTP password: inline, or from your own Secret.
+  password: ""
+  existingSecret: ""
+  existingSecretKey: smtp-password
+  # SMTP AUTH and STARTTLS; set both false for a relay that takes neither.
+  auth: true
+  starttls: true
+  # Certificates trusted from the mail server: "*" (the packaged default) trusts any, or name your
+  # mail host to trust only certificates valid for it. Empty keeps the default.
+  sslTrust: ""
+  # From address of notification e-mails (APPLICATION_NOTIFICATIONSENDEREMAIL).
+  from: ""
+  # Include the mail server in /actuator/health (MANAGEMENT_HEALTH_MAIL_ENABLED). The Kubernetes
+  # liveness and readiness probes never include it, so a mail outage does not restart ReadyRoom.
+  healthCheck: true
+
+# ---------------------------------------------------------------------------------------------------
+# TLS and client certificates
+# ---------------------------------------------------------------------------------------------------
+
+# Off: plain HTTP on 8181, for browsers with username and password sign-in behind an ingress or route
+# that terminates TLS. Client-certificate (X.509) sign-in, which the Windows client's check-in, lock
+# and unlock calls use, needs ReadyRoom itself to terminate TLS: set enabled, supply the keystores,
+# and reach the pod with TLS passthrough (ingress-nginx ssl-passthrough, a route with termination:
+# passthrough) or a LoadBalancer Service. ReadyRoom does not read a client certificate from a header,
+# so an edge-terminating ingress cannot pass one on.
+tls:
+  enabled: false
+  # want: ask for a certificate but fall back to the password form (the default). need: require one.
+  # Keep "want": with "need" the kubelet's probes, which have no certificate, fail.
+  clientAuth: want
+  keystore:
+    # Secret holding the PKCS#12 keystore with the server's key and certificate chain (required when
+    # enabled; the image's built-in keystore is a development certificate):
+    #   kubectl create secret generic readyroom-tls --from-file=keystore.p12 --from-file=truststore.p12
+    secretName: ""
+    secretKey: keystore.p12
+    type: PKCS12
+    # Keystore password: inline, or from your own Secret.
+    password: ""
+    existingSecret: ""
+    existingSecretKey: keystore-password
+  truststore:
+    # Secret holding the PKCS#12 truststore with the CAs whose client certificates may sign in. Empty:
+    # the image's development truststore, which trusts no real CA.
+    secretName: ""
+    secretKey: truststore.p12
+    type: PKCS12
+    password: ""
+    existingSecret: ""
+    existingSecretKey: truststore-password
+
+# ---------------------------------------------------------------------------------------------------
+# Windows (Kerberos) sign-in for the Windows client's check-in, lock and unlock calls
+# ---------------------------------------------------------------------------------------------------
+
+windowsAuth:
+  enabled: false
+  # The app's service principal, HTTP/<host>@REALM (APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL). Required
+  # when enabled. <host> is the name the Windows client's BaseUrl uses.
+  servicePrincipal: ""
+  # Secret holding the keytab for that principal, mounted at /etc/in-n-out/http.keytab. Required when
+  # enabled:  kubectl create secret generic readyroom-keytab --from-file=http.keytab
+  keytab:
+    secretName: ""
+    secretKey: http.keytab
+  # krb5.conf (your realm and domain controllers), mounted at /etc/krb5.conf. Optional: checking a
+  # ticket needs only the keytab. Inline text, or a ConfigMap of your own.
+  krb5Conf: ""
+  krb5ConfExistingConfigMap: ""
+  krb5ConfExistingConfigMapKey: krb5.conf
+  # Directory attribute holding the Windows account name: sAMAccountName, or userPrincipalName with
+  # stripRealm false.
+  accountAttribute: sAMAccountName
+  stripRealm: true
+  # Realms whose users may sign in, comma-separated. Empty: the service principal's realm.
+  allowedRealms: ""
+
+# ---------------------------------------------------------------------------------------------------
+# Audit logging (ens-audit/1): the ENS_AUDIT_* settings
+# ---------------------------------------------------------------------------------------------------
+
+audit:
+  # Each event as one JSON line on stdout (kubectl logs).
+  stdout: true
+  # Also write the lines to a file, rotated daily or at 100 MB, under /var/log/ens/readyroom.
+  file:
+    enabled: false
+    path: /var/log/ens/readyroom/audit.jsonl
+    keep: 30
+    # A PVC for the file; off: an emptyDir, lost with the pod.
+    persistence:
+      enabled: false
+      size: 1Gi
+      storageClass: ""
+      accessModes: ["ReadWriteOnce"]
+      existingClaim: ""
+  # Days to keep audit events in the database; 0 keeps them forever.
+  retentionDays: 0
+  splunk:
+    # Splunk HTTP Event Collector, https://splunk.example.com:8088. Off when empty.
+    url: ""
+    # HEC token: inline, or from your own Secret.
+    token: ""
+    existingSecret: ""
+    existingSecretKey: splunk-token
+    index: ""
+    sourcetype: ens:audit
+    # Skip TLS certificate checks. Test setups only.
+    insecure: false
+  syslog:
+    # Syslog (RFC 5424). Off when host is empty.
+    host: ""
+    # Empty: 514 for udp and tcp, 6514 for tls.
+    port: ""
+    protocol: tcp
+    facility: local0
+
+# ---------------------------------------------------------------------------------------------------
+# License and persistence
+# ---------------------------------------------------------------------------------------------------
+
+persistence:
+  license:
+    # The license, this installation's id (licenses can be bound to it) and the licensing state,
+    # mounted at /var/lib/ens. Keep this PVC: if it is lost the installation gets a new id and a
+    # license bound to the old one stops working. helm uninstall deletes it unless existingClaim is
+    # used, so back it up, or use an existingClaim you manage yourself.
+    enabled: true
+    size: 100Mi
+    storageClass: ""
+    accessModes: ["ReadWriteOnce"]
+    existingClaim: ""
+
+license:
+  # Optional. A license file to install when none is installed yet: an init container copies it into
+  # the license volume only if that holds no license, so a newer license uploaded on the license screen
+  # (/app/admin/license) is never overwritten by a later helm upgrade. Either your own Secret with the
+  # key license.lic, or the file itself:  --set-file license.file=./license.lic
+  existingSecret: ""
+  file: ""
+
+# The init container that copies the license (a pinned busybox).
+licenseInit:
+  image:
+    repository: busybox
+    tag: "1.36.1"
+    pullPolicy: IfNotPresent
+
+# ---------------------------------------------------------------------------------------------------
+# Networking
+# ---------------------------------------------------------------------------------------------------
+
+service:
+  # ClusterIP, or LoadBalancer to give the Windows client a direct TLS address (with tls.enabled).
+  type: ClusterIP
+  port: 8181
+  annotations: {}
+  loadBalancerIP: ""
+  loadBalancerSourceRanges: []
+  # Local keeps the client's source address; Cluster spreads load.
+  externalTrafficPolicy: ""
+  nodePort: ""
+
+ingress:
+  enabled: false
+  className: ""
+  # With tls.enabled, for ingress-nginx:
+  #   nginx.ingress.kubernetes.io/backend-protocol: HTTPS   (edge TLS, re-encrypted to the pod)
+  #   nginx.ingress.kubernetes.io/ssl-passthrough: "true"   (passthrough: client certificates reach
+  #                                                          ReadyRoom; the controller needs
+  #                                                          --enable-ssl-passthrough)
+  annotations: {}
+  hosts:
+    - host: readyroom.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  # - secretName: readyroom-ingress-tls
+  #   hosts: [readyroom.example.com]
+  tls: []
+
+# OpenShift Route.
+route:
+  enabled: false
+  host: ""
+  annotations: {}
+  tls:
+    # edge (TLS ends at the router; plain HTTP to the pod), reencrypt (needs tls.enabled), or
+    # passthrough (needs tls.enabled; client certificates reach ReadyRoom).
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+networkPolicy:
+  enabled: false
+  # Who may reach ReadyRoom's port. Empty: anyone.
+  ingressFrom: []
+  #  - namespaceSelector:
+  #      matchLabels:
+  #        kubernetes.io/metadata.name: ingress-nginx
+  egress:
+    # true: no egress restriction. false: DNS, plus the ports below to cidrs.
+    allowAll: false
+    # Destinations for the database, LDAP, SMTP and audit outputs.
+    cidrs:
+      - 0.0.0.0/0
+    # TCP ports to allow to cidrs. The database port, the LDAP and SMTP ports and the audit ports are
+    # added from the values above.
+    extraPorts: []
+
+# ---------------------------------------------------------------------------------------------------
+# Probes (Spring Boot actuator; HTTPS when tls.enabled)
+# ---------------------------------------------------------------------------------------------------
+
+probes:
+  startup:
+    # Up to 10 minutes for the first start, while Hibernate creates the schema.
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    failureThreshold: 120
+    timeoutSeconds: 3
+  liveness:
+    periodSeconds: 20
+    failureThreshold: 3
+    timeoutSeconds: 5
+  readiness:
+    periodSeconds: 10
+    failureThreshold: 3
+    timeoutSeconds: 5
+
+# ---------------------------------------------------------------------------------------------------
+# Anything else
+# ---------------------------------------------------------------------------------------------------
+
+# Extra environment variables: [{name: APPLICATION_LDAP_PAGESIZE, value: "1000"}]
+extraEnv: []
+# Extra sources: [{secretRef: {name: my-env}}, {configMapRef: {name: my-config}}]
+extraEnvFrom: []
+extraVolumes: []
+extraVolumeMounts: []
+
+# The helm test pod (helm test <release>): curls the health endpoint, from the ReadyRoom image.
+tests:
+  enabled: true

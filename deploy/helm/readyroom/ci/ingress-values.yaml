@@ -1,0 +1,51 @@
+# Browsers through ingress-nginx with TLS at the ingress (edge); username and password sign-in.
+database:
+  host: postgres.example.internal
+  password: example-db-password
+ldap:
+  url: ldaps://ldap.example.internal:636
+  bindDn: CN=readyroom-svc,OU=Service Accounts,DC=example,DC=com
+  bindPassword: example-ldap-password
+  userBaseDn: DC=example,DC=com
+  userFilter: (&(objectCategory=person)(objectClass=user))
+  groupBaseDns:
+    - OU=Groups,DC=example,DC=com
+    - OU=Departments,DC=example,DC=com
+superUserDns:
+  - CN=Jane Admin,OU=Users,DC=example,DC=com
+orgChart:
+  groupsBaseDn: OU=Groups,DC=example,DC=com
+smtp:
+  host: smtp.example.internal
+  username: readyroom
+  password: example-smtp-password
+  from: readyroom@example.com
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 2m
+  hosts:
+    - host: readyroom.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: readyroom-ingress-tls
+      hosts: [readyroom.example.com]
+networkPolicy:
+  enabled: true
+  ingressFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  egress:
+    cidrs: [10.0.0.0/8]
+audit:
+  splunk:
+    url: https://splunk.example.internal:8088
+    token: example-hec-token
+    index: ens
+  syslog:
+    host: syslog.example.internal
+    protocol: udp

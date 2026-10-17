@@ -1,0 +1,111 @@
+{{- if .Values.migrations.enabled -}}
+{{- $m := .Values.migrations -}}
+# The release's database scripts (db/migrations in the source), run by the Job below.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "readyroom.fullname" . }}-migrations
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrations
+data:
+  {{- (.Files.Glob "files/migrations/*.sql").AsConfig | nindent 2 }}
+---
+# Waits until ReadyRoom has created its tables (Hibernate does that on start), then runs every script
+# with psql. One Job per release revision, so each install and upgrade runs them; the scripts are safe
+# to run again and run while ReadyRoom is up. Not a hook, so "helm install" does not wait for it.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ printf "%s-migrate-%d" (include "readyroom.fullname" .) .Release.Revision | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrations
+spec:
+  backoffLimit: {{ $m.backoffLimit }}
+  activeDeadlineSeconds: {{ add $m.waitSeconds 3600 }}
+  ttlSecondsAfterFinished: {{ $m.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      annotations:
+        checksum/migrations: {{ (.Files.Glob "files/migrations/*.sql").AsConfig | sha256sum }}
+      labels:
+        {{- include "readyroom.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrations
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "readyroom.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "readyroom.podSecurityContext" (dict "ctx" (dict "runAsNonRoot" true "runAsUser" 999 "runAsGroup" 999 "seccompProfile" (dict "type" "RuntimeDefault")) "root" .) | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "readyroom.dbImage" . }}
+          imagePullPolicy: {{ .Values.database.embedded.image.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              tables="'user_records','permission_records','check_in_out_records','user_event_records','notification_records','group_records','global_calendar_records'"
+              query="SELECT count(*) FROM unnest(ARRAY[$tables]) t WHERE to_regclass('public.' || t) IS NOT NULL"
+              deadline=$(( $(date +%s) + WAIT_SECONDS ))
+              echo "Waiting for ReadyRoom to create its tables in $PGDATABASE on $PGHOST ..."
+              until [ "$(psql -tAc "$query" 2>/dev/null || true)" = 7 ]; do
+                if [ "$(date +%s)" -ge "$deadline" ]; then
+                  echo "ReadyRoom has not created its tables after ${WAIT_SECONDS}s; is it running? (kubectl logs deploy/{{ include "readyroom.fullname" . }})"
+                  exit 1
+                fi
+                sleep 10
+              done
+              for f in /migrations/*.sql; do
+                echo "Running $(basename "$f")"
+                # Never in one transaction: the scripts use CREATE INDEX CONCURRENTLY.
+                psql -v ON_ERROR_STOP=1 -f "$f"
+              done
+          env:
+            - name: WAIT_SECONDS
+              value: {{ $m.waitSeconds | quote }}
+            - name: PGHOST
+              value: {{ include "readyroom.dbHost" . | quote }}
+            - name: PGPORT
+              value: {{ .Values.database.port | quote }}
+            - name: PGDATABASE
+              value: {{ .Values.database.name | quote }}
+            - name: PGUSER
+              value: {{ .Values.database.username | quote }}
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  {{- include "readyroom.dbPasswordRef" . | nindent 18 }}
+            - name: PGAPPNAME
+              value: readyroom-migrations
+          securityContext:
+            {{- include "readyroom.containerSecurityContext" . | nindent 12 }}
+          resources:
+            {{- toYaml $m.resources | nindent 12 }}
+          volumeMounts:
+            - name: migrations
+              mountPath: /migrations
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: migrations
+          configMap:
+            name: {{ include "readyroom.fullname" . }}-migrations
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

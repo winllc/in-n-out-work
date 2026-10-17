@@ -1,0 +1,22 @@
+# Evaluation: the embedded PostgreSQL (no backups) and a license from a file.
+database:
+  embedded:
+    enabled: true
+ldap:
+  host: ldap.example.internal
+  bindDn: cn=admin,dc=example,dc=com
+  bindPassword: example-ldap-password
+  userBaseDn: dc=example,dc=com
+  groupBaseDns:
+    - "ou=Groups,dc=example,dc=com"
+superUserDns:
+  - "cn=Jane Admin,ou=Users,dc=example,dc=com"
+smtp:
+  healthCheck: false
+license:
+  file: |
+    -----BEGIN ENS LICENSE-----
+    example
+    -----END ENS LICENSE-----
+networkPolicy:
+  enabled: true

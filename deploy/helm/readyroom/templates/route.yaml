@@ -1,0 +1,34 @@
+{{- if .Values.route.enabled -}}
+{{- $term := .Values.route.tls.termination -}}
+{{- if and (has $term (list "passthrough" "reencrypt")) (not .Values.tls.enabled) -}}
+{{- fail (printf "route.tls.termination %s needs tls.enabled: ReadyRoom must speak TLS itself" $term) -}}
+{{- end -}}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "readyroom.fullname" . }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+  {{- with .Values.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "readyroom.fullname" . }}
+    weight: 100
+  port:
+    targetPort: {{ include "readyroom.portName" . }}
+  tls:
+    termination: {{ $term }}
+    {{- if ne $term "passthrough" }}
+    insecureEdgeTerminationPolicy: {{ .Values.route.tls.insecureEdgeTerminationPolicy }}
+    {{- else }}
+    insecureEdgeTerminationPolicy: None
+    {{- end }}
+  wildcardPolicy: None
+{{- end }}

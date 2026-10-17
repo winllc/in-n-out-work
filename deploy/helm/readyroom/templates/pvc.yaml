@@ -1,0 +1,42 @@
+{{- $p := .Values.persistence.license -}}
+{{- if and $p.enabled (not $p.existingClaim) }}
+# The license, the installation id and the licensing state. Keep it: see persistence.license in
+# values.yaml. It is an ordinary release resource, so "helm uninstall" deletes it; back it up first, or
+# create the claim yourself and set persistence.license.existingClaim.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "readyroom.licenseClaimName" . }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: license
+spec:
+  accessModes:
+    {{- toYaml $p.accessModes | nindent 4 }}
+  {{- with $p.storageClass }}
+  storageClassName: {{ if eq . "-" }}""{{ else }}{{ . }}{{ end }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $p.size }}
+{{- end }}
+{{- $a := .Values.audit.file -}}
+{{- if and $a.enabled $a.persistence.enabled (not $a.persistence.existingClaim) }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "readyroom.fullname" . }}-audit
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: audit
+spec:
+  accessModes:
+    {{- toYaml $a.persistence.accessModes | nindent 4 }}
+  {{- with $a.persistence.storageClass }}
+  storageClassName: {{ if eq . "-" }}""{{ else }}{{ . }}{{ end }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $a.persistence.size }}
+{{- end }}

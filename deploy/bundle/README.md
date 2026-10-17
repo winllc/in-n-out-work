@@ -4,7 +4,9 @@ Workforce check-in/out and attendance for an LDAP-backed organization, by ENS So
 installs the ReadyRoom server with Docker Compose. Everything it needs is included: the container
 images are in `images/`, so a site without internet access needs nothing else.
 
-Full documentation: https://ens-solutions.com/ (Configuration, Windows authentication, Licensing).
+Full documentation: https://winllc.github.io/ens-apps-documentation/readyroom/install/ (installation,
+configuration, Windows authentication, licensing). For Kubernetes or OpenShift, install with the Helm
+chart instead (`readyroom-helm-__VERSION__.tgz` in the release download).
 
 ## What you need
 

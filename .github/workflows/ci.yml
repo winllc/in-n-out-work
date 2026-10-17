@@ -40,6 +40,54 @@ jobs:
           name: test-results
           path: build/reports/tests/test
 
+  helm:
+    # The Helm chart (deploy/helm/readyroom): lint and schema-check it with every example values file.
+    runs-on: ubuntu-latest
+
+    env:
+      CHART: deploy/helm/readyroom
+      KUBECONFORM_VERSION: v0.6.7
+      KUBECONFORM_SHA256: 95f14e87aa28c09d5941f11bd024c1d02fdc0303ccaa23f61cef67bc92619d73
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/kubeconform.tar.gz" \
+            "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          echo "${KUBECONFORM_SHA256}  $RUNNER_TEMP/kubeconform.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/kubeconform.tar.gz" -C "$RUNNER_TEMP" kubeconform
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: The chart carries the same database scripts as db/migrations
+        run: diff -r db/migrations "$CHART/files/migrations"
+
+      - name: Lint
+        run: |
+          for values in "$CHART"/ci/*.yaml; do
+            echo "::group::helm lint $values"
+            helm lint --strict "$CHART" -f "$values"
+            echo "::endgroup::"
+          done
+
+      - name: Render and validate against the Kubernetes 1.29 schemas
+        run: |
+          for values in "$CHART"/ci/*.yaml; do
+            echo "::group::helm template $values"
+            # The OpenShift Route has no upstream schema; only the OpenShift example renders one.
+            extra=()
+            case "$values" in *openshift*) extra=(-ignore-missing-schemas) ;; esac
+            helm template readyroom "$CHART" -f "$values" \
+              | kubeconform -strict -summary -kubernetes-version 1.29.0 "${extra[@]}"
+            echo "::endgroup::"
+          done
+
   image:
     # Builds the image on every push, checks it starts, and publishes what it just checked.
     # Nothing is published from a pull request: a fork's token cannot write packages, and
@@ -194,6 +242,38 @@ jobs:
           output-file: ${{ env.RELEASE_OUT }}/sbom-postgres.spdx.json
           upload-artifact: false
           upload-release-assets: false
+
+      - name: Set up Helm
+        if: steps.version.outputs.build == 'true'
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      # The Helm chart, versioned like the release. It goes into the release output (so SHA256SUMS,
+      # the signature, the bucket and the workflow artifact cover it) as readyroom-helm-<version>.tgz,
+      # and on a release tag to oci://ghcr.io/winllc/charts/readyroom. Pull request dry runs package it
+      # as 0.0.0-pr<n> and never push it.
+      - name: Package the Helm chart
+        id: chart
+        if: steps.version.outputs.build == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          helm package deploy/helm/readyroom --version "$VERSION" --app-version "$VERSION" \
+            --destination "$RUNNER_TEMP/chart"
+          cp "$RUNNER_TEMP/chart/readyroom-$VERSION.tgz" "$RELEASE_OUT/$PRODUCT_ID-helm-$VERSION.tgz"
+          echo "tgz=$RUNNER_TEMP/chart/readyroom-$VERSION.tgz" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the Helm chart
+        if: steps.version.outputs.build == 'true' && steps.version.outputs.release == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+          TGZ: ${{ steps.chart.outputs.tgz }}
+        run: |
+          echo "$GITHUB_TOKEN" | helm registry login ghcr.io -u "$ACTOR" --password-stdin
+          helm push "$TGZ" oci://ghcr.io/winllc/charts
+          helm registry logout ghcr.io
 
       - name: Build the release bundle
         if: steps.version.outputs.build == 'true'
