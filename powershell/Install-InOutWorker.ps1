@@ -231,8 +231,12 @@ if ($Uninstall) {
                     Write-Warning "Could not remove $($item.FullName): $($_.Exception.Message)"
                 }
             }
-            [System.IO.Directory]::Delete($SessionDir)
-            Write-Host "Removed $SessionDir"
+            try {
+                [System.IO.Directory]::Delete($SessionDir)
+                Write-Host "Removed $SessionDir"
+            } catch {
+                Write-Warning "Could not remove ${SessionDir}: $($_.Exception.Message)"
+            }
         }
     }
     Write-Host "Logs left in place: $LogDir, and %LOCALAPPDATA%\InOutWorker\logs in each user's profile"
