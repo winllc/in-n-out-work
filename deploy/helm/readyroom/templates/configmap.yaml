@@ -1,0 +1,161 @@
+{{- $v := .Values -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "readyroom.fullname" . }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+data:
+  # Non-secret settings, as ReadyRoom's environment (the release bundle's env.template).
+  JAVA_OPTS: {{ $v.javaOpts | quote }}
+  # The license directory, exactly as the image sets it; the license PVC is mounted at /var/lib/ens.
+  ENS_LICENSE_STATE_DIR: /var/lib/ens/readyroom
+  ENS_LICENSE_FILE: /var/lib/ens/readyroom/license.lic
+  # The Kubernetes probes use /actuator/health/liveness and /readiness.
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  {{- with include "readyroom.publicUrl" . }}
+  APPLICATION_BASE_URL: {{ . | quote }}
+  {{- end }}
+
+  # Database
+  DB_HOST: {{ include "readyroom.dbHost" . | quote }}
+  DB_PORT: {{ $v.database.port | quote }}
+  DB_NAME: {{ $v.database.name | quote }}
+  DB_USERNAME: {{ $v.database.username | quote }}
+
+  # Directory
+  {{- with $v.ldap.host }}
+  LDAP_HOST: {{ . | quote }}
+  {{- end }}
+  LDAP_PORT: {{ $v.ldap.port | quote }}
+  {{- with $v.ldap.url }}
+  SPRING_LDAP_URLS: {{ . | quote }}
+  {{- end }}
+  {{- with $v.ldap.bindDn }}
+  LDAP_USERNAME: {{ . | quote }}
+  {{- end }}
+  {{- with $v.ldap.userBaseDn }}
+  APPLICATION_USERBASEDN: {{ . | quote }}
+  {{- end }}
+  {{- with $v.ldap.userFilter }}
+  APPLICATION_USERLDAPFILTER: {{ . | quote }}
+  {{- end }}
+  {{- range $i, $dn := $v.ldap.groupBaseDns }}
+  APPLICATION_GROUPS_{{ $i }}_GROUPSBASEDN: {{ $dn | quote }}
+  {{- end }}
+  {{- range $i, $dn := $v.superUserDns }}
+  APPLICATION_SUPERUSERDNS_{{ $i }}: {{ $dn | quote }}
+  {{- end }}
+  APPLICATION_DUTYSUBORGGROUPSBASEDN: {{ $v.orgChart.groupsBaseDn | quote }}
+  {{- with $v.ldap.attributes }}
+  {{- with .organization }}
+  APPLICATION_USERLDAPORGANIZATIONATTRIBUTE: {{ . | quote }}
+  {{- end }}
+  {{- with .location }}
+  APPLICATION_USERLDAPLOCATIONATTRIBUTE: {{ . | quote }}
+  {{- end }}
+  {{- with .employeeType }}
+  APPLICATION_USERLDAPEMPLOYEETYPEATTRIBUTE: {{ . | quote }}
+  {{- end }}
+  {{- with .managerId }}
+  APPLICATION_USERLDAPMANAGERIDATTRIBUTE: {{ . | quote }}
+  {{- end }}
+  {{- with .managerLdapId }}
+  APPLICATION_MANAGERLDAPIDATTRIBUTE: {{ . | quote }}
+  {{- end }}
+  {{- with .dutySubOrganization }}
+  APPLICATION_USERLDAPDUTYSUBORGANIZATIONATTRIBUTE: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+
+  # Mail
+  {{- with $v.smtp.host }}
+  SPRING_MAIL_HOST: {{ . | quote }}
+  {{- end }}
+  SPRING_MAIL_PORT: {{ $v.smtp.port | quote }}
+  {{- with $v.smtp.username }}
+  SPRING_MAIL_USERNAME: {{ . | quote }}
+  {{- end }}
+  SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: {{ $v.smtp.auth | quote }}
+  SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: {{ $v.smtp.starttls | quote }}
+  {{- with $v.smtp.sslTrust }}
+  SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST: {{ . | quote }}
+  {{- end }}
+  {{- with $v.smtp.from }}
+  APPLICATION_NOTIFICATIONSENDEREMAIL: {{ . | quote }}
+  {{- end }}
+  MANAGEMENT_HEALTH_MAIL_ENABLED: {{ $v.smtp.healthCheck | quote }}
+
+  # TLS
+  SSL_ENABLED: {{ $v.tls.enabled | quote }}
+  {{- if $v.tls.enabled }}
+  SERVER_SSL_CLIENTAUTH: {{ $v.tls.clientAuth | quote }}
+  SERVER_SSL_KEYSTORE: file:/etc/in-n-out/tls/keystore/{{ $v.tls.keystore.secretKey }}
+  SERVER_SSL_KEYSTORETYPE: {{ $v.tls.keystore.type | quote }}
+  {{- if $v.tls.truststore.secretName }}
+  SERVER_SSL_TRUSTSTORE: file:/etc/in-n-out/tls/truststore/{{ $v.tls.truststore.secretKey }}
+  SERVER_SSL_TRUSTSTORETYPE: {{ $v.tls.truststore.type | quote }}
+  {{- end }}
+  {{- end }}
+
+  # Windows (Kerberos) sign-in
+  APPLICATION_WINDOWSAUTH_ENABLED: {{ $v.windowsAuth.enabled | quote }}
+  {{- if $v.windowsAuth.enabled }}
+  APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL: {{ required "windowsAuth.servicePrincipal is required when windowsAuth.enabled (HTTP/<host>@REALM)" $v.windowsAuth.servicePrincipal | quote }}
+  APPLICATION_WINDOWSAUTH_KEYTABLOCATION: /etc/in-n-out/http.keytab
+  APPLICATION_WINDOWSAUTH_ACCOUNTATTRIBUTE: {{ $v.windowsAuth.accountAttribute | quote }}
+  APPLICATION_WINDOWSAUTH_STRIPREALM: {{ $v.windowsAuth.stripRealm | quote }}
+  {{- with $v.windowsAuth.allowedRealms }}
+  APPLICATION_WINDOWSAUTH_ALLOWEDREALMS: {{ . | quote }}
+  {{- end }}
+  {{- end }}
+
+  # Audit logging (ens-audit/1)
+  ENS_AUDIT_STDOUT: {{ $v.audit.stdout | quote }}
+  {{- if $v.audit.file.enabled }}
+  ENS_AUDIT_FILE: {{ $v.audit.file.path | quote }}
+  ENS_AUDIT_FILE_KEEP: {{ $v.audit.file.keep | quote }}
+  {{- end }}
+  ENS_AUDIT_RETENTION_DAYS: {{ $v.audit.retentionDays | quote }}
+  {{- with $v.audit.splunk }}
+  {{- if .url }}
+  ENS_AUDIT_SPLUNK_URL: {{ .url | quote }}
+  {{- with .index }}
+  ENS_AUDIT_SPLUNK_INDEX: {{ . | quote }}
+  {{- end }}
+  ENS_AUDIT_SPLUNK_SOURCETYPE: {{ .sourcetype | quote }}
+  ENS_AUDIT_SPLUNK_INSECURE: {{ .insecure | quote }}
+  {{- end }}
+  {{- end }}
+  {{- with $v.audit.syslog }}
+  {{- if .host }}
+  ENS_AUDIT_SYSLOG_HOST: {{ .host | quote }}
+  {{- with .port }}
+  ENS_AUDIT_SYSLOG_PORT: {{ . | quote }}
+  {{- end }}
+  ENS_AUDIT_SYSLOG_PROTOCOL: {{ .protocol | quote }}
+  ENS_AUDIT_SYSLOG_FACILITY: {{ .facility | quote }}
+  {{- end }}
+  {{- end }}
+
+  # Other
+  APPLICATION_BANNERTEXT: {{ $v.bannerText | quote }}
+  SPRING_JACKSON_TIMEZONE: {{ $v.timezone | quote }}
+  APPLICATION_TIMEZONE: {{ $v.timezone | quote }}
+  APPLICATION_CHECKOUTAFTERMINUTES: {{ $v.checkOutAfterMinutes | quote }}
+  {{- with $v.updateProfileUrl }}
+  APPLICATION_UPDATEPROFILEURL: {{ . | quote }}
+  {{- end }}
+  LOGGING_LEVEL_COM_WINLLC_INNOUTWORK: {{ $v.logLevel | quote }}
+{{- if and $v.windowsAuth.enabled $v.windowsAuth.krb5Conf (not $v.windowsAuth.krb5ConfExistingConfigMap) }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "readyroom.fullname" . }}-krb5
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+data:
+  krb5.conf: |
+    {{- $v.windowsAuth.krb5Conf | nindent 4 }}
+{{- end }}

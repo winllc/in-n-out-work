@@ -12,6 +12,30 @@ rollups, an org chart and absence notifications.
 
 ---
 
+## Install
+
+Customers install ReadyRoom in one of two supported ways. Both are described step by step in the
+installation guide: https://winllc.github.io/ens-apps-documentation/readyroom/install/
+
+| | What | Where it comes from |
+|---|---|---|
+| **Release package** | `readyroom-<version>.tar.gz`: Docker Compose deployment of ReadyRoom and PostgreSQL 16 with `install.sh`, `upgrade.sh`, `env.template`, the Windows client and the container images (works air-gapped) | The signed release download (see [Releases](#releases)); sources in [`deploy/bundle/`](deploy/bundle/) |
+| **Helm chart** | `readyroom` for Kubernetes and OpenShift, against your PostgreSQL (or an embedded one for evaluation) | `oci://ghcr.io/winllc/charts/readyroom`, or `readyroom-helm-<version>.tgz` in the release download; sources and every value in [`deploy/helm/readyroom/`](deploy/helm/readyroom/README.md) |
+
+```bash
+# Release package
+tar xzf readyroom-1.2.3.tar.gz && cd readyroom-1.2.3 && ./install.sh
+
+# Helm
+helm install readyroom oci://ghcr.io/winllc/charts/readyroom --version 1.2.3 -n readyroom --create-namespace -f my-values.yaml
+```
+
+Either way ReadyRoom needs your LDAP directory or Active Directory, an SMTP server, and an ENS
+Solutions license, uploaded on the license screen (`/app/admin/license`) or supplied at install time.
+Building from source is for contributors only: see [Development](#development).
+
+---
+
 ## How it fits together
 
 ```
@@ -61,127 +85,6 @@ either by role or per-group through `PermissionRecord`, evaluated by
 
 ---
 
-## Running locally
-
-### 1. Backing services
-
-```bash
-cd test && docker compose up -d
-```
-
-Brings up PostgreSQL, OpenLDAP, [phpLDAPadmin](http://localhost:8081),
-[Adminer](http://localhost:8082) and a `step-ca` certificate authority.
-
-| Service | Port |
-|---|---|
-| PostgreSQL | 5432 |
-| LDAP / LDAPS | 1389 / 1636 |
-| phpLDAPadmin | 8081 |
-| Adminer | 8082 |
-| step-ca | 8443 |
-
-### 2. Seed mock data
-
-```bash
-cd test && ./seed-mock-data.sh
-```
-
-Adds mock users and groups to LDAP plus historical, current and future
-check-in/out records. It talks to the containers via `docker exec`, so no local
-`psql` or `ldap-utils` needed, and it is safe to re-run.
-
-### 3. Run the app
-
-```bash
-./gradlew bootRun --args='--spring.profiles.active=local'
-```
-
-Then open <http://localhost:8181>. Requires a JDK 21 on `JAVA_HOME`.
-
-It needs an ENS license, and a writable place for it: set `ENS_LICENSE_STATE_DIR` and
-`ENS_LICENSE_FILE` (for example to `$PWD/license-state` and `$PWD/license-state/license.lic`), then
-sign in as an administrator and upload the license at `/app/admin/license`. See
-[Licensing](#licensing).
-
-The `local` profile is what points the app at `localhost` and the published
-ports. The defaults in `application.yml` name the compose services (`postgres`,
-`openldap`), which only resolve from inside the compose network — see
-[Configuration](#configuration).
-
-### Everything in containers instead
-
-```bash
-docker compose up --build
-```
-
-`docker-compose.yml` in the repository root builds the app from source and runs
-it alongside its own PostgreSQL and OpenLDAP. No profile and no overrides: the
-packaged defaults already name those services. It reuses the same container
-names as `test/docker-compose.yml`, so do not run both at once.
-
----
-
-## Product page
-
-`product-site/` is a static page introducing the application, served by
-unprivileged nginx in its own container on the same host as the app.
-
-```bash
-cd product-site && docker compose up -d --build
-```
-
-Browse to `http://<host>/`. Every "Open the app" link goes to `/launch`, which
-redirects to the application.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `PRODUCT_SITE_PORT` | `80` | Host port for the product page |
-| `APP_URL` | `http://$host:8181/` | Where `/launch` redirects. `$host` is whatever hostname the visitor used, so the default reaches the app on the same host. Set a full URL if the app is reached another way. |
-
-The page loads nothing from other origins and runs no scripts, which lets nginx
-send a strict Content-Security-Policy; keep new markup free of inline `style`
-attributes and `<script>` tags. `/healthz` backs the container health check. The
-logo and favicon in `product-site/site/assets/` are copies of the app's, so
-update both when the branding changes.
-
----
-
-## Tests
-
-```bash
-./gradlew test
-```
-
-JUnit 5 + Mockito, with `@WebMvcTest` slices for the controllers. LDAP code
-runs against an in-memory UnboundID directory. Tests of the migration script and
-of concurrent writes run against PostgreSQL in a container (Testcontainers), and
-are skipped when Docker is not available. Windows sign-in is tested with real
-Kerberos tickets from an in-process KDC (Apache Kerby), no domain needed.
-
-Licensing is tested with the ENS portal's published TEST key, which no build trusts: the test
-configuration `license/TestLicensing` supplies a `LicenseManager` that trusts it (over a temporary
-directory, with a full license installed) in place of the production one, and `TestLicenses` signs
-`ens-license/1` files with it on the fly. The portal's own fixtures, signed by its TypeScript code,
-are in `src/test/resources/ens-license-fixtures` for the ported library test.
-
-> **Note for controller tests:** `@SpringBootApplication` lives in
-> `com.winllc.innoutwork.config`, which is not a parent package of the tests. In
-> a `@WebMvcTest` the nested `@Configuration` therefore becomes the slice's only
-> configuration class, no component scan happens, and **no controllers get
-> registered** — every request 404s. The existing controller tests work around
-> this by importing the controller explicitly:
->
-> ```java
-> @WebMvcTest(HomeController.class)
-> @Import({HomeController.class, HomeControllerTest.TestSecurityConfig.class})
-> ```
->
-> Test security configs must also use `subjectPrincipalRegex("(.*)")` to match
-> production — controllers parse the principal name as an `LdapDn`, which throws
-> on a bare CN.
-
----
-
 ## Windows client
 
 Everything lives in [`powershell/`](powershell/). One script handles all four
@@ -209,14 +112,17 @@ lock and unlock sign in:
 
 > **The server needs TLS for this.** Certificate sign-in cannot work over plain
 > HTTP, and TLS is off in the defaults, so a server the Windows client talks to
-> must run with `SSL_ENABLED=true` (and whatever `SERVER_PORT` you publish for
-> it). Windows sign-in likewise: the ticket goes over the same connection.
+> must terminate TLS itself: `SSL_ENABLED=true` with `docker-compose.tls.yml` in
+> the release package, or `tls.enabled` in the Helm chart, reached through TLS
+> passthrough or a LoadBalancer Service (an ingress that terminates TLS cannot
+> pass the client certificate on). Windows sign-in likewise: the ticket goes
+> over the same connection.
 
 Install the script and register all four scheduled tasks from an **elevated**
 prompt:
 
 ```bash
-cd powershell; .\Install-InOutWorker.ps1 -BaseUrl "https://your-server:8444/api/check"
+cd powershell; .\Install-InOutWorker.ps1 -BaseUrl "https://your-server:8181/api/check"
 ```
 
 Add `-Authentication Windows` or `-Authentication Auto` to write that setting too.
@@ -325,40 +231,6 @@ The release date that a perpetual license's maintenance is compared with is the 
 Spring Boot's build-info (`springBoot { buildInfo() }` in `build.gradle`); without build-info (running
 from an IDE) a perpetual license covers every build.
 
-### Production image
-
-The root `Dockerfile` builds from source (Temurin 21 JDK) and runs on Red Hat UBI 9 OpenJDK 21 as the
-non-root user 185 (group 0, so OpenShift's arbitrary UIDs work), on port 8181, with a health check on
-`/actuator/health` and `JAVA_OPTS` defaulting to `-XX:MaxRAMPercentage=75.0`.
-
-```bash
-docker build -t readyroom:latest .
-
-docker run -d --name readyroom -p 8181:8181 \
-    -e DB_HOST=db.internal -e DB_PASSWORD=... \
-    -e LDAP_HOST=ldap.internal -e LDAP_PASSWORD=... \
-    -v readyroom-license:/var/lib/ens/readyroom \
-    readyroom:latest
-```
-
-`/var/lib/ens/readyroom` (declared a `VOLUME`, owned by user 185 and group 0 with group rwx for
-OpenShift) holds the license and the licensing state; keep it on a persistent, writable volume.
-Start it without a license, sign in as an administrator and upload one at `/app/admin/license`, or
-copy one in: `docker cp license.lic readyroom:/var/lib/ens/readyroom/license.lic` (it must be
-readable by user 185). Never bake a license into an image.
-The base images can be swapped for a mirror with `--build-arg BUILD_IMAGE=...` and
-`--build-arg RUNTIME_IMAGE=...`.
-
-The health check reports what actuator reports, which includes the mail server: if the SMTP host in
-`spring.mail` cannot be reached the container shows as unhealthy. Point it at a reachable server, or
-set `MANAGEMENT_HEALTH_MAIL_ENABLED=false`.
-
-Both compose files keep the license in a named volume (`ens-license`, `demo_ens_license` in the demo)
-at `/var/lib/ens/readyroom`. A `license-init` service copies `./license/license.lic` into it before the
-app starts, when that file is newer than the one in the volume; or upload the license on the license
-screen. `license/` and `*.lic` are git-ignored. The compose stacks build from `test/Dockerfile`, the
-same build without the production defaults.
-
 ---
 
 ## Configuration
@@ -379,7 +251,7 @@ its own values. Two ways, both without editing the file:
 | Situation | How |
 |---|---|
 | The app on your host, services in compose | `--spring.profiles.active=local` (`application-local.yml`: localhost, published ports) |
-| A real deployment | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` |
+| A real deployment (the release package's `.env`, or the Helm chart's values) | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` |
 
 ### Port and TLS
 
@@ -395,8 +267,10 @@ is reachable with no certificate setup.
 **What is off with TLS.** Client-certificate (X.509) sign-in needs TLS, so with
 the defaults the only way in is the LDAP username and password form, and the
 Windows client's logon, lock and unlock calls cannot authenticate at all. Any
-deployment relying on either needs `SSL_ENABLED=true`; nothing else changes,
-since the keystore configuration is still there.
+deployment relying on either needs `SSL_ENABLED=true` and its own keystore and
+truststore (`SERVER_SSL_KEYSTORE`, `SERVER_SSL_TRUSTSTORE` and their passwords):
+`docker-compose.tls.yml` in the release package, or the `tls` values of the Helm
+chart. The keystore packaged in the jar is a development certificate.
 
 ### Application settings
 
@@ -496,103 +370,8 @@ Two things demo mode does **not** stop:
 - Signing in creates the account's `user_record` row on first request, exactly as any first sign-in
   does.
 
-### The demo stack: one command
-
-The demo needs a license like any other deployment; without one it shows only the license screen.
-Download an evaluation license for ReadyRoom from the ENS portal and save it as
-`./license/license.lic` before `up`: the `license-init` service copies it into the demo's license
-volume. The demo is read-only, so the license screen's upload is refused there; to change the
-license, replace the file and run `up` again. No license is committed to this repository. See
-[Licensing](#licensing).
-
-`docker-compose.demo.yml` brings up the whole thing and populates it, with nothing to configure and
-the credentials waiting on the login page:
-
-```bash
-docker compose -f docker-compose.demo.yml -p readyroom-demo up --build
-```
-
-**Nothing is published to the host.** The application listens on 8181 inside the demo network only.
-The demo publishes working credentials, so binding it to the host by default would put everything
-those accounts can see on the machine's interfaces for anything that can reach them — exposing it
-should be a decision, not a default.
-
-To reach it, put something in front of it on the same network, or add a small override file:
-
-```yaml
-# demo-ports.yml
-services:
-  app:
-    ports: ["8181:8181"]
-```
-
-```bash
-docker compose -f docker-compose.demo.yml -f demo-ports.yml -p readyroom-demo up --build
-```
-
-Then <http://localhost:8181>. Bind to a single interface (`"127.0.0.1:8181:8181"`) if the machine is
-reachable by others.
-
-| Service | What it does |
-|---|---|
-| `postgres`, `openldap` | The backing services, on their own volumes and network, unpublished |
-| `app` | Built from source, running with the `demo` profile |
-| `demo-seed-ldap` | Loads the mock users and groups into the directory, then exits |
-| `demo-seed-db` | Loads the check-in/out history and the manager role once the tables exist, then exits |
-
-The seeders are what make one `up` enough. One waits for the directory and loads the users and
-groups; the other **waits for the application to create its tables** — Hibernate does that on first
-start, so there is nothing to insert into before then — and only then writes the records. No second
-command, and re-running re-seeds cleanly: the LDAP load tolerates entries that already exist and the
-SQL deletes its own previous rows.
-
-Both run `test/seed-mock-data.sh` in a **network mode** (`SEED_TRANSPORT=network`): the same script
-and the same data as the host path, but reaching the services over the compose network rather than
-with `docker exec`, which a container has no socket for. They are two services because
-`SEED_ONLY=ldap` needs an image with `ldapadd` and `SEED_ONLY=db` needs one with `psql`. Both are
-built from `test/Dockerfile.seed`, which does nothing but copy the script onto one of those two
-bases — chosen per service with the `BASE_IMAGE` build argument — so nothing is installed and
-nothing beyond the images the stack already pulls is needed.
-
-The script is **copied into the image rather than bind-mounted**, deliberately. A single-file bind
-mount whose source does not resolve does not fail: Docker creates a *directory* at the target, and
-the container dies with `/seed/seed-mock-data.sh: Is a directory` and exit 126, which says nothing
-about the actual problem — and it creates that directory on the host too, so the mistake outlives
-the run. Copied in, the path either exists in the image or the build fails saying so.
-
-Use `-p` as shown. Without it compose derives the project name from the directory and this stack
-would share its network and volumes with `docker-compose.yml`.
-
-If the application comes up empty, the seeder is what to look at. It verifies its own work — it
-counts the users in the directory and the rows in the database, and stops with the reason rather
-than reporting success over an empty directory — but a plain `up` does not make that obvious,
-because the other services carry on:
-
-```bash
-docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed-ldap demo-seed-db
-```
-
-> **Not a production configuration.** The credentials are published on the login page, so everything
-> those accounts can see is readable by anyone who can reach the port. The mock fixture is the only
-> thing that belongs in it.
-
-### Running the demo without containers
-
-The `demo` profile turns demo mode on and carries the account list, so it is one flag:
-
-```bash
-cd test && docker compose up -d && ./seed-mock-data.sh   # data first
-mkdir -p license-state && cp ~/Downloads/readyroom-evaluation.lic license-state/license.lic   # the license
-ENS_LICENSE_STATE_DIR=$PWD/license-state ENS_LICENSE_FILE=$PWD/license-state/license.lic \
-    ./gradlew bootRun --args='--spring.profiles.active=demo'
-```
-
-Seed the data first: the accounts on the tile are the seeded ones, and without them the login page
-offers credentials that cannot sign in. The seed also grants the manager role, so run it before
-judging what each role can see.
-
-For the containerised stack, uncomment `SPRING_PROFILES_ACTIVE: demo` in the root
-`docker-compose.yml`, or use `docker-compose.demo.yml`, which sets it already.
+The demo stacks (containers, or `bootRun` with the `demo` profile) are under
+[Development: the demo stack](#the-demo-stack-one-command).
 
 | Setting | Meaning |
 |---|---|
@@ -672,20 +451,16 @@ domain controller, so a krb5.conf is optional. Mount one if you want to set
 realm defaults.
 
 **Container.** The image includes the Kerberos tools (`krb5-workstation`). Mount
-the keytab read-only, never bake it into the image:
+the keytab read-only at `/etc/in-n-out/http.keytab`, never bake it into the image.
+The release package does this with `docker-compose.windows-auth.yml` (files in
+`kerberos/`); the Helm chart with `windowsAuth.keytab.secretName` (a Secret
+holding `http.keytab`) and optionally `windowsAuth.krb5Conf`. The container user
+must be able to read the file. To check the keytab inside the container:
 
 ```bash
-docker run ... -v /secure/http.keytab:/etc/in-n-out/http.keytab:ro -e APPLICATION_WINDOWSAUTH_ENABLED=true -e APPLICATION_WINDOWSAUTH_SERVICEPRINCIPAL=HTTP/inout.winllc.com@WINLLC.COM -e APPLICATION_WINDOWSAUTH_KEYTABLOCATION=/etc/in-n-out/http.keytab in-n-out-work
+docker compose exec app klist -kte /etc/in-n-out/http.keytab              # release package
+kubectl exec deploy/readyroom -- klist -kte /etc/in-n-out/http.keytab     # Helm
 ```
-
-The container user must be able to read the file. To check the keytab inside the
-container:
-
-```bash
-docker exec innout-app klist -kte /etc/in-n-out/http.keytab
-```
-
-`docker-compose.yml` has the same settings commented out.
 
 The server's clock must be within 5 minutes of the domain controllers'.
 
@@ -806,7 +581,10 @@ whole trail, so expect duplicates by `id`.
 
 Hibernate creates tables and columns (`ddl-auto: update`) but not indexes or
 constraints. Those come from the scripts in [`db/migrations/`](db/migrations/),
-which you run yourself in each environment with `psql`.
+which run with `psql`. The Helm chart runs them for you: a Job on every install
+and upgrade waits until ReadyRoom has created its tables and then runs each
+script (`migrations.enabled`, on by default). The release package ships them in
+`migrations/`, to run by hand as below when the release notes say so.
 
 **`001_indexes_and_unique_user_dn.sql`** adds the indexes the DN and date lookups
 need, and makes a user DN unique ignoring case. Before adding that constraint it
@@ -839,13 +617,6 @@ merged rows is printed.
 - Deploy the application version that expects the unique DN (it handles the
   constraint when two requests create the same user at once) with or after the
   migration.
-
-**`002_audit_log.sql`** adds the audit log's filter indexes (Hibernate creates the
-same ones for a new table) and makes `audit_events` append-only: a trigger
-refuses every `UPDATE`, so stored events can only be added, or deleted by
-retention pruning. Run it the same way as 001, after a version with the audit
-trail has started once; it is safe to run again and also uses
-`CREATE INDEX CONCURRENTLY`, so again no `--single-transaction`.
 
 ---
 
@@ -887,6 +658,263 @@ PERF_MEASURE=1 ./gradlew test --tests '*QueryPerformanceMeasurement'
 
 ---
 
+## Development
+
+**For contributors only.** Nothing in this section is a way to install ReadyRoom for a customer: they
+install from the release package or the Helm chart (see [Install](#install)). Building from source,
+`./gradlew bootRun`, the `local` profile, `docker build` and the compose stacks in the source tree are
+for developing and testing ReadyRoom.
+
+### Running locally
+
+#### 1. Backing services
+
+```bash
+cd test && docker compose up -d
+```
+
+Brings up PostgreSQL, OpenLDAP, [phpLDAPadmin](http://localhost:8081),
+[Adminer](http://localhost:8082) and a `step-ca` certificate authority.
+
+| Service | Port |
+|---|---|
+| PostgreSQL | 5432 |
+| LDAP / LDAPS | 1389 / 1636 |
+| phpLDAPadmin | 8081 |
+| Adminer | 8082 |
+| step-ca | 8443 |
+
+#### 2. Seed mock data
+
+```bash
+cd test && ./seed-mock-data.sh
+```
+
+Adds mock users and groups to LDAP plus historical, current and future
+check-in/out records. It talks to the containers via `docker exec`, so no local
+`psql` or `ldap-utils` needed, and it is safe to re-run.
+
+#### 3. Run the app
+
+```bash
+./gradlew bootRun --args='--spring.profiles.active=local'
+```
+
+Then open <http://localhost:8181>. Requires a JDK 21 on `JAVA_HOME`.
+
+It needs an ENS license, and a writable place for it: set `ENS_LICENSE_STATE_DIR` and
+`ENS_LICENSE_FILE` (for example to `$PWD/license-state` and `$PWD/license-state/license.lic`), then
+sign in as an administrator and upload the license at `/app/admin/license`. See
+[Licensing](#licensing).
+
+The `local` profile is what points the app at `localhost` and the published
+ports. The defaults in `application.yml` name the compose services (`postgres`,
+`openldap`), which only resolve from inside the compose network — see
+[Configuration](#configuration).
+
+#### Everything in containers instead
+
+```bash
+docker compose up --build
+```
+
+`docker-compose.yml` in the repository root builds the app from source and runs
+it alongside its own PostgreSQL and OpenLDAP. No profile and no overrides: the
+packaged defaults already name those services. It reuses the same container
+names as `test/docker-compose.yml`, so do not run both at once.
+
+### Product page
+
+`product-site/` is a static page introducing the application, served by
+unprivileged nginx in its own container on the same host as the app.
+
+```bash
+cd product-site && docker compose up -d --build
+```
+
+Browse to `http://<host>/`. Every "Open the app" link goes to `/launch`, which
+redirects to the application.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PRODUCT_SITE_PORT` | `80` | Host port for the product page |
+| `APP_URL` | `http://$host:8181/` | Where `/launch` redirects. `$host` is whatever hostname the visitor used, so the default reaches the app on the same host. Set a full URL if the app is reached another way. |
+
+The page loads nothing from other origins and runs no scripts, which lets nginx
+send a strict Content-Security-Policy; keep new markup free of inline `style`
+attributes and `<script>` tags. `/healthz` backs the container health check. The
+logo and favicon in `product-site/site/assets/` are copies of the app's, so
+update both when the branding changes.
+
+### Tests
+
+```bash
+./gradlew test
+```
+
+JUnit 5 + Mockito, with `@WebMvcTest` slices for the controllers. LDAP code
+runs against an in-memory UnboundID directory. Tests of the migration script and
+of concurrent writes run against PostgreSQL in a container (Testcontainers), and
+are skipped when Docker is not available. Windows sign-in is tested with real
+Kerberos tickets from an in-process KDC (Apache Kerby), no domain needed.
+
+Licensing is tested with the ENS portal's published TEST key, which no build trusts: the test
+configuration `license/TestLicensing` supplies a `LicenseManager` that trusts it (over a temporary
+directory, with a full license installed) in place of the production one, and `TestLicenses` signs
+`ens-license/1` files with it on the fly. The portal's own fixtures, signed by its TypeScript code,
+are in `src/test/resources/ens-license-fixtures` for the ported library test.
+
+> **Note for controller tests:** `@SpringBootApplication` lives in
+> `com.winllc.innoutwork.config`, which is not a parent package of the tests. In
+> a `@WebMvcTest` the nested `@Configuration` therefore becomes the slice's only
+> configuration class, no component scan happens, and **no controllers get
+> registered** — every request 404s. The existing controller tests work around
+> this by importing the controller explicitly:
+>
+> ```java
+> @WebMvcTest(HomeController.class)
+> @Import({HomeController.class, HomeControllerTest.TestSecurityConfig.class})
+> ```
+>
+> Test security configs must also use `subjectPrincipalRegex("(.*)")` to match
+> production — controllers parse the principal name as an `LdapDn`, which throws
+> on a bare CN.
+
+### The demo stack: one command
+
+The demo needs a license like any other deployment; without one it shows only the license screen.
+Download an evaluation license for ReadyRoom from the ENS portal and save it as
+`./license/license.lic` before `up`: the `license-init` service copies it into the demo's license
+volume. The demo is read-only, so the license screen's upload is refused there; to change the
+license, replace the file and run `up` again. No license is committed to this repository. See
+[Licensing](#licensing).
+
+`docker-compose.demo.yml` brings up the whole thing and populates it, with nothing to configure and
+the credentials waiting on the login page:
+
+```bash
+docker compose -f docker-compose.demo.yml -p readyroom-demo up --build
+```
+
+**Nothing is published to the host.** The application listens on 8181 inside the demo network only.
+The demo publishes working credentials, so binding it to the host by default would put everything
+those accounts can see on the machine's interfaces for anything that can reach them — exposing it
+should be a decision, not a default.
+
+To reach it, put something in front of it on the same network, or add a small override file:
+
+```yaml
+# demo-ports.yml
+services:
+  app:
+    ports: ["8181:8181"]
+```
+
+```bash
+docker compose -f docker-compose.demo.yml -f demo-ports.yml -p readyroom-demo up --build
+```
+
+Then <http://localhost:8181>. Bind to a single interface (`"127.0.0.1:8181:8181"`) if the machine is
+reachable by others.
+
+| Service | What it does |
+|---|---|
+| `postgres`, `openldap` | The backing services, on their own volumes and network, unpublished |
+| `app` | Built from source, running with the `demo` profile |
+| `demo-seed-ldap` | Loads the mock users and groups into the directory, then exits |
+| `demo-seed-db` | Loads the check-in/out history and the manager role once the tables exist, then exits |
+
+The seeders are what make one `up` enough. One waits for the directory and loads the users and
+groups; the other **waits for the application to create its tables** — Hibernate does that on first
+start, so there is nothing to insert into before then — and only then writes the records. No second
+command, and re-running re-seeds cleanly: the LDAP load tolerates entries that already exist and the
+SQL deletes its own previous rows.
+
+Both run `test/seed-mock-data.sh` in a **network mode** (`SEED_TRANSPORT=network`): the same script
+and the same data as the host path, but reaching the services over the compose network rather than
+with `docker exec`, which a container has no socket for. They are two services because
+`SEED_ONLY=ldap` needs an image with `ldapadd` and `SEED_ONLY=db` needs one with `psql`. Both are
+built from `test/Dockerfile.seed`, which does nothing but copy the script onto one of those two
+bases — chosen per service with the `BASE_IMAGE` build argument — so nothing is installed and
+nothing beyond the images the stack already pulls is needed.
+
+The script is **copied into the image rather than bind-mounted**, deliberately. A single-file bind
+mount whose source does not resolve does not fail: Docker creates a *directory* at the target, and
+the container dies with `/seed/seed-mock-data.sh: Is a directory` and exit 126, which says nothing
+about the actual problem — and it creates that directory on the host too, so the mistake outlives
+the run. Copied in, the path either exists in the image or the build fails saying so.
+
+Use `-p` as shown. Without it compose derives the project name from the directory and this stack
+would share its network and volumes with `docker-compose.yml`.
+
+If the application comes up empty, the seeder is what to look at. It verifies its own work — it
+counts the users in the directory and the rows in the database, and stops with the reason rather
+than reporting success over an empty directory — but a plain `up` does not make that obvious,
+because the other services carry on:
+
+```bash
+docker compose -f docker-compose.demo.yml -p readyroom-demo logs demo-seed-ldap demo-seed-db
+```
+
+> **Not a production configuration.** The credentials are published on the login page, so everything
+> those accounts can see is readable by anyone who can reach the port. The mock fixture is the only
+> thing that belongs in it.
+
+#### Running the demo without containers
+
+The `demo` profile turns demo mode on and carries the account list, so it is one flag:
+
+```bash
+cd test && docker compose up -d && ./seed-mock-data.sh   # data first
+mkdir -p license-state && cp ~/Downloads/readyroom-evaluation.lic license-state/license.lic   # the license
+ENS_LICENSE_STATE_DIR=$PWD/license-state ENS_LICENSE_FILE=$PWD/license-state/license.lic \
+    ./gradlew bootRun --args='--spring.profiles.active=demo'
+```
+
+Seed the data first: the accounts on the tile are the seeded ones, and without them the login page
+offers credentials that cannot sign in. The seed also grants the manager role, so run it before
+judging what each role can see.
+
+For the containerised stack, uncomment `SPRING_PROFILES_ACTIVE: demo` in the root
+`docker-compose.yml`, or use `docker-compose.demo.yml`, which sets it already.
+
+### Building the image
+
+CI builds the image customers run (`ghcr.io/winllc/in-n-out-work`, also in the release bundle's
+`images/`) from the root `Dockerfile`, which builds from source (Temurin 21 JDK) and runs on Red Hat UBI 9 OpenJDK 21 as the
+non-root user 185 (group 0, so OpenShift's arbitrary UIDs work), on port 8181, with a health check on
+`/actuator/health` and `JAVA_OPTS` defaulting to `-XX:MaxRAMPercentage=75.0`.
+
+```bash
+docker build -t readyroom:latest .
+
+docker run -d --name readyroom -p 8181:8181 \
+    -e DB_HOST=db.internal -e DB_PASSWORD=... \
+    -e LDAP_HOST=ldap.internal -e LDAP_PASSWORD=... \
+    -v readyroom-license:/var/lib/ens/readyroom \
+    readyroom:latest
+```
+
+`/var/lib/ens/readyroom` (declared a `VOLUME`, owned by user 185 and group 0 with group rwx for
+OpenShift) holds the license and the licensing state; keep it on a persistent, writable volume.
+Start it without a license, sign in as an administrator and upload one at `/app/admin/license`, or
+copy one in: `docker cp license.lic readyroom:/var/lib/ens/readyroom/license.lic` (it must be
+readable by user 185). Never bake a license into an image.
+The base images can be swapped for a mirror with `--build-arg BUILD_IMAGE=...` and
+`--build-arg RUNTIME_IMAGE=...`.
+
+The health check reports what actuator reports, which includes the mail server: if the SMTP host in
+`spring.mail` cannot be reached the container shows as unhealthy. Point it at a reachable server, or
+set `MANAGEMENT_HEALTH_MAIL_ENABLED=false`.
+
+Both compose files keep the license in a named volume (`ens-license`, `demo_ens_license` in the demo)
+at `/var/lib/ens/readyroom`. A `license-init` service copies `./license/license.lic` into it before the
+app starts, when that file is newer than the one in the volume; or upload the license on the license
+screen. `license/` and `*.lic` are git-ignored. The compose stacks build from `test/Dockerfile`, the
+same build without the production defaults.
+
+---
+
 ## Releases
 
 Push a tag `vX.Y.Z` (or `vX.Y.Z-rc.1` for a pre-release):
@@ -902,14 +930,17 @@ builds the customer release bundle with `scripts/release-bundle.sh`:
 | File | What |
 |---|---|
 | `readyroom-1.2.3.tar.gz` | Unpacks to `readyroom-1.2.3/`: `README.md`, `install.sh`, `upgrade.sh`, a production `docker-compose.yml` (ReadyRoom and PostgreSQL 16, the customer's LDAP and SMTP from `.env`) with optional TLS and Windows sign-in overrides, `env.template`, `license/`, the Windows client, the database migrations, and `images/readyroom-images-1.2.3.tar` (`docker save` of both images, for air-gapped sites). Sources in `deploy/bundle/`. |
+| `readyroom-helm-1.2.3.tgz` | The Helm chart (`deploy/helm/readyroom`), packaged as version 1.2.3 and also pushed to `oci://ghcr.io/winllc/charts/readyroom` |
 | `sbom-in-n-out-work.spdx.json`, `sbom-postgres.spdx.json` | SPDX SBOMs of the two images |
 | `SHA256SUMS` | Checksums of the files above |
 | `SHA256SUMS.asc` | Detached GPG signature of `SHA256SUMS`, when a signing key is configured |
 
 They are uploaded to `s3://<bucket>/readyroom/1.2.3/`, and `readyroom/latest.txt` is set to `1.2.3`
 (not for pre-releases), and kept as the workflow artifact `release-readyroom-1.2.3` for 30 days.
-Every pull request builds the bundle as a dry run (`0.0.0-pr<number>`), kept as an artifact for 3
-days and never uploaded. Signing and upload are skipped, with the reason in the job summary, until
+Every pull request builds the bundle and packages the chart as a dry run (`0.0.0-pr<number>`), kept
+as an artifact for 3 days and never uploaded or pushed. The `helm` job lints the chart and validates
+what it renders (kubeconform, Kubernetes 1.29) with each of `deploy/helm/readyroom/ci/*.yaml` on every
+push and pull request. Signing and upload are skipped, with the reason in the job summary, until
 these are configured (Settings > Secrets and variables > Actions):
 
 | Name | Kind | Purpose |
@@ -961,6 +992,7 @@ powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
 db/migrations/ Indexes, constraints and triggers Hibernate does not create; run with psql
 deploy/bundle/ The customer release bundle: production compose, env template, install/upgrade
+deploy/helm/readyroom/  The Helm chart (published to oci://ghcr.io/winllc/charts/readyroom)
 scripts/release-bundle.sh  Builds the release bundle (see Releases)
 test/          Backing services alone, the app's Dockerfile and mounted config,
                seed script, local CA

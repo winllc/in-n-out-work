@@ -1,0 +1,141 @@
+{{- if .Values.networkPolicy.enabled -}}
+{{- $v := .Values -}}
+{{- $np := $v.networkPolicy -}}
+{{- $ports := list (int $v.database.port) (int $v.ldap.port) (int $v.smtp.port) -}}
+{{- if $v.ldap.url -}}
+{{- $m := regexFind ":[0-9]+$" (trimSuffix "/" $v.ldap.url) -}}
+{{- $ports = append $ports (ternary (int (trimPrefix ":" $m)) 636 (ne $m "")) -}}
+{{- end -}}
+{{- if $v.audit.splunk.url -}}
+{{- $m := regexFind ":[0-9]+" (regexReplaceAll "^[a-z]+://" $v.audit.splunk.url "") -}}
+{{- $ports = append $ports (ternary (int (trimPrefix ":" $m)) 8088 (ne $m "")) -}}
+{{- end -}}
+{{- if $v.audit.syslog.host -}}
+{{- $ports = append $ports (int (default (ternary 6514 514 (eq $v.audit.syslog.protocol "tls")) $v.audit.syslog.port)) -}}
+{{- end -}}
+{{- range $np.egress.extraPorts -}}
+{{- $ports = append $ports (int .) -}}
+{{- end -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "readyroom.fullname" . }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "readyroom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - ports:
+        - port: 8181
+          protocol: TCP
+      {{- with $np.ingressFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+  egress:
+    {{- if $np.egress.allowAll }}
+    - {}
+    {{- else }}
+    # DNS
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    {{- if $v.database.embedded.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "readyroom.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: database
+      ports:
+        - port: 5432
+          protocol: TCP
+    {{- end }}
+    # Database, directory, mail and audit outputs.
+    - to:
+        {{- range $np.egress.cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      ports:
+        {{- range uniq $ports }}
+        - port: {{ . }}
+          protocol: TCP
+        {{- end }}
+        {{- if and $v.audit.syslog.host (eq $v.audit.syslog.protocol "udp") }}
+        - port: {{ default 514 $v.audit.syslog.port }}
+          protocol: UDP
+        {{- end }}
+    {{- end }}
+{{- if $v.database.embedded.enabled }}
+---
+# The embedded database: reachable from ReadyRoom and the migration Job only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "readyroom.postgresql.fullname" . }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "readyroom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: database
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "readyroom.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: app
+        - podSelector:
+            matchLabels:
+              {{- include "readyroom.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: migrations
+      ports:
+        - port: 5432
+          protocol: TCP
+{{- end }}
+{{- if and $v.migrations.enabled (not $np.egress.allowAll) }}
+---
+# The migration Job: DNS and the database only.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "readyroom.fullname" . }}-migrations
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "readyroom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: migrations
+  policyTypes:
+    - Ingress
+    - Egress
+  egress:
+    - ports:
+        - port: 53
+          protocol: UDP
+        - port: 53
+          protocol: TCP
+    - ports:
+        - port: {{ $v.database.port }}
+          protocol: TCP
+      {{- if not $v.database.embedded.enabled }}
+      to:
+        {{- range $np.egress.cidrs }}
+        - ipBlock:
+            cidr: {{ . }}
+        {{- end }}
+      {{- end }}
+{{- end }}
+{{- end }}

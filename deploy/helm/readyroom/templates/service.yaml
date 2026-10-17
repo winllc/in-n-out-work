@@ -1,0 +1,34 @@
+{{- $s := .Values.service -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "readyroom.fullname" . }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+  {{- with $s.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $s.type }}
+  {{- if and (eq $s.type "LoadBalancer") $s.loadBalancerIP }}
+  loadBalancerIP: {{ $s.loadBalancerIP }}
+  {{- end }}
+  {{- if and (eq $s.type "LoadBalancer") $s.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml $s.loadBalancerSourceRanges | nindent 4 }}
+  {{- end }}
+  {{- if and (has $s.type (list "LoadBalancer" "NodePort")) $s.externalTrafficPolicy }}
+  externalTrafficPolicy: {{ $s.externalTrafficPolicy }}
+  {{- end }}
+  ports:
+    - name: {{ include "readyroom.portName" . }}
+      port: {{ $s.port }}
+      targetPort: {{ include "readyroom.portName" . }}
+      protocol: TCP
+      {{- if and (has $s.type (list "LoadBalancer" "NodePort")) $s.nodePort }}
+      nodePort: {{ $s.nodePort }}
+      {{- end }}
+  selector:
+    {{- include "readyroom.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: app

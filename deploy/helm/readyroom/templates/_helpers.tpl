@@ -1,0 +1,176 @@
+{{/* Names */}}
+{{- define "readyroom.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "readyroom.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "readyroom.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{- define "readyroom.labels" -}}
+helm.sh/chart: {{ include "readyroom.chart" . }}
+{{ include "readyroom.selectorLabels" . }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/part-of: readyroom
+{{- end -}}
+
+{{- define "readyroom.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "readyroom.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "readyroom.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "readyroom.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "readyroom.postgresql.fullname" -}}
+{{- printf "%s-postgresql" (include "readyroom.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+An image reference. global.imageRegistry, when set, replaces the registry part of the repository
+(the first path element when it holds a "." or ":" or is "localhost"), or is put in front of a
+repository that has none (postgres, busybox).
+Call with: dict "image" <image values> "root" $ "tag" <default tag>
+*/}}
+{{- define "readyroom.image" -}}
+{{- $repo := .image.repository -}}
+{{- $registry := "" -}}
+{{- if .root.Values.global -}}{{- $registry = .root.Values.global.imageRegistry | default "" -}}{{- end -}}
+{{- if $registry -}}
+{{- $parts := splitList "/" $repo -}}
+{{- $first := first $parts -}}
+{{- if and (gt (len $parts) 1) (or (contains "." $first) (contains ":" $first) (eq $first "localhost")) -}}
+{{- $repo = join "/" (rest $parts) -}}
+{{- end -}}
+{{- $repo = printf "%s/%s" (trimSuffix "/" $registry) $repo -}}
+{{- end -}}
+{{- $tag := .image.tag | default .tag | toString -}}
+{{- printf "%s:%s" $repo $tag -}}
+{{- end -}}
+
+{{- define "readyroom.appImage" -}}
+{{- include "readyroom.image" (dict "image" .Values.image "root" . "tag" .Chart.AppVersion) -}}
+{{- end -}}
+
+{{- define "readyroom.dbImage" -}}
+{{- include "readyroom.image" (dict "image" .Values.database.embedded.image "root" . "tag" "16") -}}
+{{- end -}}
+
+{{/* Pod security context, without the ids under OpenShift. */}}
+{{- define "readyroom.podSecurityContext" -}}
+{{- $ctx := deepCopy .ctx -}}
+{{- if .root.Values.openshift.enabled -}}
+{{- $_ := unset $ctx "runAsUser" -}}
+{{- $_ := unset $ctx "runAsGroup" -}}
+{{- $_ := unset $ctx "fsGroup" -}}
+{{- end -}}
+{{- toYaml $ctx -}}
+{{- end -}}
+
+{{- define "readyroom.containerSecurityContext" -}}
+{{- $ctx := deepCopy .Values.securityContext -}}
+{{- if .Values.openshift.enabled -}}
+{{- $_ := unset $ctx "runAsUser" -}}
+{{- $_ := unset $ctx "runAsGroup" -}}
+{{- end -}}
+{{- toYaml $ctx -}}
+{{- end -}}
+
+{{/* The database host: the embedded StatefulSet's Service, or database.host (required). */}}
+{{- define "readyroom.dbHost" -}}
+{{- if .Values.database.embedded.enabled -}}
+{{- include "readyroom.postgresql.fullname" . -}}
+{{- else -}}
+{{- required "database.host is required: your PostgreSQL server (or set database.embedded.enabled=true for an evaluation)" .Values.database.host -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Where a secret value comes from: {name, key} of the user's existingSecret, or of the chart's Secret
+when an inline value is set; empty when neither is.
+Call with: dict "root" $ "value" <inline> "existingSecret" <name> "existingSecretKey" <key> "key" <chart secret key>
+*/}}
+{{- define "readyroom.secretRef" -}}
+{{- if .existingSecret -}}
+name: {{ .existingSecret }}
+key: {{ .existingSecretKey }}
+{{- else if .value -}}
+name: {{ include "readyroom.fullname" .root }}
+key: {{ .key }}
+{{- end -}}
+{{- end -}}
+
+{{/* An env entry from a secret, or nothing. Call as readyroom.secretRef plus "env" <NAME>. */}}
+{{- define "readyroom.secretEnv" -}}
+{{- $ref := include "readyroom.secretRef" . -}}
+{{- if $ref -}}
+- name: {{ .env }}
+  valueFrom:
+    secretKeyRef:
+{{ $ref | indent 6 }}
+{{- end -}}
+{{- end -}}
+
+{{/* The database password reference. The embedded database falls back to a generated password. */}}
+{{- define "readyroom.dbPasswordRef" -}}
+{{- $v := .Values.database -}}
+{{- if or $v.existingSecret $v.password -}}
+{{- include "readyroom.secretRef" (dict "root" . "value" $v.password "existingSecret" $v.existingSecret "existingSecretKey" $v.existingSecretKey "key" "db-password") -}}
+{{- else if $v.embedded.enabled -}}
+name: {{ include "readyroom.fullname" . }}
+key: db-password
+{{- else -}}
+{{- fail "database.password or database.existingSecret is required: the password ReadyRoom signs in to PostgreSQL with" -}}
+{{- end -}}
+{{- end -}}
+
+{{/* The public URL: publicUrl, else the first ingress or route host. */}}
+{{- define "readyroom.publicUrl" -}}
+{{- if .Values.publicUrl -}}
+{{- .Values.publicUrl -}}
+{{- else if and .Values.ingress.enabled .Values.ingress.hosts -}}
+{{- $host := (first .Values.ingress.hosts).host -}}
+{{- printf "%s://%s" (ternary "https" "http" (or (gt (len .Values.ingress.tls) 0) .Values.tls.enabled)) $host -}}
+{{- else if and .Values.route.enabled .Values.route.host -}}
+{{- printf "https://%s" .Values.route.host -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "readyroom.licenseSecretName" -}}
+{{- if .Values.license.existingSecret -}}
+{{- .Values.license.existingSecret -}}
+{{- else if .Values.license.file -}}
+{{- printf "%s-license" (include "readyroom.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "readyroom.licenseClaimName" -}}
+{{- default (printf "%s-license" (include "readyroom.fullname" .)) .Values.persistence.license.existingClaim -}}
+{{- end -}}
+
+{{- define "readyroom.scheme" -}}
+{{- ternary "HTTPS" "HTTP" .Values.tls.enabled -}}
+{{- end -}}
+
+{{- define "readyroom.portName" -}}
+{{- ternary "https" "http" .Values.tls.enabled -}}
+{{- end -}}

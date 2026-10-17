@@ -1,0 +1,19 @@
+apiVersion: v2
+name: readyroom
+description: ReadyRoom - workforce check-in/out and attendance for an LDAP-backed organization, by ENS Solutions
+type: application
+# Both are set from the release tag when CI packages the chart (helm package --version X.Y.Z
+# --app-version X.Y.Z); the committed values are placeholders.
+version: 0.0.0
+appVersion: "0.0.0"
+kubeVersion: ">=1.25.0-0"
+home: https://winllc.github.io/ens-apps-documentation/readyroom/
+sources:
+  - https://github.com/winllc/in-n-out-work
+keywords:
+  - readyroom
+  - attendance
+  - ldap
+maintainers:
+  - name: ENS Solutions, LLC
+    url: https://ens-solutions.com/
