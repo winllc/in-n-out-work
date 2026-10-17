@@ -218,27 +218,23 @@
               "type": "object"
             }
           }
-        }
-      }
-    },
-    "migrations": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean"
         },
-        "waitSeconds": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "backoffLimit": {
-          "type": "integer"
-        },
-        "ttlSecondsAfterFinished": {
-          "type": "integer"
-        },
-        "resources": {
-          "type": "object"
+        "migration": {
+          "type": "object",
+          "properties": {
+            "username": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
         }
       }
     },

@@ -137,12 +137,13 @@ database up first:
 docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > readyroom-backup.sql
 ```
 
-Release notes may name a script in `migrations/` to run after upgrading, for example:
-
-```bash
-docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
-    < migrations/001_indexes_and_unique_user_dn.sql
-```
+There are no database scripts to run by hand: ReadyRoom migrates its schema itself when it starts
+(Flyway), before it serves anything, and `docker compose ps` shows `app` as `healthy` once that is done.
+The first start of a release with Flyway on an existing database records the schema as it was and brings
+it up to date, including the indexes and the audit trail's append-only trigger that the `migrations/`
+scripts of earlier releases added; on a database where those scripts never ran it builds the indexes,
+which on a large check-in table makes that one start take a few minutes. Check it with
+`docker compose logs app | grep -i flyway`.
 
 Re-run `Install-InOutWorker.ps1` from the new `windows-client/` on every workstation (without
 arguments it keeps the existing configuration). Besides installing the new script and tasks, it
@@ -169,4 +170,3 @@ docker compose down               # stop (the database and license volumes are k
 | `license/` | Where `license.lic` can go for `install.sh` to copy in |
 | `images/` | The container images (`docker load`) |
 | `windows-client/` | The Windows client and its installer |
-| `migrations/` | Database scripts named in release notes |

@@ -15,7 +15,7 @@ import java.util.List;
 public interface NotificationRepository extends JpaRepository<NotificationRecord, Long>, PagingAndSortingRepository<NotificationRecord, Long> {
 
     // DN lookups compare lower(dn) so they can use the lower(dn) indexes from
-    // db/migrations/001_indexes_and_unique_user_dn.sql. Spring Data's derived ...IgnoreCase methods
+    // db/migration/V1__baseline.sql. Spring Data's derived ...IgnoreCase methods
     // compare upper(dn), which those indexes cannot serve.
     @Query("select n from NotificationRecord n where lower(n.forUserDn) = lower(:dn)"
             + " and n.statusResponseDate is null and n.ignore = :ignored")

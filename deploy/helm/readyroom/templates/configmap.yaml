@@ -22,6 +22,11 @@ data:
   DB_PORT: {{ $v.database.port | quote }}
   DB_NAME: {{ $v.database.name | quote }}
   DB_USERNAME: {{ $v.database.username | quote }}
+  {{- with $v.database.migration.username }}
+  # Flyway migrates the schema at startup as this account (it owns the schema); DB_USERNAME then only
+  # reads and writes rows.
+  SPRING_FLYWAY_USER: {{ . | quote }}
+  {{- end }}
 
   # Directory
   {{- with $v.ldap.host }}

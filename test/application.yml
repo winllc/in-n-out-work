@@ -26,7 +26,8 @@ spring:
     # waits on LDAP, and a slow directory can exhaust the connection pool.
     open-in-view: false
     hibernate:
-      ddl-auto: update
+      # Flyway owns the schema (db/README.md); Hibernate only checks it.
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:

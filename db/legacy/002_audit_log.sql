@@ -1,3 +1,5 @@
+-- SUPERSEDED: src/main/resources/db/migration/V1__baseline.sql now does all of this when ReadyRoom starts
+-- (Flyway). Kept for reference and for the upgrade tests; do not run it. See db/README.md.
 -- =====================================================================================================
 -- 002: the audit trail (ens-audit/1) - indexes for the admin filters, and append-only enforcement.
 --

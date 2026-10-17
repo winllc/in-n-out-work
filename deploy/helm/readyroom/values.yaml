@@ -8,8 +8,8 @@
 # the ldap block, superUserDns, and publicUrl. See README.md for examples.
 
 global:
-  # Registry that replaces the registry part of every image this chart runs (ReadyRoom, PostgreSQL,
-  # the migration job and the busybox license helper), for an air-gapped site with a mirror. Images
+  # Registry that replaces the registry part of every image this chart runs (ReadyRoom, PostgreSQL
+  # and the busybox license helper), for an air-gapped site with a mirror. Images
   # are then pulled as <imageRegistry>/<path>: ghcr.io/winllc/in-n-out-work becomes
   # <imageRegistry>/winllc/in-n-out-work, postgres becomes <imageRegistry>/postgres.
   imageRegistry: ""
@@ -146,23 +146,15 @@ database:
       limits:
         memory: 1Gi
 
-# The scripts in db/migrations (indexes and constraints Hibernate does not create). ReadyRoom creates its
-# tables itself on start (Hibernate ddl-auto: update); this Job then waits for them and runs every
-# script with psql, on each install and upgrade. The scripts are safe to run again and run with the
-# application up (CREATE INDEX CONCURRENTLY). The Job uses the database image, which has psql.
-migrations:
-  enabled: true
-  # How long the Job waits for ReadyRoom to create the tables.
-  waitSeconds: 900
-  backoffLimit: 3
-  # Finished Jobs are removed after this many seconds.
-  ttlSecondsAfterFinished: 86400
-  resources:
-    requests:
-      cpu: 50m
-      memory: 64Mi
-    limits:
-      memory: 256Mi
+  # ReadyRoom migrates its schema itself (Flyway), at startup and before it serves anything, so there is no
+  # migration Job: an install or upgrade is migrated when the new pod starts. Optionally with a separate
+  # account that owns the schema, so the account above can be limited to reading and writing rows
+  # (SPRING_FLYWAY_USER and SPRING_FLYWAY_PASSWORD; the README lists the grants). Empty: the account above.
+  migration:
+    username: ""
+    password: ""
+    existingSecret: ""
+    existingSecretKey: migration-password
 
 # ---------------------------------------------------------------------------------------------------
 # Directory (your LDAP server or Active Directory)
@@ -429,7 +421,8 @@ networkPolicy:
 
 probes:
   startup:
-    # Up to 10 minutes for the first start, while Hibernate creates the schema.
+    # Up to 10 minutes for the first start, and for an upgrade while Flyway migrates the schema (building
+    # indexes on a large check-in table takes a while once).
     initialDelaySeconds: 10
     periodSeconds: 5
     failureThreshold: 120

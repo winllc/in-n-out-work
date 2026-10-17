@@ -107,6 +107,9 @@ The image holds no keystore or truststore, and ReadyRoom refuses to start with T
 {{- if and $v.tls.enabled (ne (toString $v.tls.clientAuth) "none") (not $v.tls.truststore.secretName) -}}
 {{- fail (printf "tls.truststore.secretName is required when tls.enabled with clientAuth %s: a Secret holding a PKCS#12 truststore with only the CAs that issue your users' client certificates (the image has none, and ReadyRoom does not fall back to Java's default CAs). Or set tls.clientAuth to none to turn certificate sign-in off" (toString $v.tls.clientAuth)) -}}
 {{- end -}}
+{{- if and $v.database.migration.username (not (or $v.database.migration.password $v.database.migration.existingSecret)) -}}
+{{- fail "database.migration.password or database.migration.existingSecret is required with database.migration.username: the account Flyway migrates the schema as" -}}
+{{- end -}}
 {{- if and $v.windowsAuth.enabled (not $v.windowsAuth.keytab.secretName) -}}
 {{- fail "windowsAuth.keytab.secretName is required when windowsAuth.enabled: a Secret holding the service principal's keytab" -}}
 {{- end -}}

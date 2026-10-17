@@ -84,8 +84,8 @@ smtp:
   existingSecretKey: smtp-password
 ```
 
-The same `existingSecret` / `existingSecretKey` pair exists for `tls.keystore`, `tls.truststore` and
-`audit.splunk`.
+The same `existingSecret` / `existingSecretKey` pair exists for `database.migration`, `tls.keystore`,
+`tls.truststore` and `audit.splunk`.
 
 ### License
 
@@ -217,7 +217,7 @@ Mirror the images and point the chart at the mirror:
 | Image | Mirrored as |
 |---|---|
 | `ghcr.io/winllc/in-n-out-work:<version>` | `<registry>/winllc/in-n-out-work:<version>` |
-| `postgres:16` (migration Job; embedded database) | `<registry>/postgres:16` |
+| `postgres:16` (embedded database) | `<registry>/postgres:16` |
 | `busybox:1.36.1` (license init container) | `<registry>/busybox:1.36.1` |
 
 The release bundle's `images/` archive holds the ReadyRoom and PostgreSQL images (`docker load`, then
@@ -247,8 +247,12 @@ The password is generated and kept in the release's Secret unless you set `datab
 helm upgrade readyroom oci://ghcr.io/winllc/charts/readyroom --version 1.2.4 -n readyroom -f my-values.yaml
 ```
 
-Back up the database first. The license PVC and the database are kept; ReadyRoom updates its schema on
-start, and the migration Job runs the database scripts again (they skip what is already done).
+Back up the database first. The license PVC and the database are kept. ReadyRoom
+migrates its schema itself when the new pod starts (Flyway, `src/main/resources/db/migration`), before it
+serves anything; the pod is ready once that is done. The first upgrade to a release with Flyway records the
+existing schema as version 0 and brings it up to date (it builds any index the old migration Job had not, so
+that one start takes longer on a large database). There is no migration Job any more; an old one from a
+previous release is removed by the upgrade.
 
 ### Uninstall
 
@@ -292,12 +296,11 @@ delete it.
 | `database.port`, `.name`, `.username` | `5432`, `readyroom`, `readyroom` | |
 | `database.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `password` | Required (generated for the embedded database) |
 | `database.embedded.enabled` | `false` | PostgreSQL StatefulSet: evaluation only, no backups |
-| `database.embedded.image.*` | `postgres`, `16` | Also the migration Job's image |
+| `database.embedded.image.*` | `postgres`, `16` | |
 | `database.embedded.persistence.*` | 8Gi, RWO | `size`, `storageClass`, `accessModes`, `existingClaim` |
 | `database.embedded.resources` | 100m / 256Mi, limit 1Gi | |
-| `migrations.enabled` | `true` | Run `db/migrations` with psql after ReadyRoom creates its tables |
-| `migrations.waitSeconds` | `900` | How long the Job waits for the tables |
-| `migrations.backoffLimit`, `.ttlSecondsAfterFinished`, `.resources` | `3`, `86400`, small | |
+| `database.migration.username` | `""` | `SPRING_FLYWAY_USER`: a separate account that owns the schema and migrates it at startup; empty: `database.username` |
+| `database.migration.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `migration-password` | `SPRING_FLYWAY_PASSWORD`; required with `database.migration.username` |
 | `ldap.host`, `ldap.port` | `""`, `389` | `LDAP_HOST`, `LDAP_PORT` |
 | `ldap.url` | `""` | `SPRING_LDAP_URLS`, e.g. `ldaps://dc1.example.com:636`; overrides host and port |
 | `ldap.bindDn` | `""` | `LDAP_USERNAME` |
@@ -360,4 +363,4 @@ for f in deploy/helm/readyroom/ci/*.yaml; do
 done
 ```
 
-`files/migrations/` must match `db/migrations/` (CI checks it); copy a new script into both.
+The chart carries no database scripts: ReadyRoom migrates its own schema at startup (see `db/README.md`).

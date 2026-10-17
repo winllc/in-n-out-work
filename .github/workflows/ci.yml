@@ -65,9 +65,6 @@ jobs:
           tar -xzf "$RUNNER_TEMP/kubeconform.tar.gz" -C "$RUNNER_TEMP" kubeconform
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
 
-      - name: The chart carries the same database scripts as db/migrations
-        run: diff -r db/migrations "$CHART/files/migrations"
-
       - name: Lint
         run: |
           for values in "$CHART"/ci/*.yaml; do

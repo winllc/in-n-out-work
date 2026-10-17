@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
         "spring.datasource.password=",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.flyway.enabled=false",
         "application.diagnostics.request-metrics=true"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)

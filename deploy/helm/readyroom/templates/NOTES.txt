@@ -1,5 +1,6 @@
 ReadyRoom {{ .Chart.AppVersion }} is installed as release "{{ .Release.Name }}" in namespace "{{ .Release.Namespace }}".
-The first start takes a minute or two while ReadyRoom creates its database tables:
+The first start takes a minute or two while ReadyRoom creates its database tables (Flyway migrates the
+schema at every start, so an upgrade migrates when its new pod starts):
 
   kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "readyroom.fullname" . }}
   kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "readyroom.fullname" . }}
@@ -45,11 +46,6 @@ The first start takes a minute or two while ReadyRoom creates its database table
 3. Database
    The embedded PostgreSQL (database.embedded.enabled) is for EVALUATION ONLY: one pod, NO BACKUPS.
    Use your own PostgreSQL server for production.
-{{- end }}
-{{- if .Values.migrations.enabled }}
-
-Database scripts: Job {{ printf "%s-migrate-%d" (include "readyroom.fullname" .) .Release.Revision | trunc 63 | trimSuffix "-" }} runs them once ReadyRoom has created its tables:
-  kubectl -n {{ .Release.Namespace }} logs job/{{ printf "%s-migrate-%d" (include "readyroom.fullname" .) .Release.Revision | trunc 63 | trimSuffix "-" }}
 {{- end }}
 
 Check it: helm test {{ .Release.Name }} -n {{ .Release.Namespace }}

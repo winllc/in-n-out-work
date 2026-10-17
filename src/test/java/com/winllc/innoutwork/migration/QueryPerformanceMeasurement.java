@@ -25,8 +25,9 @@ import java.util.stream.IntStream;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Measures the hot queries on a seeded database before and after the migration, and the old per-user
- * lookups against the new batched ones. Not part of the normal build (it seeds over a million rows):
+ * Measures the hot queries on a seeded database before and after the indexes (db/legacy/001, now part of
+ * V1), and the old per-user lookups against the new batched ones. Not part of the normal build (it seeds
+ * over a million rows):
  * <pre>
  * PERF_MEASURE=1 ./gradlew test --tests '*QueryPerformanceMeasurement'
  * </pre>
@@ -69,11 +70,12 @@ class QueryPerformanceMeasurement extends PostgresTestSupport {
         int days = Integer.parseInt(System.getenv().getOrDefault("PERF_DAYS", "90"));
         StringBuilder report = new StringBuilder();
 
-        // A separate database with the schema Hibernate created, so the shared test database stays small.
-        ExecResult created = POSTGRES.execInContainer("sh", "-c",
-                "createdb -U %1$s %2$s && pg_dump -s -U %1$s %3$s | psql -q -U %1$s -d %2$s"
-                        .formatted(POSTGRES.getUsername(), DB, POSTGRES.getDatabaseName()));
+        // A separate database with the schema Hibernate created before Flyway (no indexes yet), so the shared
+        // test database stays small.
+        ExecResult created = POSTGRES.execInContainer("createdb", "-U", POSTGRES.getUsername(), DB);
         assertEquals(0, created.getExitCode(), created.getStderr());
+        ExecResult schema = psqlFile(DB, FlywayMigrationTest.LEGACY_SCHEMA);
+        assertEquals(0, schema.getExitCode(), schema.getStderr());
 
         POSTGRES.copyFileToContainer(MountableFile.forHostPath(Path.of("db/perf/seed_volume.sql")), "/tmp/seed.sql");
         long seedStart = System.nanoTime();
@@ -141,7 +143,7 @@ class QueryPerformanceMeasurement extends PostgresTestSupport {
                     "select * from user_records where upper(dn) = upper(?)",
                     "select * from user_event_records where upper(dn) = upper(?) and date = " + quote(day.toString()) + "::date"));
 
-            ExecResult migrated = runMigration(DB);
+            ExecResult migrated = runLegacyMigration(DB);
             assertEquals(0, migrated.getExitCode(), migrated.getStdout() + migrated.getStderr());
 
             List<Measured> newAfter = new ArrayList<>();

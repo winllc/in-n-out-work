@@ -23,7 +23,7 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
     List<CheckInOutRecord> findByDnOrderByTimestampDesc(String dn);
 
     // DN lookups compare lower(dn) so they can use the lower(dn) indexes from
-    // db/migrations/001_indexes_and_unique_user_dn.sql. Spring Data's derived ...IgnoreCase methods
+    // db/migration/V1__baseline.sql. Spring Data's derived ...IgnoreCase methods
     // compare upper(dn), which those indexes cannot serve.
     @Query("select r from CheckInOutRecord r where lower(r.dn) = lower(:dn)"
             + " and r.timestamp >= :from and r.timestamp <= :to order by r.timestamp desc")

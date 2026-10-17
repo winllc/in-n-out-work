@@ -37,6 +37,9 @@ dependencies {
     // --- Database (PostgreSQL + JPA) ---
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     runtimeOnly 'org.postgresql:postgresql'
+    // Schema migrations (src/main/resources/db/migration, see db/README.md), run at startup.
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
     // --- Actuator for monitoring ---
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
@@ -64,7 +67,8 @@ dependencies {
     // Repository queries run against an in-memory database, since JPQL mistakes only surface at startup.
     testImplementation 'org.springframework.boot:spring-boot-data-jpa-test'
     testRuntimeOnly 'com.h2database:h2'
-    // The database migration scripts run against real PostgreSQL in Docker (skipped when Docker is unavailable).
+    // The Flyway migrations and the PostgreSQL-only behaviour run against real PostgreSQL in Docker (skipped when
+    // Docker is unavailable).
     testImplementation 'org.testcontainers:testcontainers-postgresql'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
     // An in-process Kerberos server, so Windows sign-in is tested with real tickets and a real keytab.

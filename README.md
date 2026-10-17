@@ -554,9 +554,8 @@ hash chained to the previous event's, so a changed, removed or reordered event i
 verification. Writers are serialized by a row lock on the single-row `audit_chain_head` table, which
 holds across application instances. A security change that cannot be audited does not happen: role,
 permission, settings and calendar changes are committed together with their event, a sign-in fails if
-its event cannot be stored, and a license upload is refused while the store is unavailable. Run
-[`db/migrations/002_audit_log.sql`](db/migrations/002_audit_log.sql) once to make the table
-append-only in the database itself (see [Database migrations](#database-migrations)).
+its event cannot be stored, and a license upload is refused while the store is unavailable. The table is
+append-only in the database itself: a trigger refuses every UPDATE (see [Database migrations](#database-migrations)).
 
 **What is recorded** (action ids; never renamed):
 
@@ -634,46 +633,55 @@ whole trail, so expect duplicates by `id`.
 
 ## Database migrations
 
-Hibernate creates tables and columns (`ddl-auto: update`) but not indexes or
-constraints. Those come from the scripts in [`db/migrations/`](db/migrations/),
-which run with `psql`. The Helm chart runs them for you: a Job on every install
-and upgrade waits until ReadyRoom has created its tables and then runs each
-script (`migrations.enabled`, on by default). The release package ships them in
-`migrations/`, to run by hand as below when the release notes say so.
+ReadyRoom migrates its own schema with [Flyway](https://documentation.red-gate.com/flyway) when it starts,
+before it serves anything. The migrations are in
+[`src/main/resources/db/migration/`](src/main/resources/db/migration/) and run in version order; each runs
+once per database, recorded in the table `flyway_schema_history`. Hibernate only checks the result
+(`ddl-auto: validate`): ReadyRoom does not start against a schema that does not match it. Nothing is run by
+hand any more, and neither the release package nor the Helm chart carries scripts. How to add a migration:
+[`db/README.md`](db/README.md).
 
-**`001_indexes_and_unique_user_dn.sql`** adds the indexes the DN and date lookups
-need, and makes a user DN unique ignoring case. Before adding that constraint it
-merges any user rows that differ only by DN case: the lowest id is kept, the
-first non-empty value of each field wins, the highest role wins, and favourite
-groups, alternate managers and group permissions are combined. The number of
-merged rows is printed.
+**`V1__baseline.sql`** is the whole schema: every table and column, the indexes for the DN and date
+lookups, one user record per DN ignoring case, and the audit trail's append-only trigger. It is written to
+be safe on any database it meets: on an empty one it creates everything, and on one an earlier release
+created it adds only what is missing. That covers what the old psql scripts did
+([`db/legacy/`](db/legacy/), kept for reference only): user rows whose DNs differ only by letter case are
+merged before the unique index is built (the lowest id is kept, the first non-empty value of each field
+wins, the highest role wins, and favourite groups, alternate managers and permissions are combined), and an
+index an interrupted script left invalid is rebuilt.
 
-1. Start the application against the database once, so the tables exist (the
-   script stops with an error if they don't).
-2. Back up the database.
-3. Run the script:
+**Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
+Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the
+`spring.flyway.baseline-*` settings) and runs V1 on it. Where the old scripts had already run, V1 finds
+almost everything in place and finishes in seconds; where they had not, it builds the indexes, which on a
+large check-in table makes that one start take a few minutes (the Helm chart's startup probe allows 10).
+The log shows `Migrating schema "public" to version "1 - baseline"` and, when user rows were merged,
+`Merging N duplicate user record(s)`. If a migration fails, ReadyRoom does not start and nothing of that
+migration is applied (each runs in one transaction): fix the cause the log names and start it again.
 
-   ```bash
-   psql "postgresql://USER:PASSWORD@HOST:5432/DB" -v ON_ERROR_STOP=1 -f db/migrations/001_indexes_and_unique_user_dn.sql
-   ```
+**A separate migration account (optional).** By default ReadyRoom migrates with its own database account
+(`DB_USERNAME`). To limit that account to reading and writing rows, give the schema to another one:
 
-   Or, for a database in a container:
+| Variable | Default | Purpose |
+|---|---|---|
+| `SPRING_FLYWAY_USER` | (`DB_USERNAME`) | The account Flyway connects as; it owns the tables it creates |
+| `SPRING_FLYWAY_PASSWORD` | (`DB_PASSWORD`) | Its password |
 
-   ```bash
-   docker exec -i POSTGRES_CONTAINER psql -U USER -d DB -v ON_ERROR_STOP=1 < db/migrations/001_indexes_and_unique_user_dn.sql
-   ```
+Create both accounts and the database, owned by the migration account, then, connected as the migration
+account, before ReadyRoom first starts:
 
-- Do **not** add `--single-transaction` (`-1`). The indexes are built with
-  `CREATE INDEX CONCURRENTLY`, so the app can keep running and writing while they
-  build, and that cannot happen inside a transaction. Only the short merge step
-  takes a lock, and only on `user_records`.
-- The script is safe to run again. Existing indexes are skipped, and an index
-  left invalid by an interrupted run is dropped and rebuilt.
-- Deploy the application version that expects the unique DN (it handles the
-  constraint when two requests create the same user at once) with or after the
-  migration.
+```sql
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;            -- PostgreSQL 14 and older; 15+ already does this
+GRANT USAGE ON SCHEMA public TO readyroom;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO readyroom;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO readyroom;
+```
 
----
+For an existing database, whose tables the application's account created and owns, first hand them over
+(`REASSIGN OWNED BY readyroom TO readyroom_owner;` as a superuser), then run the statements above and
+`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO readyroom;` and
+`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO readyroom;`. The Helm chart's values are
+`database.migration.username` and `database.migration.password` (or `.existingSecret`).
 
 ## Performance and tuning
 
@@ -808,9 +816,11 @@ update both when the branding changes.
 ```
 
 JUnit 5 + Mockito, with `@WebMvcTest` slices for the controllers. LDAP code
-runs against an in-memory UnboundID directory. Tests of the migration script and
-of concurrent writes run against PostgreSQL in a container (Testcontainers), and
-are skipped when Docker is not available. Windows sign-in is tested with real
+runs against an in-memory UnboundID directory. Tests of the Flyway migrations, the
+audit store and concurrent writes run against PostgreSQL in a container (Testcontainers),
+on a schema Flyway built, and are skipped when Docker is not available. The other
+repository tests use H2 with the schema built from the entities (`create-drop`, Flyway
+off): V1 uses PostgreSQL-only SQL (PL/pgSQL blocks) and H2 cannot run it. Windows sign-in is tested with real
 Kerberos tickets from an in-process KDC (Apache Kerby), no domain needed.
 
 Licensing is tested with the ENS portal's published TEST key, which no build trusts: the test
@@ -880,7 +890,7 @@ reachable by others.
 | `demo-seed-db` | Loads the check-in/out history and the manager role once the tables exist, then exits |
 
 The seeders are what make one `up` enough. One waits for the directory and loads the users and
-groups; the other **waits for the application to create its tables** — Hibernate does that on first
+groups; the other **waits for the application to create its tables** — Flyway does that on first
 start, so there is nothing to insert into before then — and only then writes the records. No second
 command, and re-running re-seeds cleanly: the LDAP load tolerates entries that already exist and the
 SQL deletes its own previous rows.
@@ -1045,7 +1055,8 @@ docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from sourc
 docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
-db/migrations/ Indexes, constraints and triggers Hibernate does not create; run with psql
+src/main/resources/db/migration/  Flyway migrations, run at startup (see db/README.md)
+db/legacy/     The psql scripts used before Flyway, for reference; db/perf/ the volume seed
 deploy/bundle/ The customer release bundle: production compose, env template, install/upgrade
 deploy/helm/readyroom/  The Helm chart (published to oci://ghcr.io/winllc/charts/readyroom)
 scripts/release-bundle.sh  Builds the release bundle (see Releases)

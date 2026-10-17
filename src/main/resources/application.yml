@@ -56,7 +56,9 @@ spring:
     # waits on LDAP, and a slow directory can exhaust the connection pool.
     open-in-view: false
     hibernate:
-      ddl-auto: update
+      # Flyway owns the schema (src/main/resources/db/migration; db/README.md). Hibernate only checks, at
+      # startup, that the tables and columns it maps are there.
+      ddl-auto: validate
     show-sql: false
     properties:
       hibernate:
@@ -67,6 +69,17 @@ spring:
           batch_size: 50
         order_inserts: true
         order_updates: true
+  flyway:
+    # Migrates the schema at startup, before anything else touches the database. A database an earlier
+    # ReadyRoom created (Hibernate, before Flyway) has tables but no flyway_schema_history: Flyway refuses
+    # such a schema unless told to baseline it, so it is recorded at version 0 and V1 then runs on it as on
+    # an empty one (V1 only adds what is missing). An empty database is not baselined; V1 just runs.
+    baseline-on-migrate: true
+    baseline-version: "0"
+    baseline-description: "Schema created before Flyway (Hibernate ddl-auto: update)"
+    # Optional separate migration account, so the application's own account can be limited to reading and
+    # writing rows: SPRING_FLYWAY_USER and SPRING_FLYWAY_PASSWORD (same database URL). Unset, Flyway uses
+    # DB_USERNAME / DB_PASSWORD. See "Database migrations" in the README for the grants.
   ldap:
     # As above: the compose service name by default, overridable per part.
     urls: ldap://${LDAP_HOST:openldap}:${LDAP_PORT:389}

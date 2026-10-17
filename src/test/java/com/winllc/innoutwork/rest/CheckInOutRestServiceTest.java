@@ -74,6 +74,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.datasource.password=",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
         "spring.jpa.hibernate.ddl-auto=create-drop",
+        "spring.flyway.enabled=false",
         "application.logoff.refused-per-minute=" + CheckInOutRestServiceTest.RATE_LIMIT
 })
 @AutoConfigureJdbc
@@ -367,7 +368,7 @@ class CheckInOutRestServiceTest {
                 + " where lower(index_name) = 'ix_check_in_out_session_id' and lower(table_name) = 'check_in_out_records'"
                 + " and lower(column_name) = 'session_id'", Integer.class);
 
-        assertEquals(1, columns, "the index db/migrations/001 creates, under the same name");
+        assertEquals(1, columns, "the index V1__baseline.sql creates, under the same name");
     }
 
     @Test

@@ -103,6 +103,9 @@ spec:
               valueFrom:
                 secretKeyRef:
                   {{- include "readyroom.dbPasswordRef" . | nindent 18 }}
+            {{- if $v.database.migration.username }}
+            {{- with include "readyroom.secretEnv" (dict "root" . "env" "SPRING_FLYWAY_PASSWORD" "value" $v.database.migration.password "existingSecret" $v.database.migration.existingSecret "existingSecretKey" $v.database.migration.existingSecretKey "key" "migration-password") }}{{ . | nindent 12 }}{{ end }}
+            {{- end }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "LDAP_PASSWORD" "value" $v.ldap.bindPassword "existingSecret" $v.ldap.existingSecret "existingSecretKey" $v.ldap.existingSecretKey "key" "ldap-password") }}{{ . | nindent 12 }}{{ end }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "SPRING_MAIL_PASSWORD" "value" $v.smtp.password "existingSecret" $v.smtp.existingSecret "existingSecretKey" $v.smtp.existingSecretKey "key" "smtp-password") }}{{ . | nindent 12 }}{{ end }}
             {{- if $v.audit.splunk.url }}

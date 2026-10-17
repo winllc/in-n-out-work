@@ -7,10 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.testcontainers.containers.Container.ExecResult;
-import org.testcontainers.utility.MountableFile;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -24,13 +21,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The audit store on real PostgreSQL (skipped without Docker): the chain head's row lock keeps seq gapless under
- * concurrent writers, and db/migrations/002_audit_log.sql makes stored events impossible to update while
- * retention can still delete them.
+ * concurrent writers, and the schema (Flyway's V1, formerly db/legacy/002_audit_log.sql) makes stored events
+ * impossible to update while retention can still delete them.
  */
 @Import(AuditStoreSupport.Store.class)
 class AuditPostgresTest extends PostgresTestSupport {
-
-    static final Path MIGRATION_002 = Path.of("db/migrations/002_audit_log.sql");
 
     @Autowired AuditService audit;
     @Autowired AuditQueryService query;
@@ -38,17 +33,9 @@ class AuditPostgresTest extends PostgresTestSupport {
 
     @BeforeEach
     void empty() {
-        jdbc.execute("DROP TRIGGER IF EXISTS audit_events_no_update ON audit_events");
+        // Deleting is what retention does, and stays allowed; only UPDATE is refused.
         jdbc.update("DELETE FROM audit_events");
         jdbc.update("DELETE FROM audit_chain_head");
-    }
-
-    private static ExecResult migrate() throws Exception {
-        POSTGRES.copyFileToContainer(MountableFile.forHostPath(MIGRATION_002), "/tmp/002.sql");
-        ExecResult result = POSTGRES.execInContainer("psql", "-U", POSTGRES.getUsername(), "-d",
-                POSTGRES.getDatabaseName(), "-v", "ON_ERROR_STOP=1", "-f", "/tmp/002.sql");
-        assertEquals(0, result.getExitCode(), () -> "psql failed:\n" + result.getStdout() + result.getStderr());
-        return result;
     }
 
     @Test
@@ -74,12 +61,9 @@ class AuditPostgresTest extends PostgresTestSupport {
     }
 
     @Test
-    void theMigrationMakesEventsAppendOnlyAndIsRepeatable() throws Exception {
+    void theSchemaMakesEventsAppendOnly() {
         audit.record(AuditEntry.of(AuditEntry.Category.SYSTEM, "system.started").actor(AuditEntry.Actor.system()));
         audit.record(AuditEntry.of(AuditEntry.Category.SYSTEM, "job.completed").actor(AuditEntry.Actor.system()));
-
-        assertTrue(migrate().getStdout().contains("Migration 002 complete."));
-        migrate();
 
         assertThrows(DataAccessException.class,
                 () -> jdbc.update("UPDATE audit_events SET action = 'x' WHERE seq = 1"));
