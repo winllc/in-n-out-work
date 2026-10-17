@@ -836,6 +836,41 @@ For an existing database, whose tables the application's account created and own
 `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO readyroom;`. The Helm chart's values are
 `database.migration.username` and `database.migration.password` (or `.existingSecret`).
 
+## FIPS 140-3
+
+ReadyRoom implements no cryptography of its own. TLS (to browsers, the Windows client, the directory, the
+mail server, the database and the audit outputs), certificate and revocation checking, hashing and random
+numbers all come from the Java platform's security providers, through the standard JCA/JSSE interfaces.
+The image is built on Red Hat UBI 9 OpenJDK 21: on a RHEL host in FIPS mode (`fips-mode-setup --enable`, or
+an OpenShift cluster installed with FIPS), Red Hat's OpenJDK switches to its FIPS configuration
+automatically, using the host's FIPS-validated NSS and OpenSSL modules and the system crypto policy. Run
+ReadyRoom there, with that image, for FIPS 140-3; ReadyRoom does not claim validation of its own.
+
+What ReadyRoom uses: SHA-256 for the audit hash chain, the pull-API token hashes and the session id
+fingerprints; SHA-1 only to name a certificate in an OCSP request (the CertID RFC 6960 defines, not a
+signature); the platform's `SecureRandom` for session ids, CSRF tokens, CSP nonces and tokens; Ed25519 to
+verify the ENS license signature (see below). BouncyCastle is used by the tests only and is not in the
+image.
+
+Options that are not FIPS-appropriate, or weaken what FIPS mode protects, and should stay off in a FIPS
+deployment:
+
+| Setting | Why |
+|---|---|
+| `ENS_AUDIT_SPLUNK_INSECURE=true` | Skips the Splunk HEC certificate check |
+| `SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST=*` (or a host name) | Trusts the mail server's certificate without checking it |
+| `SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false` | Mail, and its credentials, in clear text |
+| `ldap://` directory URLs | Passwords and directory data in clear text (warned at startup) |
+| `SSL_ENABLED=false` without a TLS-terminating proxy | Everything in clear text |
+| `-SkipCertificateCheck` on the Windows client | Trusts any server certificate |
+| `ENS_X509_REVOCATION=off`, `ENS_X509_REVOCATION_FAIL=open` | Revoked or unchecked certificates sign in (STIG) |
+| Keystores and trust stores (`SERVER_SSL_KEYSTORE`, `SERVER_SSL_TRUSTSTORE`) in a format or with algorithms the FIPS provider does not accept | Load them as PKCS#12 made with FIPS-approved algorithms (AES, SHA-256), or as the provider requires |
+
+### License verification under FIPS
+
+Placeholder: the ENS license library's FIPS test results (Ed25519 signature verification with the platform's
+FIPS providers) are to be added here.
+
 ## Monitoring and logs
 
 **Health.** `/actuator/health` is open to anyone with the status only; administrators also see each
