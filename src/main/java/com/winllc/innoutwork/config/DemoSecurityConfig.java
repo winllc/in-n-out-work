@@ -96,8 +96,8 @@ public class DemoSecurityConfig {
                         .permitAll())
                 .logout(logout -> logout
                         .logoutSuccessUrl(LOGIN_URL + "?logout")
-                        .permitAll())
-                .csrf(csrf -> csrf.disable());
+                        .permitAll());
+        // CSRF stays on as in SecurityConfig: the sign-in and sign-out posts are the two writes demo mode allows.
 
         return http.build();
     }

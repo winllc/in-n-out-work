@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -105,36 +106,36 @@ class DemoSecurityConfigTest {
 
     @Test
     void theSignInPostIsNotCaughtByTheReadOnlyRule() throws Exception {
-        mockMvc.perform(post("/login").param("username", "demo").param("password", "password"))
+        mockMvc.perform(post("/login").param("username", "demo").param("password", "password").with(csrf()))
                 .andExpect(result -> assertNotEquals(403, result.getResponse().getStatus(),
                         "the login post must not be refused, or the published credentials are unusable"));
     }
 
     @Test
     void theSignOutPostIsNotCaughtEither() throws Exception {
-        mockMvc.perform(post("/logout"))
+        mockMvc.perform(post("/logout").with(csrf()))
                 .andExpect(result -> assertNotEquals(403, result.getResponse().getStatus()));
     }
 
     @Test
     void postIsRefusedEvenForASignedInVisitor() throws Exception {
-        mockMvc.perform(post("/demo-probe").with(SIGNED_IN)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/demo-probe").with(SIGNED_IN).with(csrf())).andExpect(status().isForbidden());
     }
 
     @Test
     void putIsRefused() throws Exception {
-        mockMvc.perform(put("/demo-probe").with(SIGNED_IN)).andExpect(status().isForbidden());
+        mockMvc.perform(put("/demo-probe").with(SIGNED_IN).with(csrf())).andExpect(status().isForbidden());
     }
 
     @Test
     void deleteIsRefused() throws Exception {
-        mockMvc.perform(delete("/demo-probe").with(SIGNED_IN)).andExpect(status().isForbidden());
+        mockMvc.perform(delete("/demo-probe").with(SIGNED_IN).with(csrf())).andExpect(status().isForbidden());
     }
 
     /** A path nobody thought to hide is refused too, because the rule is by method, not by path. */
     @Test
     void anUnknownWritePathIsRefusedRatherThanReaching404() throws Exception {
-        mockMvc.perform(post("/some/endpoint/added/later").with(SIGNED_IN)).andExpect(status().isForbidden());
+        mockMvc.perform(post("/some/endpoint/added/later").with(SIGNED_IN).with(csrf())).andExpect(status().isForbidden());
     }
 
     /** A demo is usually reachable by people who should not read the configuration. */

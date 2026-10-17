@@ -34,6 +34,14 @@ public class SecurityConfig {
 
     private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
 
+    /**
+     * The Windows client's API, exempt from CSRF tokens: the client is a script with no browser session to take a
+     * token from. It signs in with a certificate or a Windows ticket, or not at all (the logoff, identified by its
+     * session id), and accepts only JSON, which another site's page cannot post without a CORS preflight that is
+     * never granted. The audit pull API has a chain of its own (bearer tokens, no session, no CSRF).
+     */
+    public static final String CLIENT_API = "/api/check/**";
+
 
     /**
      * The normal chain. Absent while demo mode is on, where {@link DemoSecurityConfig} defines the
@@ -69,7 +77,9 @@ public class SecurityConfig {
                 // The default 403, recorded in the audit trail as access.denied.
                 .exceptionHandling(e -> e.accessDeniedHandler(
                         auditing(securityAudit, "permission_denied", new AccessDeniedHandlerImpl())))
-                .csrf(csrf -> csrf.disable());
+                // Every post from a browser carries the token: forms built with th:action get it from Thymeleaf,
+                // scripts from the meta tags in layout.html. A missing or wrong one is a 403 (access.denied).
+                .csrf(csrf -> csrf.ignoringRequestMatchers(CLIENT_API));
 
         return http.build();
     }
