@@ -97,6 +97,30 @@ spring:
 # The ENS Solutions license is not configured here. It is read from ENS_LICENSE_FILE and
 # ENS_LICENSE_STATE_DIR (environment only); see Licensing in the README.
 
+# The audit trail (ens-audit/1): every option comes from an ENS_AUDIT_* environment variable. See
+# "Audit logging" in the README. The store (the audit_events table) is always on; these are its outputs.
+ens:
+  audit:
+    # Each event as one raw JSON line on stdout, logger ens.audit (Docker logs, Splunk UF).
+    stdout: ${ENS_AUDIT_STDOUT:true}
+    # Also append the lines to this file, rotated daily or at 100 MB, keeping ENS_AUDIT_FILE_KEEP.
+    file: ${ENS_AUDIT_FILE:}
+    file-keep: ${ENS_AUDIT_FILE_KEEP:30}
+    # Days to keep events; 0 keeps them forever.
+    retention-days: ${ENS_AUDIT_RETENTION_DAYS:0}
+    splunk:
+      url: ${ENS_AUDIT_SPLUNK_URL:}
+      token: ${ENS_AUDIT_SPLUNK_TOKEN:}
+      token-file: ${ENS_AUDIT_SPLUNK_TOKEN_FILE:}
+      index: ${ENS_AUDIT_SPLUNK_INDEX:}
+      sourcetype: ${ENS_AUDIT_SPLUNK_SOURCETYPE:ens:audit}
+      insecure: ${ENS_AUDIT_SPLUNK_INSECURE:false}
+    syslog:
+      host: ${ENS_AUDIT_SYSLOG_HOST:}
+      port: ${ENS_AUDIT_SYSLOG_PORT:}
+      protocol: ${ENS_AUDIT_SYSLOG_PROTOCOL:tcp}
+      facility: ${ENS_AUDIT_SYSLOG_FACILITY:local0}
+
 management:
   endpoints:
     web:

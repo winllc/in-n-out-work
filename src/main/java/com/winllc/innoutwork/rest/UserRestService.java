@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
@@ -38,6 +41,13 @@ public class UserRestService {
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final ApplicationProperties properties;
     private final UserService userService;
+
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
 
     public UserRestService(LdapService ldapService,
                            UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
@@ -172,13 +182,21 @@ public class UserRestService {
 
         if(byDnIgnoreCase.isPresent()){
             UserRecord userRecord = byDnIgnoreCase.get();
+            String old = userRecord.getAlternateManagers();
 
             userRecord.setAlternateManagers("");
             for(String managerDn : managerDns){
                 userRecord.addAltManager(managerDn);
             }
 
-            userRecordRepository.save(userRecord);
+            // Who receives this person's absence alerts: saved and audited together.
+            audit.inTransaction(() -> {
+                UserRecord saved = userRecordRepository.save(userRecord);
+                audit.record(AuditEntry.of(AuditEntry.Category.DATA, "person.updated")
+                        .target("user", saved.getDn(), LdapDn.cnOf(saved.getDn()))
+                        .detail("via", "alternate-managers")
+                        .change("alternateManagers", old, saved.getAlternateManagers()));
+            });
         }
     }
 
