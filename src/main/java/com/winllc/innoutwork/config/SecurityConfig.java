@@ -33,6 +33,7 @@ import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.AnyRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.util.Collection;
@@ -61,11 +62,15 @@ public class SecurityConfig {
      */
     public static final String PROMETHEUS = "/actuator/prometheus";
 
-    /** The management port's paths open to anyone; just health when there is no separate port. */
-    static String[] openActuatorPaths(Environment environment) {
-        return ManagementPortExposure.separateManagementPort(environment)
-                ? new String[]{"/actuator/health", "/actuator/health/**", PROMETHEUS}
-                : ACTUATOR_HEALTH;
+    /**
+     * Prometheus on the management port, which actuator reports as {@code local.management.port} once it listens.
+     * Nowhere else: on the application's own port the path stays behind the ADMIN rule like the rest of
+     * /actuator.
+     */
+    static RequestMatcher prometheusOnManagementPort(Environment environment) {
+        RequestMatcher path = PathPatternRequestMatcher.withDefaults().matcher(PROMETHEUS);
+        return request -> path.matches(request)
+                && String.valueOf(request.getLocalPort()).equals(environment.getProperty("local.management.port"));
     }
 
 
@@ -94,7 +99,8 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Health, for the container healthcheck and the Kubernetes probes, is all application.yml
                         // exposes. Anything an operator exposes besides (metrics, env) needs ADMIN.
-                        .requestMatchers(openActuatorPaths(environment)).permitAll()
+                        .requestMatchers(ACTUATOR_HEALTH).permitAll()
+                        .requestMatchers(prometheusOnManagementPort(environment)).permitAll()
                         .requestMatchers("/actuator/**").hasAuthority(UserRoleEnum.ADMIN.name())
                         .requestMatchers("/api/check/out").permitAll()
                         .requestMatchers("/login", "/error", ConsentFilter.CONSENT_URL).permitAll()

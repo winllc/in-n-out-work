@@ -87,7 +87,8 @@ public class DemoSecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/**").denyAll()
                         .requestMatchers(HttpMethod.DELETE, "/**").denyAll()
                         .requestMatchers(LOGIN_URL, "/error", ConsentFilter.CONSENT_URL).permitAll()
-                        .requestMatchers(SecurityConfig.openActuatorPaths(environment)).permitAll()
+                        .requestMatchers(SecurityConfig.ACTUATOR_HEALTH).permitAll()
+                        .requestMatchers(SecurityConfig.prometheusOnManagementPort(environment)).permitAll()
                         .requestMatchers("/actuator/**").denyAll()
                         // Everything else still needs a signed-in visitor: demo mode publishes the
                         // credentials, it does not remove the sign-in.

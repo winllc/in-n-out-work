@@ -116,9 +116,8 @@ class ManagementPortTest {
     @Test
     void theApplicationsPortExposesNoMetrics() throws Exception {
         HttpResponse<String> metrics = get(port, "/actuator/prometheus");
-        // No endpoint there: whatever answers (the error page), it is not metrics.
-        assertFalse(metrics.body().contains("# HELP") || metrics.body().contains("ens_license_mode"), metrics.body());
-        assertFalse(metrics.headers().firstValue("Content-Type").orElse("").contains("openmetrics")
-                || metrics.headers().firstValue("Content-Type").orElse("").startsWith("text/plain"));
+        // Behind the ADMIN rule like the rest of /actuator there, so an anonymous caller is sent to sign in.
+        assertEquals(302, metrics.statusCode(), metrics.body());
+        assertFalse(metrics.body().contains("ens_license_mode"), metrics.body());
     }
 }
