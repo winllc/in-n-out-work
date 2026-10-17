@@ -29,6 +29,8 @@ public class LicensingConfiguration implements WebMvcConfigurer {
 
     static final String[] UNGATED = {
             "/login", "/logout", "/error",
+            // The notice-and-consent banner comes before sign-in, so before anyone could install a license.
+            "/consent",
             LICENSE_SCREEN, LICENSE_SCREEN + "/**",
             "/api/license",
             // The audit trail stays available in every license state: administrators can still open, export
