@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -34,6 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
         "spring.ldap.username=",
         "spring.ldap.password=",
         "server.ssl.enabled=false",
+        // The packaged mail server is not reachable from here; health would report DOWN.
+        "management.health.mail.enabled=false",
         "application.refresh-user-records-cron.initial-delay=3600000",
         "application.send-absent-notification-cron.initial-delay=3600000",
         "application.inactive-cron.initial-delay=3600000"
@@ -85,5 +88,23 @@ class AuditEmbeddedServerTest {
                 .orElseThrow(() -> new AssertionError("no session cookie: " + login.headers().map()));
         assertTrue(cookie.contains("SameSite=Lax"), cookie);
         assertTrue(cookie.contains("HttpOnly"), cookie);
+    }
+
+    /** The image's healthcheck reads health without signing in; env, as packaged, is neither exposed nor open. */
+    @Test
+    void healthIsOpenAndEnvIsNot() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+
+        HttpResponse<String> health = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/actuator/health")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(200, health.statusCode(), health.body());
+        assertTrue(health.body().contains("\"status\":\"UP\""), health.body());
+        assertFalse(health.body().contains("components"), "no details for anonymous callers: " + health.body());
+
+        HttpResponse<String> env = client.send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/actuator/env")).build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertEquals(302, env.statusCode(), "sent to sign in, not answered");
     }
 }
