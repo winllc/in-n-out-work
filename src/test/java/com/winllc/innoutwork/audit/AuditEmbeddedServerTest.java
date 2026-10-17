@@ -16,6 +16,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The application on a real embedded server, as the image runs it. Boot creates servlet filters (the
@@ -67,5 +68,22 @@ class AuditEmbeddedServerTest {
                 HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/login")).build(),
                 HttpResponse.BodyHandlers.ofString());
         assertEquals(200, login.statusCode());
+    }
+
+    /**
+     * The sign-in form's CSRF token starts a session. Its cookie is never sent with another site's posts
+     * (SameSite=Lax) and is out of scripts' reach (HttpOnly), as the packaged configuration sets it.
+     */
+    @Test
+    void theSessionCookieIsSameSiteLaxAndHttpOnly() throws Exception {
+        HttpResponse<String> login = HttpClient.newHttpClient().send(
+                HttpRequest.newBuilder(URI.create("http://localhost:" + port + "/login")).build(),
+                HttpResponse.BodyHandlers.ofString());
+
+        String cookie = login.headers().allValues("Set-Cookie").stream()
+                .filter(c -> c.startsWith("JSESSIONID=")).findFirst()
+                .orElseThrow(() -> new AssertionError("no session cookie: " + login.headers().map()));
+        assertTrue(cookie.contains("SameSite=Lax"), cookie);
+        assertTrue(cookie.contains("HttpOnly"), cookie);
     }
 }

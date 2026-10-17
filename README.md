@@ -83,6 +83,12 @@ address (`application.logoff.anonymous-requests-per-minute`, 120). Every other c
 records the signed-in user, whatever the body says, and no other response or page
 shows a `sessionId`.
 
+Every other post, put and delete needs a CSRF token: forms built with `th:action`
+carry it, and `layout.html` adds it to the pages' `fetch()` calls from its `_csrf`
+meta tags. The Windows client's `/api/check/**` is exempt. The session cookie is
+`SameSite=Lax` and `HttpOnly`, and `Secure` with `SSL_ENABLED=true` or
+`SESSION_COOKIE_SECURE=true` (for a proxy that terminates TLS).
+
 ### Roles
 
 `USER`, `MANAGER`, `ADMIN` (`UserRoleEnum`). Access to a group's users is granted

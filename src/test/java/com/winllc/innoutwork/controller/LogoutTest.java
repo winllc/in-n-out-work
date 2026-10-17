@@ -25,10 +25,13 @@ import org.springframework.web.bind.annotation.GetMapping;
 
 import static com.winllc.innoutwork.controller.ProfileControllerTest.mockCert;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.not;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -117,10 +120,38 @@ class LogoutTest {
     void loggingOutEndsTheSessionAndReturnsToTheSignInPage() throws Exception {
         MockHttpSession session = new MockHttpSession();
 
-        mockMvc.perform(post("/logout").session(session).with(user(USER_DN)))
+        mockMvc.perform(post("/logout").session(session).with(user(USER_DN)).with(csrf()))
                 .andExpect(redirectedUrl("/login?logout"));
 
         assertTrue(session.isInvalid(), "the HTTP session should be invalidated");
+    }
+
+    /** Another site cannot sign the user out: the post needs the token the menu's form carries. */
+    @Test
+    void aLogoutWithoutTheCsrfTokenIsRefused() throws Exception {
+        MockHttpSession session = new MockHttpSession();
+
+        mockMvc.perform(post("/logout").session(session).with(user(USER_DN)))
+                .andExpect(status().isForbidden());
+
+        assertFalse(session.isInvalid());
+    }
+
+    @Test
+    void theLogoutFormCarriesTheCsrfToken() throws Exception {
+        mockMvc.perform(get("/render/page").with(user(USER_DN).authorities(() -> UserRoleEnum.USER.name())))
+                .andExpect(status().isOk())
+                .andExpect(content().string(matchesPattern(
+                        "(?s).*id=\"logout-form\".*<input type=\"hidden\" name=\"_csrf\" value=\"[^\"]+\".*")));
+    }
+
+    /** What layout.html's fetch() wrapper sends with the pages' scripted posts. */
+    @Test
+    void everyPageCarriesTheCsrfTokenForItsScripts() throws Exception {
+        mockMvc.perform(get("/render/page").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(matchesPattern("(?s).*<meta name=\"_csrf\" content=\"[^\"]+\"/>.*")))
+                .andExpect(content().string(containsString("<meta name=\"_csrf_header\" content=\"X-CSRF-TOKEN\"/>")));
     }
 
     @Test

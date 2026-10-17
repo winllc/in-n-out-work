@@ -17,6 +17,19 @@ server:
     trust-store: classpath:truststore.p12
     trust-store-password: changeit
     trust-store-type: PKCS12
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        # Lax: the browser leaves the session cookie off another site's posts and scripted requests (the CSRF
+        # token refuses those as well), but still sends it when someone follows a link from elsewhere. Strict
+        # would leave it off there too, and the link in an absence notification e-mail would then open the
+        # sign-in page instead of the notification.
+        same-site: lax
+        # Secure whenever ReadyRoom serves TLS itself; Tomcat also marks it Secure on any request it sees as
+        # HTTPS. Behind a proxy that terminates TLS, set SESSION_COOKIE_SECURE=true unless ReadyRoom reads the
+        # proxy's X-Forwarded-Proto (server.forward-headers-strategy).
+        secure: ${SESSION_COOKIE_SECURE:${SSL_ENABLED:false}}
 
 logging:
   level:
