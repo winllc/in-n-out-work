@@ -122,6 +122,7 @@ class ScopedEndpointsTest {
     @MockitoBean com.winllc.innoutwork.service.StatusCalendar statusCalendar;
     @MockitoBean com.winllc.innoutwork.service.StatusRequestService statusRequestService;
     @MockitoBean com.winllc.innoutwork.service.Approvers approvers;
+    @MockitoBean com.winllc.innoutwork.service.DelegateService delegateService;
 
     @Configuration
     @EnableWebSecurity

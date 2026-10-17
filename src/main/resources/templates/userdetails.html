@@ -7,6 +7,8 @@
     <meta charset="UTF-8">
     <title>User Details</title>
     <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
+    <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
+    <script th:src="@{/libs/autoComplete/autoComplete.min.js}"></script>
 </head>
 <body>
 
@@ -136,6 +138,39 @@
 
     </div>
 
+    <!--
+      Delegates (alternate managers): with the directory manager, they receive this person's absence alerts and decide
+      their requests. Shown to whoever sees the details; changed by administrators only (the API checks it too).
+    -->
+    <div class="row row-cards mt-1" th:if="${isGroupManager or isSelf}" id="delegates-card">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Delegates</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary small">
+                        Besides the manager in the directory, these people receive this person's absence alerts, may
+                        answer them and approve their requests. Only administrators change them.
+                    </p>
+                    <ul id="delegate-list" class="list-group list-group-flush mb-3"></ul>
+                    <div sec:authorize="hasAuthority('ADMIN')" id="delegate-editor">
+                        <div class="mb-3">
+                            <label class="form-label" for="delegate-search">Add a delegate</label>
+                            <input id="delegate-search" class="form-control" type="text" placeholder="Search..."
+                                   autocomplete="off"/>
+                        </div>
+                        <div class="btn-list justify-content-end">
+                            <button type="button" class="btn btn-primary" id="save-delegates">
+                                <i class="ti ti-device-floppy me-1"></i>Save delegates
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row row-cards mt-1" th:if="${(isGroupManager or isSelf) and (licenseInfo == null or licenseInfo.isEnabled('calendar'))}">
         <div class="col-12">
             <div class="card">
@@ -201,6 +236,85 @@
             calendar.render();
 
         });
+
+        // --- delegates: listed for whoever sees the details, edited by administrators -----------------------
+        const delegateList = document.getElementById("delegate-list");
+        const delegates = new Map();
+
+        function showDelegate(dn) {
+            delegates.set(dn, true);
+            const li = document.createElement("li");
+            li.className = "list-group-item d-flex align-items-center justify-content-between";
+            const label = document.createElement("span");
+            label.className = "text-truncate";
+            label.textContent = dn;
+            li.append(label);
+            if (document.getElementById("delegate-editor")) {
+                const remove = document.createElement("button");
+                remove.type = "button";
+                remove.className = "btn btn-icon btn-ghost-danger";
+                remove.title = "Remove";
+                const icon = document.createElement("i");
+                icon.className = "ti ti-x";
+                remove.append(icon);
+                remove.addEventListener("click", () => {
+                    delegates.delete(dn);
+                    li.remove();
+                });
+                li.append(remove);
+            }
+            delegateList.appendChild(li);
+        }
+
+        if (delegateList) {
+            fetch("/api/users/managers/" + encodeURIComponent(userDn))
+                .then(res => res.ok ? res.json() : [])
+                .then(items => items.forEach(item => showDelegate(item.dn)));
+        }
+
+        if (document.getElementById("delegate-editor")) {
+            new autoComplete({
+                selector: "#delegate-search",
+                threshold: 3,
+                debounce: 300,
+                searchEngine: "strict",
+                data: {
+                    src: async (query) => {
+                        if (!query) return [];
+                        const response = await fetch(`/api/users/usersearch?search=${encodeURIComponent(query)}`);
+                        return await response.json();
+                    },
+                    keys: ["dn"]
+                },
+                resultsList: {maxResults: 10, noResults: true},
+                resultItem: {highlight: true},
+                events: {
+                    input: {
+                        selection: (event) => {
+                            const item = event.detail.selection.value;
+                            if (!delegates.has(item.dn)) {
+                                showDelegate(item.dn);
+                            }
+                            document.querySelector("#delegate-search").value = "";
+                        }
+                    }
+                }
+            });
+
+            document.getElementById("save-delegates").addEventListener("click", async function () {
+                const response = await fetch("/api/users/managers/update/" + encodeURIComponent(userDn), {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(Array.from(delegates.keys()))
+                });
+                if (response.ok) {
+                    showToast("Delegates saved", {type: "success"});
+                } else {
+                    const problem = await response.json().catch(() => ({}));
+                    showToast(problem.message || "The delegates could not be saved", {type: "danger", delay: 6000});
+                }
+            });
+        }
 
     </script>
 </div>

@@ -86,6 +86,8 @@ class UserRestServiceTest {
     /** Referenced by name from the @PreAuthorize expressions; ScopedEndpointsTest covers its decisions here. */
     @MockitoBean(name = "accessPolicy")
     AccessPolicy accessPolicy;
+    @MockitoBean
+    com.winllc.innoutwork.service.DelegateService delegateService;
 
     @Configuration
     @EnableWebSecurity

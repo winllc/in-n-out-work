@@ -168,8 +168,8 @@ group reports need `MANAGER` or `ADMIN`); whose data a page shows is decided by
   login time, check-in history, calendar, alternate managers): themselves; `ADMIN`;
   and the people the viewer is responsible for, whatever their role: members of the
   groups they manage (the group's directory `owner` or an alternate manager set in
-  ReadyRoom), their direct reports in the directory, and people who named them as an
-  alternate manager. Indirect reports are not included.
+  ReadyRoom), their direct reports in the directory, and the people they are a delegate of
+  (see [Delegates](#delegates)). Indirect reports are not included.
 - Everyone else, as a coworker: found by search, a group or the org chart, with their
   directory details and whether they are in, never their times, notes or history. A
   status a manager recorded (absent, unscheduled leave) shows as `OUT_OF_OFFICE`.
@@ -178,6 +178,20 @@ group reports need `MANAGER` or `ADMIN`); whose data a page shows is decided by
 - Absence notifications: the manager they were sent to, and `ADMIN`.
 
 A principal with no directory user (a machine certificate, say) does not sign in.
+
+### Delegates
+
+A person's delegates (alternate managers) are, besides their manager in the directory, who receives their absence
+alerts, may answer them, decides their status requests and sees their details. **Only administrators set them**: on
+the person's details page, or with `POST /api/users/managers/update/{dn}` (a JSON list of DNs; each must be someone
+else in the directory). People used to pick their own on their profile; the profile now only lists them.
+
+*Administration &rarr; Delegates* (`/app/admin/delegates`) lists everyone with delegates. Delegates people chose for
+themselves before this release are kept, so an upgrade does not silently change who receives anyone's alerts, but
+are marked "to review": an administrator keeps them, changes them on the details page, or removes them. While any
+wait, startup logs at INFO how many (`N people have delegates (alternate managers) chosen before administrators
+managed them ...`). Changes are audited as `person.updated` with `details.via` `alternate-managers` (old and new
+list) or `alternate-managers-reviewed`.
 
 ### Statuses and approvals
 
@@ -853,6 +867,7 @@ index an interrupted script left invalid is rebuilt.
 | Migration | What |
 |---|---|
 | `V2__status_requests.sql` | The `status_requests` table, and `user_event_records.request_id`, the approved request a calendar day comes from (see [Statuses and approvals](#statuses-and-approvals)). Existing rows are untouched. |
+| `V3__admin_managed_delegates.sql` | `user_records.alternate_managers` widened to 2000 characters, and `alternate_managers_review_pending`, set on every person who had delegates they chose themselves (see [Delegates](#delegates)). |
 
 **Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
 Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the

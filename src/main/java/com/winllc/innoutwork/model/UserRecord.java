@@ -45,7 +45,17 @@ public class UserRecord {
     @Column(columnDefinition = "text")
     @Enumerated(EnumType.STRING)
     private UserRoleEnum userRole;
+    /**
+     * The person's delegates: besides their directory manager, these receive their absence alerts, may answer them
+     * and decide their status requests. ';'-separated DNs, set by administrators only (DelegateService).
+     */
+    @Column(length = 2000)
     private String alternateManagers;
+    /**
+     * Delegates the person chose for themselves before administrators managed them (V3), kept until an
+     * administrator reviews them.
+     */
+    private boolean alternateManagersReviewPending;
 
     private LocalTime averageLoginTime;
     private LocalTime chosenLoginTime;

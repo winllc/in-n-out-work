@@ -294,6 +294,41 @@ class FlywayMigrationTest extends PostgresTestSupport {
         assertEquals("note", twice.queryForObject("SELECT notes FROM user_records", String.class));
     }
 
+    // --- after the baseline ------------------------------------------------------------------------------------
+
+    /** Flyway as configured, but stopping at {@code version}: a database as an earlier release left it. */
+    private static void migrateTo(String database, String version) {
+        Flyway configured = flyway(database, POSTGRES.getUsername(), POSTGRES.getPassword());
+        assertTrue(Flyway.configure().configuration(configured.getConfiguration()).target(version).load().migrate().success);
+    }
+
+    /**
+     * V3: people no longer choose their own delegates, but those they chose before are kept, marked for an
+     * administrator to review, so an upgrade does not silently change who receives their alerts.
+     */
+    @Test
+    void delegatesPeopleChoseThemselvesAreKeptAndMarkedForReview() throws Exception {
+        String db = createDatabase("delegates");
+        migrateTo(db, "2");
+        JdbcTemplate before = jdbc(db);
+        long chose = insertUser(before, "cn=Alice,ou=Users,dc=winllc,dc=com", null, "USER", null,
+                "cn=Bob,ou=Users,dc=winllc,dc=com;cn=Carol,ou=Users,dc=winllc,dc=com");
+        long none = insertUser(before, "cn=Dan,ou=Users,dc=winllc,dc=com", null, "USER", null, null);
+        long emptied = insertUser(before, "cn=Erin,ou=Users,dc=winllc,dc=com", null, "USER", null, ";");
+
+        assertTrue(migrate(db).success);
+
+        JdbcTemplate after = jdbc(db);
+        String pending = "SELECT alternate_managers_review_pending FROM user_records WHERE id = ?";
+        assertTrue(after.queryForObject(pending, Boolean.class, chose));
+        assertFalse(after.queryForObject(pending, Boolean.class, none));
+        assertFalse(after.queryForObject(pending, Boolean.class, emptied));
+        assertEquals("cn=Bob,ou=Users,dc=winllc,dc=com;cn=Carol,ou=Users,dc=winllc,dc=com", after.queryForObject(
+                "SELECT alternate_managers FROM user_records WHERE id = ?", String.class, chose), "kept as they were");
+        assertEquals(2000, after.queryForObject("SELECT character_maximum_length FROM information_schema.columns"
+                + " WHERE table_name = 'user_records' AND column_name = 'alternate_managers'", Integer.class));
+    }
+
     // --- a separate migration account -----------------------------------------------------------------------
 
     /**

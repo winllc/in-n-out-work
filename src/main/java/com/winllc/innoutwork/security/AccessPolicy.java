@@ -50,8 +50,9 @@ import java.util.stream.Stream;
  *       My Reports lists and whose absence alerts go to the viewer. Indirect reports are not included: nothing else
  *       in ReadyRoom follows the reporting line past one level, and the directory is only read one level at a
  *       time;</li>
- *   <li><b>people who named them as an alternate manager</b> on their own profile, who also send them their absence
- *       alerts.</li>
+ *   <li><b>people they are a delegate (alternate manager) of</b>, who also send them their absence alerts. An
+ *       administrator sets delegates (DelegateService); people chose their own before, and those choices are kept
+ *       until an administrator reviews them.</li>
  * </ul>
  * The last three come from the directory and from the people themselves, not from the MANAGER role: someone with
  * only USER who manages a group or has reports already got their alerts and their My Reports page. The MANAGER role

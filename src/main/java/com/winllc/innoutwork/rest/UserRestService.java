@@ -1,6 +1,5 @@
 package com.winllc.innoutwork.rest;
 
-import com.winllc.innoutwork.audit.AuditEntry;
 import com.winllc.innoutwork.audit.AuditLog;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
@@ -14,6 +13,8 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.security.AccessPolicy;
+import com.winllc.innoutwork.service.DelegateService;
+import com.winllc.innoutwork.service.InvalidRequestException;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
@@ -21,6 +22,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.*;
 import org.springframework.data.web.PagedModel;
+import org.springframework.http.ResponseEntity;
 import org.springframework.ldap.query.LdapQuery;
 import org.springframework.ldap.query.LdapQueryBuilder;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -43,6 +45,7 @@ public class UserRestService {
     private final ApplicationProperties properties;
     private final UserService userService;
     private final AccessPolicy accessPolicy;
+    private final DelegateService delegateService;
 
     private AuditLog audit = AuditLog.NOOP;
 
@@ -53,13 +56,15 @@ public class UserRestService {
 
     public UserRestService(LdapService ldapService,
                            UserRecordRepository userRecordRepository, CheckInOutRecordRepository checkInOutRecordRepository,
-                           ApplicationProperties properties, UserService userService, AccessPolicy accessPolicy) {
+                           ApplicationProperties properties, UserService userService, AccessPolicy accessPolicy,
+                           DelegateService delegateService) {
         this.ldapService = ldapService;
         this.userRecordRepository = userRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
         this.userService = userService;
         this.accessPolicy = accessPolicy;
+        this.delegateService = delegateService;
     }
 
     /** A group's members: open to its members, its managers and ADMIN; details only of those the viewer may see. */
@@ -181,31 +186,20 @@ public class UserRestService {
         return Collections.emptyList();
     }
 
-    @PostMapping("/managers/update")
-    public void updateManagersForUser(Authentication authentication, @RequestBody List<String> managerDns){
-        //todo implement
-        log.info("Updating managers for user %s to: %s".formatted(authentication.getName(), managerDns));
+    /**
+     * Replaces a person's delegates (alternate managers): administrators only. People no longer choose their own,
+     * since delegates receive their alerts and decide their requests (DelegateService).
+     */
+    @PostMapping("/managers/update/{dn}")
+    @PreAuthorize("hasAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN)")
+    public List<String> updateManagersForUser(@PathVariable String dn, @RequestBody List<String> managerDns) {
+        log.info("Updating delegates of {} to {}", dn, managerDns);
+        return delegateService.setDelegates(dn, managerDns).getAltManagerList();
+    }
 
-        Optional<UserRecord> byDnIgnoreCase = userRecordRepository.findByDnIgnoreCase(authentication.getName());
-
-        if(byDnIgnoreCase.isPresent()){
-            UserRecord userRecord = byDnIgnoreCase.get();
-            String old = userRecord.getAlternateManagers();
-
-            userRecord.setAlternateManagers("");
-            for(String managerDn : managerDns){
-                userRecord.addAltManager(managerDn);
-            }
-
-            // Who receives this person's absence alerts: saved and audited together.
-            audit.inTransaction(() -> {
-                UserRecord saved = userRecordRepository.save(userRecord);
-                audit.record(AuditEntry.of(AuditEntry.Category.DATA, "person.updated")
-                        .target("user", saved.getDn(), LdapDn.cnOf(saved.getDn()))
-                        .detail("via", "alternate-managers")
-                        .change("alternateManagers", old, saved.getAlternateManagers()));
-            });
-        }
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<Map<String, String>> invalid(InvalidRequestException e) {
+        return ApiErrors.of(e);
     }
 
 

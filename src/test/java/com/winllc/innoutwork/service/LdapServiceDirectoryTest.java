@@ -102,7 +102,8 @@ class LdapServiceDirectoryTest {
 
     private UserRestService userRestService() {
         return new UserRestService(ldapService, mock(UserRecordRepository.class),
-                mock(CheckInOutRecordRepository.class), props, userService, seesEveryone());
+                mock(CheckInOutRecordRepository.class), props, userService, seesEveryone(),
+                mock(DelegateService.class));
     }
 
     private List<String> searchFor(String term) {
