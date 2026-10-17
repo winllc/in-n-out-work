@@ -22,7 +22,8 @@
                 <div class="card-header">
                     <h3 class="card-title">User Information</h3>
                     <div class="card-actions">
-                        <span class="badge"
+                        <!-- No status at all for a coworker under application.privacy.coworker-visibility none. -->
+                        <span class="badge" th:if="${user.status != null}"
                               th:classappend="${user.status == 'IN'} ? 'bg-green-lt' : (${user.status == 'OUT'} ? 'bg-blue-lt' : (${user.status == 'AWAY'} ? 'bg-purple-lt' : 'bg-secondary-lt'))"
                               th:text="${user.status}"></span>
                     </div>

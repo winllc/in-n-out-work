@@ -171,8 +171,10 @@ group reports need `MANAGER` or `ADMIN`); whose data a page shows is decided by
   ReadyRoom), their direct reports in the directory, and the people they are a delegate of
   (see [Delegates](#delegates)). Indirect reports are not included.
 - Everyone else, as a coworker: found by search, a group or the org chart, with their
-  directory details and whether they are in, never their times, notes or history. A
-  status a manager recorded (absent, unscheduled leave) shows as `OUT_OF_OFFICE`.
+  directory details, never their times, notes or history. How much of their day a coworker
+  sees is `application.privacy.coworker-visibility` (see [Privacy and retention](#privacy-and-retention)):
+  by default whether they are in and the day's status, a status a manager recorded (absent,
+  unscheduled leave) showing as `OUT_OF_OFFICE`.
 - Groups: opened by their members, their managers and `ADMIN`; managed (managers,
   report, access) only by `ADMIN` and their current managers.
 - Absence notifications: the manager they were sent to, and `ADMIN`.
@@ -235,6 +237,25 @@ set directly stays `calendar.status-set` (`details.via` `manager` when set for s
 Out of Office, Work From Home, TDY or Scheduled Leave themselves (or Absent Excused through the API): the calendar
 sends them as requests. To let people set one of them without approval again, leave it out of
 `APPLICATION_EVENTS_REQUESTSTATUSES` (startup then warns that it excuses absences unapproved).
+
+### Privacy and retention
+
+**What coworkers see.** `application.privacy.coworker-visibility` (`APPLICATION_PRIVACY_COWORKERVISIBILITY`) sets what
+someone sees of the people whose details they may not see (see [Roles](#roles)), on every page and API that lists
+people: user search (`/api/users/search`), a group's members (`/api/users/group/{group}`, `/app/users/{group}`), an
+organization's members (`/api/orgnodes/users/{org}`), a person's page (`/app/user/details/{dn}`) and the org chart
+(`/app/orgchart`, `/api/orgnodes/hierarchy`). Who a person is (name, directory details, groups) is shown in every mode;
+times, notes, average login time and history never are.
+
+| Value | A coworker's status shows |
+|---|---|
+| `full` (default) | As before: in, away, out, or the day's calendar status (telework, leave, TDY ...), a manager-recorded status reading `OUT_OF_OFFICE` |
+| `status` | `IN` (checked in or unlocked today, screen locked included) or `OUT`; no calendar status |
+| `none` | Nothing: no status, and the org chart shows headcounts but not how many are present, except to the `ADMIN` and `MANAGER` roles (who see organization-wide counts on the metrics page anyway) |
+
+Whatever the setting, people see themselves in full, managers the people they are responsible for (their reports,
+their groups' members, the people they are a delegate of) and administrators everyone. Any other value stops startup
+naming the setting.
 
 ---
 
@@ -474,6 +495,7 @@ values that most often need changing per deployment:
 | `duty-sub-org-groups-base-dn` | Enables the org chart; blank disables it |
 | `ldap.max-pages` | Most pages one paged search reads before returning what it has (default 1000). Bounds a directory that keeps returning a paging cookie, which would otherwise hold the request open indefinitely. |
 | `checkOutAfterMinutes` | Minutes a session may stay locked before `MarkInactiveCron` checks it out (default 240; the packaged configuration used to say 2) |
+| `privacy.coworker-visibility` | `full` (default), `status` or `none`: what people see of coworkers (`APPLICATION_PRIVACY_COWORKERVISIBILITY`); see [Privacy and retention](#privacy-and-retention) |
 | `events.request-statuses` | The statuses people request rather than set (`APPLICATION_EVENTS_REQUESTSTATUSES`, comma-separated; default `OUT_OF_OFFICE,WORK_FROM_HOME,TDY,SCHEDULED_LEAVE,ABSENT_EXCUSED`, every status that excuses an absence). `STANDARD` is refused at startup. See [Statuses and approvals](#statuses-and-approvals). |
 | `events.max-range-days` | The most days one call may set a status, a status request or an organization calendar event on (`APPLICATION_EVENTS_MAXRANGEDAYS`, default 366). Every API that creates events checks it and refuses a longer range with 400 (`range_too_long`) before writing anything. |
 | `notification-sender-email` | The From address of absence alerts; required once `SPRING_MAIL_HOST` is set (startup stops without it) |

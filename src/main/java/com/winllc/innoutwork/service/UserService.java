@@ -256,6 +256,8 @@ public class UserService {
         } else {
             status.setStatus("NONE");
         }
+        // Kept before a calendar status replaces it, for coworkers who see only in or out (AccessPolicy).
+        status.setPresence(status.getStatus());
 
         if(recordOptional.isPresent()){
             UserRecord record = recordOptional.get();
@@ -300,6 +302,7 @@ public class UserService {
 
         UserStatus userStatus = getUserStatus(ldapDn, session);
         builder.status(userStatus.getStatus());
+        builder.presence(userStatus.getPresence());
         builder.organization(userStatus.getOrganization());
         builder.employeeType(userStatus.getEmployeeType());
         builder.location(userStatus.getLocation());

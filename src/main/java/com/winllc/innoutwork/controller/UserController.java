@@ -51,7 +51,8 @@ public class UserController {
         // the details of (AccessPolicy). The page shows the history and calendar when isGroupManager is set.
         boolean isGroupManager = accessPolicy.canViewDetails(auth, userDetails.getDn());
         if (!isGroupManager) {
-            userDetails = AccessPolicy.presenceOnly(userDetails);
+            // As application.privacy.coworker-visibility says: their presence, in or out only, or nothing of it.
+            userDetails = AccessPolicy.coworkerView(userDetails, accessPolicy.coworkerVisibility());
         }
 
         boolean isSelf = accessPolicy.isSelf(auth, userDetails.getDn());

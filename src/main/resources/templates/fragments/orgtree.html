@@ -40,11 +40,15 @@
               th:attr="data-orgname=${node.fullName}" th:title="${node.fullName}"
               th:text="${node.fullName}"></span>
 
-        <span class="text-secondary org-ratio" th:if="${total > 0}"
+        <span class="text-secondary org-ratio" th:if="${total > 0 and !node.data.presenceHidden}"
               th:text="${present} + ' / ' + ${total}"
               th:title="${present} + ' of ' + ${total} + ' present, including sub-organizations'"></span>
+        <!-- Coworker visibility "none": who is present is not shown, only how many people the org has. -->
+        <span class="text-secondary org-ratio" th:if="${total > 0 and node.data.presenceHidden}"
+              th:text="${total} + (${total} == 1 ? ' person' : ' people')"
+              th:title="${total} + ' including sub-organizations'"></span>
 
-        <span class="badge" th:if="${total > 0}"
+        <span class="badge" th:if="${total > 0 and !node.data.presenceHidden}"
               th:classappend="${pct >= 75} ? 'bg-green-lt' : (${pct >= 50} ? 'bg-yellow-lt' : 'bg-red-lt')"
               th:text="${#numbers.formatDecimal(pct, 1, 0)} + '%'"></span>
         <span class="badge bg-secondary-lt" th:if="${total <= 0}">No members</span>

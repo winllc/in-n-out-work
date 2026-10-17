@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.security;
 
+import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
@@ -58,7 +59,9 @@ import java.util.stream.Stream;
  * only USER who manages a group or has reports already got their alerts and their My Reports page. The MANAGER role
  * opens the manager pages (metrics, group reports, settings) but no longer everybody's data and every group.
  *
- * <p>Anyone signed in may still find anyone and see their presence: {@link #presenceOnly} is what a coworker sees.
+ * <p>Anyone signed in may still find anyone; what they see of a coworker is {@link #coworkerView}, as
+ * {@code application.privacy.coworker-visibility} says: their presence ({@link CoworkerVisibility#FULL}, the default),
+ * in or out only ({@link CoworkerVisibility#STATUS}), or nothing of their attendance ({@link CoworkerVisibility#NONE}).
  *
  * <p>Groups: a viewer may open a group they are a member of or manage, ADMIN any group; only ADMIN or a current
  * manager of a group may manage it (change its managers, run its report, grant access to it).
@@ -74,16 +77,38 @@ public class AccessPolicy {
     private final UserService userService;
     private final UserRecordRepository userRecordRepository;
     private final GroupRecordRepository groupRecordRepository;
+    private final CoworkerVisibility coworkerVisibility;
 
     public AccessPolicy(PermissionService permissionService, LdapService ldapService, GroupService groupService,
                         UserService userService, UserRecordRepository userRecordRepository,
-                        GroupRecordRepository groupRecordRepository) {
+                        GroupRecordRepository groupRecordRepository, ApplicationProperties properties) {
         this.permissionService = permissionService;
         this.ldapService = ldapService;
         this.groupService = groupService;
         this.userService = userService;
         this.userRecordRepository = userRecordRepository;
         this.groupRecordRepository = groupRecordRepository;
+        CoworkerVisibility configured = properties == null ? null : properties.getPrivacy().getCoworkerVisibility();
+        this.coworkerVisibility = configured == null ? CoworkerVisibility.FULL : configured;
+    }
+
+    /** {@code application.privacy.coworker-visibility}. */
+    public CoworkerVisibility coworkerVisibility() {
+        return coworkerVisibility;
+    }
+
+    /**
+     * Whether {@code viewer} sees how many people are present in each organization (the org chart): always, unless
+     * coworker visibility is NONE, when only the ADMIN and MANAGER roles do (as on the metrics page, which they
+     * alone open). A small organization's count would otherwise say who is in.
+     */
+    public boolean seesPresenceCounts(Authentication viewer) {
+        if (coworkerVisibility != CoworkerVisibility.NONE) {
+            return true;
+        }
+        return signedIn(viewer) && viewer.getAuthorities().stream().anyMatch(a ->
+                UserRoleEnum.ADMIN.name().equalsIgnoreCase(a.getAuthority())
+                        || UserRoleEnum.MANAGER.name().equalsIgnoreCase(a.getAuthority()));
     }
 
     // --- people -----------------------------------------------------------------------------------------------
@@ -110,10 +135,10 @@ public class AccessPolicy {
      */
     public Scope scope(Authentication viewer) {
         if (!signedIn(viewer)) {
-            return Scope.of(dn -> false);
+            return Scope.of(dn -> false, coworkerVisibility);
         }
         if (isAdmin(viewer)) {
-            return Scope.of(dn -> true);
+            return Scope.of(dn -> true, coworkerVisibility);
         }
         String me = viewer.getName();
         AtomicReference<Set<String>> people = new AtomicReference<>();
@@ -125,7 +150,7 @@ public class AccessPolicy {
                 return true;
             }
             return people.updateAndGet(p -> p != null ? p : responsibleFor(me)).contains(key(dn));
-        });
+        }, coworkerVisibility);
     }
 
     /** The people {@code me} is responsible for, by lower-cased normalised DN: see the class comment. */
@@ -156,9 +181,28 @@ public class AccessPolicy {
      * alert (unexcused, unscheduled leave and the like) is an attendance judgement, so it reads as out of office.
      */
     public static UserStatus presenceOnly(UserStatus status) {
+        return coworkerView(status, CoworkerVisibility.FULL);
+    }
+
+    /**
+     * {@code status} as a coworker sees it under {@code visibility}: who the person is (their directory details), and
+     * <ul>
+     *   <li>FULL: their presence, a manager-recorded status reading as out of office ({@link #presenceOnly});</li>
+     *   <li>STATUS: "IN" when they checked in or unlocked today and are not checked out (a locked screen counts as
+     *       in), "OUT" otherwise, with no calendar status;</li>
+     *   <li>NONE: no status at all.</li>
+     * </ul>
+     * Never when they came and went, notes, their average login time or role.
+     */
+    public static UserStatus coworkerView(UserStatus status, CoworkerVisibility visibility) {
+        String shown = switch (visibility == null ? CoworkerVisibility.FULL : visibility) {
+            case FULL -> presence(status.getStatus());
+            case STATUS -> inOrOut(status);
+            case NONE -> null;
+        };
         return UserStatus.builder()
                 .dn(status.getDn())
-                .status(presence(status.getStatus()))
+                .status(shown)
                 .memberOf(status.getMemberOf())
                 .organization(status.getOrganization())
                 .employeeType(status.getEmployeeType())
@@ -168,6 +212,12 @@ public class AccessPolicy {
                 .phoneNumber(status.getPhoneNumber())
                 .managerDn(status.getManagerDn())
                 .build();
+    }
+
+    /** In or out today, from the day's check-in records, whatever calendar status the day carries. */
+    private static String inOrOut(UserStatus status) {
+        String presence = status.getPresence() != null ? status.getPresence() : status.getStatus();
+        return "IN".equals(presence) || "AWAY".equals(presence) ? "IN" : "OUT";
     }
 
     private static String presence(String status) {
@@ -254,22 +304,29 @@ public class AccessPolicy {
     public static final class Scope {
 
         private final Predicate<String> details;
+        private final CoworkerVisibility visibility;
 
-        private Scope(Predicate<String> details) {
+        private Scope(Predicate<String> details, CoworkerVisibility visibility) {
             this.details = details;
+            this.visibility = visibility == null ? CoworkerVisibility.FULL : visibility;
         }
 
+        /** Coworkers seen as {@link CoworkerVisibility#FULL}. */
         public static Scope of(Predicate<String> canViewDetails) {
-            return new Scope(canViewDetails);
+            return new Scope(canViewDetails, CoworkerVisibility.FULL);
+        }
+
+        public static Scope of(Predicate<String> canViewDetails, CoworkerVisibility visibility) {
+            return new Scope(canViewDetails, visibility);
         }
 
         public boolean canViewDetails(String dn) {
             return details.test(dn);
         }
 
-        /** {@code status} in full when the viewer may see the person's details, otherwise their presence only. */
+        /** {@code status} in full when the viewer may see the person's details, otherwise as a coworker sees it. */
         public UserStatus show(UserStatus status) {
-            return canViewDetails(status.getDn()) ? status : presenceOnly(status);
+            return canViewDetails(status.getDn()) ? status : coworkerView(status, visibility);
         }
 
         public List<UserStatus> show(Collection<UserStatus> statuses) {

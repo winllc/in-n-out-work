@@ -1,12 +1,14 @@
 package com.winllc.innoutwork.config;
 
 import com.winllc.innoutwork.constant.UserStatusEnum;
+import com.winllc.innoutwork.security.CoworkerVisibility;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -87,6 +89,20 @@ public class ApplicationProperties {
     private Logoff logoff = new Logoff();
     @Valid
     private Events events = new Events();
+    @Valid
+    private Privacy privacy = new Privacy();
+
+    /** What people see of each other, and keep. See AccessPolicy and the README's "Privacy and retention". */
+    @Data
+    public static class Privacy {
+        /**
+         * What someone sees of a coworker whose details they may not see (search, a group's or an organization's
+         * members, a person's page, the org chart): {@code full} (default, as before), {@code status} (in or out only)
+         * or {@code none}. Managers see their own people and administrators everyone in full whatever this says.
+         */
+        @NotNull(message = "application.privacy.coworker-visibility (APPLICATION_PRIVACY_COWORKERVISIBILITY) must be full, status or none")
+        private CoworkerVisibility coworkerVisibility = CoworkerVisibility.FULL;
+    }
 
     /**
      * Statuses people put on calendars ({@code /api/event/**}, the organization calendar). See UserEventRestService.

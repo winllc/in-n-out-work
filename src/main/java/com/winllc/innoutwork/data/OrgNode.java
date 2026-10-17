@@ -149,6 +149,36 @@ public class OrgNode {
         return sum;
     }
 
+    /**
+     * A copy of this subtree without who is present: the headcounts stay, the present counts and percentages go, and
+     * each node's data says so ({@link OrgNodeData#isPresenceHidden()}). A copy, because the tree is cached and shared.
+     */
+    public OrgNode withoutPresence() {
+        OrgNode copy = new OrgNode(name);
+        copy.id = id;
+        copy.fullName = fullName;
+        copy.managerDn = managerDn;
+        copy.memberDns = new ArrayList<>(memberDns == null ? List.of() : memberDns);
+        OrgNodeData hidden = new OrgNodeData();
+        if (data != null) {
+            hidden.setName(data.getName());
+            hidden.setFullName(data.getFullName());
+            hidden.setTotalMembersByEmployeeType(copyOf(data.getTotalMembersByEmployeeType()));
+            hidden.setFullTreeTotalMembersByEmployeeType(copyOf(data.getFullTreeTotalMembersByEmployeeType()));
+        }
+        hidden.setFullTreePresentPercentage(null);
+        hidden.setPresenceHidden(true);
+        copy.data = hidden;
+        for (OrgNode child : children) {
+            if (child != null) {
+                OrgNode childCopy = child.withoutPresence();
+                childCopy.parent = copy;
+                copy.children.add(childCopy);
+            }
+        }
+        return copy;
+    }
+
     public int getTotalChildren() {
         return getChildrenRecursive(this);
     }
