@@ -253,7 +253,7 @@ air-gapped enclave.
 |---|---|---|
 | `VALID`, `GRACE` (expired, within its grace days) | full | Everything the license's features include. In grace, and in the last 30 days before expiry, administrators see a renewal warning. |
 | `EXPIRED` (past grace), `RELEASE_NOT_COVERED` (perpetual license, build newer than its maintenance) | read-only | Pages and GET calls work; anything else is refused with 403 (`license_read_only`), the Windows client's check-ins included. Scheduled jobs pause: directory sync, auto check-out, absence e-mails. |
-| `MISSING`, `INVALID`, `WRONG_PRODUCT`, `WRONG_INSTALLATION`, `SUPERSEDED`, `NOT_YET_VALID` | unlicensed | Only sign-in/out, the license screen, `GET /api/license`, static assets, actuator and the error page. Browsers are sent to the license screen; API callers get 403 JSON. |
+| `MISSING`, `INVALID`, `WRONG_PRODUCT`, `WRONG_INSTALLATION`, `SUPERSEDED`, `NOT_YET_VALID` | unlicensed | Only sign-in/out, the license screen, `GET /api/license`, the audit log (`/app/admin/audit`) and its pull API (`/api/audit/events`), static assets, actuator and the error page. Browsers are sent to the license screen; API callers get 403 JSON. |
 
 An evaluation license shows an "Evaluation license" banner on every page.
 
@@ -712,6 +712,96 @@ means `application.windows-auth.enabled` is off on that server.
 
 ---
 
+## Audit logging
+
+ReadyRoom keeps a tamper-evident audit trail in the shared ENS format `ens-audit/1` (one JSON object
+per event, the same in every ENS product), and can hand it to Splunk or any SIEM without custom
+parsing. The full format and the Splunk setup are on the ENS documentation site,
+[`audit-logging.md`](https://github.com/winllc/ens-apps-documentation/blob/master/docs/audit-logging.md) ("Audit logging").
+
+**Where it lives.** Every event is stored, synchronously, in the `audit_events` table of ReadyRoom's
+own PostgreSQL database, in the request that caused it. Each one carries a gapless `seq` and a SHA-256
+hash chained to the previous event's, so a changed, removed or reordered event is detected by
+verification. Writers are serialized by a row lock on the single-row `audit_chain_head` table, which
+holds across application instances. A security change that cannot be audited does not happen: role,
+permission, settings and calendar changes are committed together with their event, a sign-in fails if
+its event cannot be stored, and a license upload is refused while the store is unavailable. Run
+[`db/migrations/002_audit_log.sql`](db/migrations/002_audit_log.sql) once to make the table
+append-only in the database itself (see [Database migrations](#database-migrations)).
+
+**What is recorded** (action ids; never renamed):
+
+| Category | Actions |
+|---|---|
+| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout` |
+| authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
+| account | `person.created` (a new tracked person, at first sign-in or lookup), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
+| configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |
+| data | `person.updated` (profile notes and expected login time, alternate managers), `calendar.status-set` (leave, telework, late arrival), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download) |
+| license | `license.installed`, `license.rejected`, `license.mode-changed` (also across restarts), `license.limit-exceeded` |
+| system | `system.started`, `system.stopped`, `job.completed` / `job.failed` (one per run, with counts and duration), `job.skipped` (once per license mode change) |
+| audit | `audit.exported`, `audit.verified`, `audit.token-created`, `audit.token-revoked`, `audit.pruned`, `audit.delivery-failed`, `audit.delivery-recovered` |
+
+The Windows client's logon, lock, unlock and logoff events are attendance data, kept in the check-in
+records as before, and are not audit events. What is audited about the client API is its failed
+sign-ins: no certificate, a refused Windows ticket, an unknown logoff session id (collapsed per source
+like denials). The two jobs that run every few minutes (auto check-out and absence alerts) record
+`job.completed` only for runs that did something; every failure is recorded. Secrets never enter the
+trail: passwords, tokens, keys, license text and session ids are recorded as `"[redacted]"` (the session
+appears only as the first 16 hex characters of its SHA-256).
+
+**The audit log page** is *Administration &rarr; Audit log* at `/app/admin/audit`, for the `ADMIN`
+authority, as for the license screen. It is not a licensed feature and opens in every license state,
+read-only and unlicensed included. It searches the whole trail, newest first, by time, category,
+action, outcome, severity, actor, target, source IP and free text; a row opens every field of the
+event, its formatted JSON, seq and hashes. From there administrators can export the current filter (up
+to 100,000 events) as CSV or NDJSON, verify the chain (intact, or the first broken seq; after retention
+pruning, verification starts from the oldest retained event and says so), see each output's delivery
+status, and create or revoke pull-API tokens. Exports and verifications are audited.
+
+**Outputs.** All optional except the database; configured with environment variables (Spring binds
+them as `ens.audit.*`). Startup logs one line per output saying whether it is enabled.
+
+| Variable | Default | |
+|---|---|---|
+| `ENS_AUDIT_STDOUT` | `true` | Each event as one raw JSON line on stdout, through the logger `ens.audit` with its own appender (no log prefix, not additive). |
+| `ENS_AUDIT_FILE` | (off) | Also append the lines to this file, e.g. `/var/log/ens/readyroom/audit.jsonl`, rotated daily or at 100 MB. The images create `/var/log/ens/readyroom`; the compose files mount the `ens-audit` volume at `/var/log/ens`. |
+| `ENS_AUDIT_FILE_KEEP` | `30` | Rotated files kept. |
+| `ENS_AUDIT_RETENTION_DAYS` | `0` | Days to keep events; `0` keeps them forever. A daily job deletes older events that every enabled output has delivered, never the newest, and records `audit.pruned`. |
+| `ENS_AUDIT_SPLUNK_URL` | (off) | Splunk HTTP Event Collector, e.g. `https://splunk.example:8088`; events are posted to `/services/collector/event` in batches of up to 100. |
+| `ENS_AUDIT_SPLUNK_TOKEN` / `ENS_AUDIT_SPLUNK_TOKEN_FILE` | | The HEC token, or a file holding it. Never logged. |
+| `ENS_AUDIT_SPLUNK_INDEX` | | Optional index. |
+| `ENS_AUDIT_SPLUNK_SOURCETYPE` | `ens:audit` | |
+| `ENS_AUDIT_SPLUNK_INSECURE` | `false` | Skip TLS verification (test setups only; warned at startup). Otherwise the JVM's trust store applies. |
+| `ENS_AUDIT_SYSLOG_HOST` | (off) | Syslog server: RFC 5424, APP-NAME `readyroom`, MSGID the action, the JSON line as the message. |
+| `ENS_AUDIT_SYSLOG_PORT` | `514` / `6514` for tls | |
+| `ENS_AUDIT_SYSLOG_PROTOCOL` | `tcp` | `udp`, `tcp` or `tls` (octet-counted framing over tcp and tls). |
+| `ENS_AUDIT_SYSLOG_FACILITY` | `local0` | |
+
+Splunk HEC and syslog are delivered by a background forwarder per output that reads the database from a
+persisted cursor (`audit_output_state`): requests never wait for them, delivery is at least once (Splunk
+can de-duplicate on the event `id`), and failures are retried with exponential backoff up to 5 minutes.
+An output failing for more than 15 minutes records `audit.delivery-failed` (severity `alert`) once, and
+`audit.delivery-recovered` when it delivers again. With several application instances each forwards the
+whole trail, so expect duplicates by `id`.
+
+**Getting it into Splunk**, any one of:
+
+- **HEC:** create an HTTP Event Collector token in Splunk and set `ENS_AUDIT_SPLUNK_URL` and
+  `ENS_AUDIT_SPLUNK_TOKEN` (or `_TOKEN_FILE`).
+- **Universal Forwarder:** monitor the file (`ENS_AUDIT_FILE`, on the `ens-audit` volume) or the
+  container's Docker logs, with `sourcetype=ens:audit`. Lines are pure JSON; with Docker logs, keep only
+  lines starting with `{"schema":"ens-audit/1"`.
+- **Pull API:** create a token on the audit page and poll
+  `GET /api/audit/events?after=<seq>&limit=<1..1000>` with `Authorization: Bearer <token>`. It returns
+  NDJSON (one line per event, ascending seq), or `{"events":[...],"next":<seq>}` with
+  `Accept: application/json`; pass `next` back as `after`. Tokens (`ensat_...`) are shown once and stored
+  only as their SHA-256; they read the audit trail and nothing else, need no session or CSRF token, keep
+  working while the application is read-only or unlicensed, and stop at once when revoked. Pulls are not
+  themselves audited; the token's last use is shown instead.
+
+---
+
 ## Database migrations
 
 Hibernate creates tables and columns (`ddl-auto: update`) but not indexes or
@@ -749,6 +839,13 @@ merged rows is printed.
 - Deploy the application version that expects the unique DN (it handles the
   constraint when two requests create the same user at once) with or after the
   migration.
+
+**`002_audit_log.sql`** adds the audit log's filter indexes (Hibernate creates the
+same ones for a new table) and makes `audit_events` append-only: a trigger
+refuses every `UPDATE`, so stored events can only be added, or deleted by
+retention pruning. Run it the same way as 001, after a version with the audit
+trail has started once; it is safe to run again and also uses
+`CREATE INDEX CONCURRENTLY`, so again no `--single-transaction`.
 
 ---
 
@@ -855,13 +952,14 @@ src/main/java/com/winllc/innoutwork/
   cron/        Scheduled jobs
   security/    AppUserDetailsService, PermissionEvaluator
   license/     ENS license wiring: features, gate, license screen, job guard, size limit
+  audit/       The audit trail (ens-audit/1): store, hash chain, outputs, audit log page, pull API
 src/main/java/com/enssolutions/license/  The ENS portal's license verifier, copied unchanged
 Dockerfile     Production image, built from source; the license lives in the /var/lib/ens volume
 docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from source
 docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
-db/migrations/ Indexes and constraints Hibernate does not create; run with psql
+db/migrations/ Indexes, constraints and triggers Hibernate does not create; run with psql
 deploy/bundle/ The customer release bundle: production compose, env template, install/upgrade
 scripts/release-bundle.sh  Builds the release bundle (see Releases)
 test/          Backing services alone, the app's Dockerfile and mounted config,

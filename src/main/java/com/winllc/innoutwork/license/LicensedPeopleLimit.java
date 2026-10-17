@@ -3,9 +3,12 @@ package com.winllc.innoutwork.license;
 import com.enssolutions.license.LicenseCheck;
 import com.enssolutions.license.LicenseManager;
 import com.enssolutions.license.LicenseState;
+import com.winllc.innoutwork.audit.AccessDenials;
+import com.winllc.innoutwork.audit.AuditEntry;
 import com.winllc.innoutwork.service.TrackedPeopleLimit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -24,8 +27,16 @@ public class LicensedPeopleLimit implements TrackedPeopleLimit {
 
     private final LicenseManager licenses;
 
+    /** Records license.limit-exceeded, collapsed: the directory sync can refuse many people in one run. */
+    private AccessDenials collapsing;
+
     public LicensedPeopleLimit(LicenseManager licenses) {
         this.licenses = licenses;
+    }
+
+    @Autowired(required = false)
+    public void setAccessDenials(AccessDenials collapsing) {
+        this.collapsing = collapsing;
     }
 
     @Override
@@ -36,6 +47,14 @@ public class LicensedPeopleLimit implements TrackedPeopleLimit {
         }
         if (!check.mayAdd(currentCount)) {
             log.warn("License limit: {}", check.usageMessage(currentCount + 1));
+            if (collapsing != null) {
+                collapsing.collapse("license.limit-exceeded", AuditEntry.of(AuditEntry.Category.LICENSE,
+                                "license.limit-exceeded")
+                        .denied("license_limit")
+                        .severity(AuditEntry.Severity.WARNING)
+                        .detail("trackedPeople", currentCount)
+                        .detail("message", check.usageMessage(currentCount + 1)));
+            }
             return false;
         }
         if (check.usage(currentCount + 1) != LicenseCheck.Usage.WITHIN) {

@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
@@ -41,6 +44,13 @@ public class UserEventRestService {
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
+
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
 
     public UserEventRestService(UserEventRecordRepository userEventRecordRepository,
                                 CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties, GlobalCalendarRecordRepository globalCalendarRecordRepository) {
@@ -119,7 +129,18 @@ public class UserEventRestService {
         String userDn = authentication.getName();
         LocalDate fromLocalDate = LocalDate.parse(data.getFromDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
         LocalDate toLocalDate = LocalDate.parse(data.getToDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
+        LocalDate firstDay = fromLocalDate;
+        LocalDate endDay = toLocalDate;
 
+        // A person's leave, telework or late arrival, as they set it on their calendar: saved and audited together.
+        audit.inTransaction(() -> setStatuses(userDn, data, firstDay, endDay));
+
+        return data;
+    }
+
+    private void setStatuses(String userDn, UserEventData data, LocalDate fromLocalDate, LocalDate toLocalDate) {
+        LocalDate firstDay = fromLocalDate;
+        int days = 0;
         while(fromLocalDate.isBefore(toLocalDate)){
             UserStatusEnum status = UserStatusEnum.valueOf(data.getStatus());
             UserEventRecord record = new UserEventRecord();
@@ -143,12 +164,18 @@ public class UserEventRestService {
             record.setStatus(status);
 
             userEventRecordRepository.save(record);
+            days++;
 
             fromLocalDate = fromLocalDate.plusDays(1);
 
         }
-
-        return data;
+        audit.record(AuditEntry.of(AuditEntry.Category.DATA, "calendar.status-set")
+                .target("user", userDn, LdapDn.cnOf(userDn))
+                .detail("status", data.getStatus())
+                .detail("lateArrivalTime", data.getLateArrivalTime())
+                .detail("from", firstDay.toString())
+                .detail("to", toLocalDate.toString())
+                .detail("days", days));
     }
 
     private List<CalendarEvent> globalCalendarRecordsToEvents(LocalDate fromDate, LocalDate toDate){

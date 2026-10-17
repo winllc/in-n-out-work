@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.model.NotificationRecord;
 import com.winllc.innoutwork.repository.NotificationRepository;
 import org.slf4j.Logger;
@@ -19,6 +22,13 @@ public class NotificationRestService {
     private static final Logger log = LoggerFactory.getLogger(NotificationRestService.class);
 
     private final NotificationRepository notificationRepository;
+
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
 
     public NotificationRestService(NotificationRepository notificationRepository) {
         this.notificationRepository = notificationRepository;
@@ -41,6 +51,13 @@ public class NotificationRestService {
 
         java.time.ZonedDateTime now = java.time.ZonedDateTime.now();
         records.forEach(record -> record.setStatusResponseDate(now));
-        notificationRepository.saveAll(records);
+        if (records.isEmpty()) {
+            return;
+        }
+        audit.inTransaction(() -> {
+            notificationRepository.saveAll(records);
+            audit.record(AuditEntry.of(AuditEntry.Category.DATA, "absence.alerts-dismissed")
+                    .detail("count", records.size()));
+        });
     }
 }

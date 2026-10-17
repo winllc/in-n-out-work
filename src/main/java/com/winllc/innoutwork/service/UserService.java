@@ -1,6 +1,8 @@
 package com.winllc.innoutwork.service;
 
 import com.github.benmanes.caffeine.cache.LoadingCache;
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.constant.DateTimeConstants;
@@ -17,6 +19,7 @@ import io.micrometer.common.util.StringUtils;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.core.Authentication;
@@ -58,6 +61,7 @@ public class UserService {
     private final UserRecordStore userRecords;
     /** The license's size in tracked people: new records beyond it are not created. */
     private final TrackedPeopleLimit peopleLimit;
+    private AuditLog audit = AuditLog.NOOP;
 
     public UserService(UserRecordRepository userRecordRepository,
                        LdapService ldapService, ApplicationProperties properties,
@@ -74,6 +78,11 @@ public class UserService {
         this.userRecords = new UserRecordStore(userRecordRepository, peopleLimit);
     }
 
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
+
     public Optional<UserRecord> getUserByDn(LdapDn dn) {
         Optional<UserRecord> recordOptional = userRecordRepository.findByDnIgnoreCase(dn.dn());
         if(recordOptional.isPresent()){
@@ -84,7 +93,11 @@ public class UserService {
             if(userOptional.isPresent()){
                 LdapUser ldapUser = userOptional.get();
                 try {
-                    return Optional.of(userRecords.insertOrFind(dn.dn(), () -> new UserRecord(ldapUser)).record());
+                    UserRecordStore.Result result = userRecords.insertOrFind(dn.dn(), () -> new UserRecord(ldapUser));
+                    if (result.inserted()) {
+                        personCreated(result.record(), "lookup");
+                    }
+                    return Optional.of(result.record());
                 } catch (TrackedPeopleLimitException e) {
                     // Only looked up, not signing in: someone the license has no room for is simply not tracked.
                     log.debug("Not tracking {}: {}", dn, e.getMessage());
@@ -99,16 +112,61 @@ public class UserService {
     public UserRecord updateProfile(Authentication authentication, ProfileForm form) {
         log.debug("Update Notes {}",  authentication.getName());
 
-        return userRecords.update(authentication.getName(), userRecord -> {
+        String dn = authentication.getName();
+        // Created first if need be, outside the transaction (UserRecordStore's rule); then changed and audited
+        // together.
+        UserRecord userRecord = userRecords.findOrCreate(dn, () -> newRecord(dn));
+        String oldNotes = userRecord.getNotes();
+        LocalTime oldLoginTime = userRecord.getChosenLoginTime();
+        return audit.inTransaction(() -> {
             userRecord.setNotes(form.getNotes());
             if(StringUtils.isNotBlank(form.getLoginTime())) {
                 userRecord.setChosenLoginTime(LocalTime.parse(form.getLoginTime(), DateTimeFormatter.ISO_TIME));
             }
+            UserRecord saved = userRecordRepository.save(userRecord);
+            AuditEntry entry = AuditEntry.of(AuditEntry.Category.DATA, "person.updated")
+                    .target("user", dn, LdapDn.cnOf(dn))
+                    .detail("via", "profile");
+            if (!Objects.equals(oldNotes, saved.getNotes())) {
+                entry.change("notes", oldNotes, saved.getNotes());
+            }
+            if (!Objects.equals(oldLoginTime, saved.getChosenLoginTime())) {
+                entry.change("expectedLoginTime", Objects.toString(oldLoginTime, null),
+                        Objects.toString(saved.getChosenLoginTime(), null));
+            }
+            audit.record(entry);
+            return saved;
         });
     }
 
+    /** An administrator's role change: recorded with the change, in one transaction. */
     public UserRecord updateRole(LdapDn dn, UserRoleEnum role) {
-        return userRecords.update(dn.dn(), userRecord -> userRecord.setUserRole(role));
+        UserRecord userRecord = userRecords.findOrCreate(dn.dn(), () -> newRecord(dn.dn()));
+        UserRoleEnum oldRole = userRecord.getUserRole();
+        return audit.inTransaction(() -> {
+            userRecord.setUserRole(role);
+            UserRecord saved = userRecordRepository.save(userRecord);
+            audit.record(AuditEntry.of(AuditEntry.Category.ACCOUNT, "account.role-changed")
+                    .target("user", dn.dn(), dn.getCn())
+                    .change("role", oldRole == null ? null : oldRole.name(), role.name()));
+            return saved;
+        });
+    }
+
+    private static UserRecord newRecord(String dn) {
+        UserRecord created = new UserRecord();
+        created.setDn(dn);
+        return created;
+    }
+
+    /** A new tracked person, first seen at sign-in or when someone looked them up. */
+    private void personCreated(UserRecord record, String via) {
+        audit.recordQuietly(AuditEntry.of(AuditEntry.Category.ACCOUNT, "person.created")
+                .target("user", record.getDn(), LdapDn.cnOf(record.getDn()))
+                .detail("via", via)
+                .detail("role", record.getUserRole() == null ? null : record.getUserRole().name())
+                .detail("organization", record.getOrganization())
+                .detail("employeeType", record.getEmployeeType()));
     }
 
     public UserRecord updateGroupFavorite(Authentication authentication, GroupFavorite groupFavorite) {
@@ -365,6 +423,7 @@ public class UserService {
                     .build());
         }
         if(created != null && created.inserted()){
+            personCreated(created.record(), "sign-in");
             return created.record();
         }else{
             // Existing already, or created by a concurrent request a moment ago: bring it up to date.

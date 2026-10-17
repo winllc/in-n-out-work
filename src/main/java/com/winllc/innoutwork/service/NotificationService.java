@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.service;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.DateTimeConstants;
@@ -43,6 +46,13 @@ public class NotificationService {
     private final ApplicationProperties properties;
     private final LoadingCache<String, LdapUser> userCache;
     private final UserEventRecordRepository userEventRecordRepository;
+
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
 
     public NotificationService(JavaMailSender mailSender, NotificationRepository notificationRepository,
                                UserService userService, ApplicationProperties properties,
@@ -168,6 +178,13 @@ public class NotificationService {
         }
         event.setStatus(status);
         userEventRecordRepository.save(event);
+
+        // In this method's transaction: the response and its audit record are committed together.
+        audit.record(AuditEntry.of(AuditEntry.Category.DATA, "absence.alert-responded")
+                .target("user", notification.getAboutUserDn(), LdapDn.cnOf(notification.getAboutUserDn()))
+                .detail("notificationId", notificationId)
+                .detail("day", day.toString())
+                .change("status", previous == null ? null : previous.name(), status.name()));
 
         return copies.stream().filter(n -> n.getId().equals(notification.getId())).findFirst().orElse(notification);
     }

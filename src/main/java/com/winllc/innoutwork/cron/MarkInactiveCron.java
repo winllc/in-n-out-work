@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.cron;
 
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.winllc.innoutwork.audit.JobAudit;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.license.LicensedFeature;
@@ -24,6 +27,13 @@ public class MarkInactiveCron {
     /** Automatic check-out is part of attendance tracking, and writes: it pauses without a full license. */
     private final LicensedJobs licensedJobs;
 
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
+
     public MarkInactiveCron(CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
                             LicensedJobs licensedJobs) {
         this.checkInOutRecordRepository = checkInOutRecordRepository;
@@ -41,6 +51,20 @@ public class MarkInactiveCron {
         }
 
         long start = System.currentTimeMillis();
+        try {
+            int checkedOut = checkOutInactive(start);
+            // Runs every minute: only runs that checked someone out are audited (job.completed), so the trail
+            // is not one no-op event a minute. Failures always are.
+            if (checkedOut > 0) {
+                JobAudit.completed(audit, "MarkInactiveCron", start, java.util.Map.of("checkedOut", checkedOut));
+            }
+        } catch (RuntimeException e) {
+            JobAudit.failed(audit, "MarkInactiveCron", start, e);
+            throw e;
+        }
+    }
+
+    private int checkOutInactive(long start) {
 
         ZonedDateTime now = ZonedDateTime.now();
         ZonedDateTime startOfDay = ZonedDateTime.now().toLocalDate().atStartOfDay(ZoneId.systemDefault());
@@ -83,5 +107,6 @@ public class MarkInactiveCron {
             log.debug("MarkInactiveCron found no inactive users to check out ({}ms)",
                     System.currentTimeMillis() - start);
         }
+        return checkedOut;
     }
 }

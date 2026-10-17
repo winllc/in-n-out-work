@@ -9,11 +9,13 @@ import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.authentication.DefaultAuthenticationEventPublisher;
 import org.springframework.security.authentication.ProviderManager;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.core.AuthenticationException;
@@ -95,7 +97,8 @@ public class WindowsAuthSecurityConfig {
                                                   AppUserDetailsService appUserDetailsService,
                                                   LdapService ldapService,
                                                   ApplicationProperties properties,
-                                                  KerberosTicketValidator ticketValidator) throws Exception {
+                                                  KerberosTicketValidator ticketValidator,
+                                                  ApplicationEventPublisher events) throws Exception {
         KerberosServiceAuthenticationProvider kerberos = new KerberosServiceAuthenticationProvider();
         kerberos.setTicketValidator(ticketValidator);
         kerberos.setUserDetailsService(
@@ -104,9 +107,13 @@ public class WindowsAuthSecurityConfig {
 
         AuthenticationEntryPoint negotiate = new NegotiateEntryPoint();
 
+        // Publishes sign-in events like the other providers, so a refused ticket reaches the audit trail.
+        ProviderManager windowsProviders = new ProviderManager(kerberos);
+        windowsProviders.setAuthenticationEventPublisher(new DefaultAuthenticationEventPublisher(events));
+
         // Created here, not as a bean: a Filter bean would also be registered for every request.
         NegotiateAuthenticationFilter windowsSignIn =
-                new NegotiateAuthenticationFilter(new ProviderManager(kerberos), negotiate);
+                new NegotiateAuthenticationFilter(windowsProviders, negotiate);
 
         http.securityMatchers(matchers -> matchers.requestMatchers(HttpMethod.POST, CHECK_IN_PATHS));
         SecurityConfig.configureX509(http, appUserDetailsService);
