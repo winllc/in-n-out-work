@@ -88,6 +88,16 @@ jobs:
             echo "::endgroup::"
           done
 
+      - name: TLS without a truststore does not render
+        run: |
+          # The image has no truststore, and client certificates must never fall back to a default one.
+          if helm template readyroom "$CHART" -f "$CHART/ci/default-values.yaml" \
+              --set tls.enabled=true --set tls.keystore.secretName=readyroom-tls > /dev/null 2> "$RUNNER_TEMP/err"; then
+            echo "rendered with tls.enabled and no truststore"
+            exit 1
+          fi
+          grep -q "tls.truststore.secretName is required" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
+
   image:
     # Builds the image on every push, checks it starts, and publishes what it just checked.
     # Nothing is published from a pull request: a fork's token cannot write packages, and

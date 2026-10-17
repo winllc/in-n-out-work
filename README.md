@@ -99,7 +99,7 @@ powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files\InOutWorker\Updat
 | `login` | `POST /api/check/in` | certificate or Windows | the user |
 | `lock` | `POST /api/check/lock` | certificate or Windows | the user |
 | `unlock` | `POST /api/check/unlock` | certificate or Windows | the user |
-| `logout` | `POST /api/check/out` | none | SYSTEM |
+| `logout` | `POST /api/check/out` | none | SYSTEM at logoff; the user on a remote disconnect |
 
 `Authentication` in the config file (or `-Authentication`) chooses how login,
 lock and unlock sign in:
@@ -118,8 +118,8 @@ lock and unlock sign in:
 > pass the client certificate on). Windows sign-in likewise: the ticket goes
 > over the same connection.
 
-Install the script and register all four scheduled tasks from an **elevated**
-prompt:
+Install the script and register the scheduled tasks (login, lock, unlock,
+logout and disconnect) from an **elevated** prompt:
 
 ```bash
 cd powershell; .\Install-InOutWorker.ps1 -BaseUrl "https://your-server:8181/api/check"
@@ -128,7 +128,29 @@ cd powershell; .\Install-InOutWorker.ps1 -BaseUrl "https://your-server:8181/api/
 Add `-Authentication Windows` or `-Authentication Auto` to write that setting too.
 
 Use `-WhatIf` on either script to see what would happen without changing
-anything. The client logs to `%ProgramData%\InOutWorker\logs\`.
+anything. The SYSTEM logoff task logs to `%ProgramData%\InOutWorker\logs\`;
+the tasks that run as the user log to `%LOCALAPPDATA%\InOutWorker\logs\` in
+their profile.
+
+**Files SYSTEM touches.** The logoff task runs as SYSTEM, so nothing it writes,
+deletes or reads may sit where an ordinary user can redirect it. The installer
+makes the install folder and `%ProgramData%\InOutWorker` writable by SYSTEM and
+Administrators only. Each user's login caches the server's `sessionId` in
+`%ProgramData%\InOutWorker\sessions\<SID>.json`, readable only by that user,
+SYSTEM and Administrators; in `sessions\` a user can add a file but not list,
+change or delete anyone else's. The logoff task learns the user's SID from
+event 4647, reads that file only after checking no part of its path is a
+junction or link and that the user owns it, and never deletes it: the next
+login overwrites it. A remote disconnect is reported by a task that runs as the
+user. Configuration is read only from the install folder.
+
+**Upgrading.** Re-run `Install-InOutWorker.ps1` on every workstation. Earlier
+versions granted `Users` *Modify* on `%ProgramData%\InOutWorker`, which let a
+user turn the SYSTEM task's file writes into writes anywhere on the machine;
+the installer removes that grant, deletes the old shared `session.json`, sets
+aside old `logs\` and `sessions\` folders as `*.old-<timestamp>`, and no longer
+reads `%ProgramData%\InOutWorker\inoutworker.config.json` (it warns if one is
+there; pass its settings to the installer instead).
 
 Configuration comes from `inoutworker.config.json` next to the script (see
 [`inoutworker.config.sample.json`](powershell/inoutworker.config.sample.json)),
@@ -138,9 +160,10 @@ machine.
 > Server TLS validation is **on** by default. If your server uses a self-signed
 > certificate, pass `-SkipCertificateCheck`, otherwise the tasks will fail.
 
-The superseded `login.ps1`, `logout.ps1` and `updatestatus.ps1` are still
-present for reference. `updatestatus.ps1` never worked — it uses `==`, which
-parses in PowerShell but throws at runtime.
+The superseded `login.ps1`, `logout.ps1` and `updatestatus.ps1`, and the task
+XMLs that ran them, have been removed: they accepted any server certificate.
+Remove them, and any task that runs them, from workstations that still have
+them.
 
 ---
 
@@ -189,7 +212,7 @@ no usable license. API calls are never redirected.
 
 **The Windows client** (`powershell/Update-WorkStatus.ps1`) makes one POST per logon, lock, unlock or
 logoff and does not retry. A refusal makes it log the HTTP status and the server's `error` and
-`message` to `%ProgramData%\InOutWorker\logs\` and exit with code 3; the next event simply tries
+`message` to its log (see [Windows client](#windows-client)) and exit with code 3; the next event simply tries
 again, so nothing loops. Because the API answers with JSON rather than a redirect, a refused event
 can never be mistaken for success.
 
@@ -261,7 +284,7 @@ is reachable with no certificate setup.
 | Variable | Default | Purpose |
 |---|---|---|
 | `SERVER_PORT` | `8181` | Listen port |
-| `SSL_ENABLED` | `false` | TLS, using the keystore settings already in `application.yml` |
+| `SSL_ENABLED` | `false` | TLS; needs `SERVER_SSL_KEYSTORE` and, while `SERVER_SSL_CLIENTAUTH` is `want` (the default) or `need`, `SERVER_SSL_TRUSTSTORE` |
 | `APPLICATION_BASE_URL` | `http://localhost:8181` | The URL notification emails link to |
 
 **What is off with TLS.** Client-certificate (X.509) sign-in needs TLS, so with
@@ -270,7 +293,10 @@ Windows client's logon, lock and unlock calls cannot authenticate at all. Any
 deployment relying on either needs `SSL_ENABLED=true` and its own keystore and
 truststore (`SERVER_SSL_KEYSTORE`, `SERVER_SSL_TRUSTSTORE` and their passwords):
 `docker-compose.tls.yml` in the release package, or the `tls` values of the Helm
-chart. The keystore packaged in the jar is a development certificate.
+chart. Nothing is packaged in the jar: with `SSL_ENABLED=true` and no key store,
+or no trust store while client certificates are asked for, the application
+refuses to start (`config.SslStoresCheck`) instead of falling back to a default.
+Put only the CAs that issue your users' certificates in the truststore.
 
 ### Application settings
 
@@ -1002,11 +1028,11 @@ test/          Backing services alone, the app's Dockerfile and mounted config,
 
 ## A note on committed credentials
 
-This repository contains development credentials in source control: PKCS#12
-keystores under `src/main/resources/` with their passwords in `application.yml`,
-and the local CA's signing keys and password under `test/step-ca-data/`.
+This repository contains development credentials in source control: the local
+CA's signing keys and password, and keystores it issued, under
+`test/step-ca-data/` (see its README).
 
 They exist so the test stack works out of the box. Treat them as compromised —
 generate fresh key material for anything real, and supply production settings
 through environment variables or an external config rather than editing
-`application.yml`.
+`application.yml`. Nothing in the jar or image trusts this CA.

@@ -1,15 +1,17 @@
-# Optional: TLS with your own keystore. Switch it on in .env:
+# TLS with your own keystore and truststore. Switch it on in .env:
 #
 #     COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml
 #     SSL_ENABLED=true
-#     SERVER_SSL_KEYSTOREPASSWORD=...      (and the truststore settings, see env.template)
+#     SERVER_SSL_KEYSTOREPASSWORD=...
+#     SERVER_SSL_TRUSTSTOREPASSWORD=...
 #
-# Put the files in ./tls before starting:
+# Put both files in ./tls before starting; both are required:
 #   tls/keystore.p12     PKCS#12 with the server's private key and certificate chain
-#   tls/truststore.p12   PKCS#12 with the CA certificates whose client certificates may sign in
+#   tls/truststore.p12   PKCS#12 with only the CA certificates whose client certificates may sign in
 #                        (X.509 sign-in, used by the Windows client)
 #
-# The image's built-in keystore is a development certificate and must not be used in production.
+# The image contains no keystore or truststore. With SSL_ENABLED=true and either one missing,
+# ReadyRoom refuses to start (and install.sh / upgrade.sh stop before starting it).
 # The container runs as user 185, group 0: make the files readable by group 0 (chgrp 0, chmod 0640).
 
 services:

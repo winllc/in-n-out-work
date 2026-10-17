@@ -13,7 +13,7 @@
 #
 # What does not: the LDAP directory / Active Directory and the SMTP server are the customer's own and
 # are configured in .env. Optional pieces are separate files, switched on with COMPOSE_FILE in .env:
-#   docker-compose.tls.yml           your own TLS keystore (and client-certificate truststore)
+#   docker-compose.tls.yml           your own TLS keystore and client-certificate truststore (both required)
 #   docker-compose.windows-auth.yml  Windows (Kerberos) sign-in: krb5.conf and the service keytab
 #
 # The project name is fixed, so the named volumes (the database, the license with this installation's

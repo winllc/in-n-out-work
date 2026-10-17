@@ -245,7 +245,7 @@ tls:
   clientAuth: want
   keystore:
     # Secret holding the PKCS#12 keystore with the server's key and certificate chain (required when
-    # enabled; the image's built-in keystore is a development certificate):
+    # enabled; the image has none):
     #   kubectl create secret generic readyroom-tls --from-file=keystore.p12 --from-file=truststore.p12
     secretName: ""
     secretKey: keystore.p12
@@ -255,8 +255,9 @@ tls:
     existingSecret: ""
     existingSecretKey: keystore-password
   truststore:
-    # Secret holding the PKCS#12 truststore with the CAs whose client certificates may sign in. Empty:
-    # the image's development truststore, which trusts no real CA.
+    # Secret holding the PKCS#12 truststore with only the CAs whose client certificates may sign in.
+    # Required when enabled, unless clientAuth is none: the image has no truststore, and without one the
+    # render fails (and ReadyRoom would refuse to start) rather than trust Java's default CAs.
     secretName: ""
     secretKey: truststore.p12
     type: PKCS12

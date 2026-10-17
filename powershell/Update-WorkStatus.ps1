@@ -4,8 +4,9 @@
   In-N-Out-Work server.
 
 .DESCRIPTION
-  Replaces login.ps1, logout.ps1 and updatestatus.ps1 with a single entry point
-  invoked from Task Scheduler with an -Action argument.
+  Replaced the earlier login.ps1, logout.ps1 and updatestatus.ps1 (since
+  removed) with a single entry point invoked from Task Scheduler with an
+  -Action argument.
 
   Transport model (mirrors SecurityConfig on the server):
 
@@ -14,7 +15,8 @@
     login    POST /api/check/in       certificate or Windows  the user (interactive)
     lock     POST /api/check/lock     certificate or Windows  the user (session change)
     unlock   POST /api/check/unlock   certificate or Windows  the user (session change)
-    logout   POST /api/check/out      anonymous               SYSTEM / S4U, profile gone
+    logout   POST /api/check/out      anonymous               SYSTEM at logoff, profile gone;
+                                                              the user on a remote disconnect
 
   Only /api/check/out is permitAll on the server; every other action must sign
   in. How is set by Authentication:
@@ -33,8 +35,24 @@
   sessionId - is cached in a session file that the logout run reads back and
   echoes to the server, which resolves the DN via lookupBySessionId().
 
+  Each user has their own session file, %ProgramData%\InOutWorker\sessions\<SID>.json,
+  readable only by that user, SYSTEM and administrators. The SYSTEM run is told
+  whose session ended by the logoff event (-UserSid), reads that file only
+  after checking that no part of its path is a junction or link and that the
+  user (or an administrator) owns it, and never writes or deletes anything in
+  a folder an ordinary user can add to. The next login overwrites the file.
+
+  Logs: SYSTEM writes to %ProgramData%\InOutWorker\logs, which only SYSTEM and
+  administrators can write; a user's own runs log to
+  %LOCALAPPDATA%\InOutWorker\logs.
+
 .PARAMETER Action
   Which session event to report: login, logout, lock or unlock.
+
+.PARAMETER UserSid
+  For logout run as SYSTEM: the SID of the user whose session ended. The Logout
+  task passes it from the logoff event (TargetUserSid). Run as a user, the
+  user's own SID is used.
 
 .PARAMETER BaseUrl
   Base API URL, e.g. https://host:8444/api/check. Overrides the config file.
@@ -54,7 +72,7 @@
   certificates only - it is off by default, unlike the scripts this replaces.
 
 .EXAMPLE
-  powershell.exe -ExecutionPolicy Bypass -File "C:\InOutWorker\Update-WorkStatus.ps1" -Action login
+  powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files\InOutWorker\Update-WorkStatus.ps1" -Action login
 
 .EXAMPLE
   # Verify configuration and certificate selection without contacting the server.
@@ -62,7 +80,7 @@
 
 .NOTES
   Exit codes: 0 success, 1 configuration error, 2 no usable certificate,
-              3 HTTP request failed, 4 session file unusable.
+              3 HTTP request failed, 4 logout run as SYSTEM without a valid -UserSid.
 #>
 
 [CmdletBinding(SupportsShouldProcess = $true)]
@@ -71,6 +89,7 @@ param(
     [ValidateSet('login', 'logout', 'lock', 'unlock')]
     [string]$Action,
 
+    [string]$UserSid,
     [string]$BaseUrl,
     [ValidateSet('Certificate', 'Windows', 'Auto')]
     [string]$Authentication,
@@ -96,8 +115,6 @@ $Defaults = @{
     CertificateThumbprint      = ''
     CertificateSubjectContains = ''
     SkipCertificateCheck       = $false
-    Subfolder                  = 'InOutWorker'
-    SessionFile                = 'session.json'
 }
 
 # login/lock/unlock are authenticated; only logout is anonymous.
@@ -108,9 +125,65 @@ $ActionMap = @{
     logout = @{ Endpoint = 'out';    Authenticated = $false; WaitForProfile = $false }
 }
 
-$BaseDir  = Join-Path $env:ProgramData $Defaults.Subfolder
-$LogDir   = Join-Path $BaseDir 'logs'
-$LogFile  = Join-Path $LogDir ("inoutworker-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
+$SystemSid = 'S-1-5-18'
+$AdminsSid = 'S-1-5-32-544'
+
+$CurrentSid      = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$RunningAsSystem = $CurrentSid -eq $SystemSid
+
+# The installer creates both folders and sets their permissions: sessions\ lets
+# a user add a file but not list, change or delete anyone else's, and logs\ is
+# writable by SYSTEM and administrators only.
+$DataDir    = Join-Path $env:ProgramData 'InOutWorker'
+$SessionDir = Join-Path $DataDir 'sessions'
+
+if ($RunningAsSystem) {
+    $LogDir = Join-Path $DataDir 'logs'
+} elseif ($env:LOCALAPPDATA) {
+    # A user cannot write to the SYSTEM log folder, so their runs log to their profile.
+    $LogDir = Join-Path $env:LOCALAPPDATA 'InOutWorker\logs'
+} else {
+    $LogDir = $null
+}
+$LogFile       = $null
+$LogDirTrusted = $null
+if ($LogDir) {
+    $LogFile = Join-Path $LogDir ("inoutworker-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
+}
+
+# ---------------------------------------------------------------------------
+# Paths SYSTEM touches. It reads or writes under %ProgramData%\InOutWorker only
+# after checking that no part of the path is a junction or symbolic link and
+# that the item is owned by an account an ordinary user cannot act as, so a
+# user cannot redirect it to a file of their choosing.
+# ---------------------------------------------------------------------------
+function Test-NoReparsePoint {
+    param([string]$Path)
+
+    # GetAttributes reports a link itself rather than its target. Walk every
+    # parent up to the root; a missing item throws, which the caller treats as
+    # untrusted.
+    $current = $Path
+    while ($current) {
+        $attributes = [System.IO.File]::GetAttributes($current)
+        if ($attributes -band [System.IO.FileAttributes]::ReparsePoint) { return $false }
+        $current = [System.IO.Path]::GetDirectoryName($current)
+    }
+    return $true
+}
+
+function Test-TrustedPath {
+    param([string]$Path, [string[]]$Owners)
+
+    # No logging here: Write-Log calls this.
+    try {
+        if (-not (Test-NoReparsePoint -Path $Path)) { return $false }
+        $owner = (Get-Acl -LiteralPath $Path).GetOwner([Security.Principal.SecurityIdentifier]).Value
+        return ($Owners -contains $owner)
+    } catch {
+        return $false
+    }
+}
 
 # ---------------------------------------------------------------------------
 # Logging - Write-Host alone is invisible under Task Scheduler, so everything
@@ -132,10 +205,19 @@ function Write-Log {
         default { Write-Host $line }
     }
 
+    if (-not $LogFile) { return }
+
     try {
-        # -WhatIf:$false so a dry run still records what it decided; the log is
-        # diagnostics, not one of the effects the caller is previewing.
-        if (-not (Test-Path $LogDir)) {
+        if ($RunningAsSystem) {
+            # SYSTEM never creates the folder, and writes only into the one the
+            # installer locked down.
+            if ($null -eq $script:LogDirTrusted) {
+                $script:LogDirTrusted = Test-TrustedPath -Path $LogDir -Owners @($SystemSid, $AdminsSid)
+            }
+            if (-not $script:LogDirTrusted) { return }
+        } elseif (-not (Test-Path $LogDir)) {
+            # -WhatIf:$false so a dry run still records what it decided; the log is
+            # diagnostics, not one of the effects the caller is previewing.
             New-Item -ItemType Directory -Path $LogDir -Force -WhatIf:$false | Out-Null
         }
         Add-Content -Path $LogFile -Value $line -Encoding UTF8 -WhatIf:$false
@@ -150,10 +232,11 @@ function Write-Log {
 function Resolve-Configuration {
     $config = $Defaults.Clone()
 
+    # Only from beside the script, in the install folder administrators own -
+    # never from %ProgramData%, which earlier versions let any user write to.
     $candidates = @()
     if ($ConfigPath) { $candidates += $ConfigPath }
     $candidates += (Join-Path $PSScriptRoot 'inoutworker.config.json')
-    $candidates += (Join-Path $BaseDir 'inoutworker.config.json')
 
     foreach ($candidate in $candidates) {
         if ($candidate -and (Test-Path $candidate)) {
@@ -310,19 +393,38 @@ function Find-UserCertificate {
 
 # ---------------------------------------------------------------------------
 # Session file. Written at login so the anonymous logout call can still be
-# attributed to the right user via the server-issued sessionId.
+# attributed to the right user via the server-issued sessionId. One file per
+# user, named by SID: users may add files to sessions\, so a file named after
+# someone else proves nothing until its owner has been checked.
 # ---------------------------------------------------------------------------
+function ConvertTo-Sid {
+    param([string]$Value)
+
+    # Task Scheduler passes "$(TargetUserSid)" through as literal text when the
+    # task is started by hand rather than by the event.
+    if ($Value -notmatch '^S-1-\d+(-\d+)+$') { return $null }
+    try {
+        return (New-Object Security.Principal.SecurityIdentifier $Value).Value
+    } catch {
+        return $null
+    }
+}
+
 function Get-SessionFilePath {
-    return (Join-Path $BaseDir $Defaults.SessionFile)
+    param([string]$Sid)
+    return (Join-Path $SessionDir "$Sid.json")
 }
 
 function Save-SessionFile {
-    param([object]$Response, [string]$WindowsUserId)
+    param([object]$Response, [string]$Sid, [string]$WindowsUserId)
 
-    $path = Get-SessionFilePath
+    $path = Get-SessionFilePath -Sid $Sid
     try {
-        if (-not (Test-Path $BaseDir)) {
-            New-Item -ItemType Directory -Path $BaseDir -Force | Out-Null
+        if (-not (Test-Path $SessionDir)) {
+            # Only the installer creates it, with the permissions that make it
+            # safe for SYSTEM to read from.
+            Write-Log "$SessionDir does not exist; re-run Install-InOutWorker.ps1. The next logoff cannot be attributed." 'WARN'
+            return
         }
 
         $sessionId = $null
@@ -330,65 +432,99 @@ function Save-SessionFile {
             $sessionId = $Response.sessionId
         }
 
+        # Only what the logout run needs; not the server's whole record.
         $payload = [ordered]@{
             sessionId     = $sessionId
             windowsUserId = $WindowsUserId
+            userSid       = $Sid
             savedAtUtc    = (Get-Date).ToUniversalTime().ToString('o')
-            record        = $Response
         }
 
-        $payload | ConvertTo-Json -Depth 10 |
-            Out-File -FilePath $path -Encoding utf8 -Force
+        $payload | ConvertTo-Json |
+            Out-File -LiteralPath $path -Encoding utf8 -Force
 
-        # The logoff task may run under a different principal, so make sure it
-        # is readable rather than relying on inherited ACLs.
+        # Readable by this user, SYSTEM and administrators only: the sessionId
+        # is all the anonymous logoff call needs to check this user out.
         try {
-            $acl  = Get-Acl $path
-            $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-                        'Authenticated Users', 'Read', 'Allow')
-            $acl.AddAccessRule($rule)
-            Set-Acl -Path $path -AclObject $acl
+            $acl = New-Object System.Security.AccessControl.FileSecurity
+            $acl.SetAccessRuleProtection($true, $false)
+            foreach ($grant in @(@($Sid, 'Read, Write'), @($SystemSid, 'FullControl'), @($AdminsSid, 'FullControl'))) {
+                $identity = New-Object Security.Principal.SecurityIdentifier $grant[0]
+                $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                            $identity, $grant[1], 'Allow')))
+            }
+            # Writes the DACL alone. Set-Acl would also try the audit section,
+            # which a user may not set, once the file's DACL is protected.
+            if ($PSVersionTable.PSEdition -eq 'Core') {
+                [System.IO.FileSystemAclExtensions]::SetAccessControl((New-Object System.IO.FileInfo $path), $acl)
+            } else {
+                [System.IO.File]::SetAccessControl($path, $acl)
+            }
         } catch {
-            Write-Log "Could not widen ACL on ${path}: $($_.Exception.Message)" 'WARN'
+            Write-Log "Could not restrict ACL on ${path}: $($_.Exception.Message)" 'WARN'
         }
 
+        # Never log the sessionId itself: it is all it takes to check this
+        # user out.
         if ($sessionId) {
-            Write-Log "Session cached at $path (sessionId $sessionId)."
+            Write-Log "Session cached at $path."
         } else {
             Write-Log "Session cached at $path but the response carried no sessionId." 'WARN'
         }
     } catch {
+        # Access denied here usually means another account created this file
+        # first; an administrator can delete it.
         Write-Log "Failed to write session file ${path}: $($_.Exception.Message)" 'WARN'
     }
 }
 
 function Read-SessionFile {
-    $path = Get-SessionFilePath
+    param([string]$Sid)
 
-    if (-not (Test-Path $path)) {
+    $path = Get-SessionFilePath -Sid $Sid
+
+    # The SYSTEM run also checks the folder: the installer made it, so anything
+    # else means it has been tampered with or the installer was not re-run.
+    if ($RunningAsSystem -and -not (Test-TrustedPath -Path $SessionDir -Owners @($SystemSid, $AdminsSid))) {
+        Write-Log "$SessionDir is missing, a link, or not owned by SYSTEM or Administrators; not reading it. Re-run Install-InOutWorker.ps1." 'WARN'
+        return $null
+    }
+
+    if (-not (Test-Path -LiteralPath $path)) {
         Write-Log "No session file at $path; posting logout without a sessionId." 'WARN'
         return $null
     }
 
+    # Read only a file the user themselves (or an administrator) wrote, reached
+    # without passing through a junction or link. It is never deleted: the next
+    # login overwrites it, and the server refuses a sessionId used before.
+    if (-not (Test-TrustedPath -Path $path -Owners @($Sid, $SystemSid, $AdminsSid))) {
+        Write-Log "Session file $path is a link or not owned by $Sid; ignoring it." 'WARN'
+        return $null
+    }
+
     try {
-        $raw = Get-Content -Path $path -Raw -ErrorAction Stop
+        if ((Get-Item -LiteralPath $path -Force).Length -gt 64KB) {
+            Write-Log "Session file $path is too large to be one this script wrote; ignoring it." 'WARN'
+            return $null
+        }
+
+        $raw = Get-Content -LiteralPath $path -Raw -ErrorAction Stop
         if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
 
         $parsed = $raw | ConvertFrom-Json
         $names  = $parsed.PSObject.Properties.Name
 
-        # Current format writes sessionId at the top level; older session.json
-        # files were the raw server record, which also carries sessionId.
+        if (-not ($names -contains 'userSid' -and [string]$parsed.userSid -eq $Sid)) {
+            Write-Log "Session file $path was not written for $Sid; ignoring it." 'WARN'
+            return $null
+        }
+
         $sessionId = $null
-        if ($names -contains 'sessionId') { $sessionId = $parsed.sessionId }
+        if ($names -contains 'sessionId' -and $parsed.sessionId -is [string]) { $sessionId = $parsed.sessionId }
 
         $windowsUserId = $null
-        if ($names -contains 'windowsUserId') { $windowsUserId = $parsed.windowsUserId }
-
-        if (-not $sessionId -and $names -contains 'record' -and $parsed.record) {
-            $recordNames = $parsed.record.PSObject.Properties.Name
-            if ($recordNames -contains 'sessionId') { $sessionId = $parsed.record.sessionId }
-        }
+        if ($names -contains 'windowsUserId' -and $parsed.windowsUserId -is [string]) { $windowsUserId = $parsed.windowsUserId }
 
         return [pscustomobject]@{
             SessionId     = $sessionId
@@ -400,15 +536,16 @@ function Read-SessionFile {
     }
 }
 
-function Remove-SessionFile {
-    $path = Get-SessionFilePath
+function Get-AccountName {
+    param([string]$Sid)
+
+    # The name the login run would have sent ($env:USERNAME), for a logoff
+    # with no session file; the SID itself if it cannot be resolved.
     try {
-        if (Test-Path $path) {
-            Remove-Item -Path $path -Force -ErrorAction Stop
-            Write-Log 'Session file cleared.'
-        }
+        $account = (New-Object Security.Principal.SecurityIdentifier $Sid).Translate([Security.Principal.NTAccount]).Value
+        return $account.Split('\')[-1]
     } catch {
-        Write-Log "Could not remove session file: $($_.Exception.Message)" 'WARN'
+        return $Sid
     }
 }
 
@@ -444,7 +581,8 @@ function Send-StatusPost {
         $requestArgs.MaximumRedirection = 0
     }
 
-    Write-Log "POST $Url body=$json"
+    # Not the body: at logout it carries the sessionId.
+    Write-Log "POST $Url"
     try {
         $response = Invoke-RestMethod @requestArgs
     } catch [System.InvalidOperationException] {
@@ -533,12 +671,24 @@ if ($plan.Authenticated) {
 $body = @{ windowsUserId = $windowsUserId }
 
 if ($Action -eq 'logout') {
-    $session = Read-SessionFile
+    # Whose session ended: run as SYSTEM, the logoff event says (-UserSid); run
+    # as the user (a remote disconnect), it is their own.
+    $sessionSid = ConvertTo-Sid $UserSid
+    if (-not $sessionSid -and -not $RunningAsSystem) { $sessionSid = $CurrentSid }
+    if (-not $sessionSid) {
+        Write-Log "Logout needs -UserSid when run as SYSTEM (the Logout task passes it from event 4647); got '$UserSid'." 'ERROR'
+        exit 4
+    }
+
+    $session = Read-SessionFile -Sid $sessionSid
     if ($session) {
         if ($session.SessionId) { $body.sessionId = $session.SessionId }
-        # At logoff the task may run as SYSTEM, where $env:USERNAME is not the
+        # At logoff the task runs as SYSTEM, where $env:USERNAME is not the
         # person who logged in - prefer the name captured at login.
         if ($session.WindowsUserId) { $body.windowsUserId = $session.WindowsUserId }
+    }
+    if ($RunningAsSystem -and -not ($session -and $session.WindowsUserId)) {
+        $body.windowsUserId = Get-AccountName -Sid $sessionSid
     }
     if (-not $body.ContainsKey('sessionId')) {
         Write-Log 'Logout has no sessionId; the server cannot resolve the DN from it.' 'WARN'
@@ -573,9 +723,7 @@ if (-not $accepted) {
 }
 
 if ($Action -eq 'login') {
-    Save-SessionFile -Response $response -WindowsUserId $windowsUserId
-} elseif ($Action -eq 'logout') {
-    Remove-SessionFile
+    Save-SessionFile -Response $response -Sid $CurrentSid -WindowsUserId $windowsUserId
 }
 
 Write-Log "Done."

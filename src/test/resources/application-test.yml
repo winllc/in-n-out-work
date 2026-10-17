@@ -1,12 +1,14 @@
 server:
   port: 8444
   ssl:
+    # The development CA's certificates (test/step-ca-data, relative to the repository root).
+    # Its keys are public: never trust it outside a developer's machine.
     enabled: true
-    key-store: classpath:winhal.p12
+    key-store: file:test/step-ca-data/certs/winhal.p12
     key-store-password: capassword
     key-store-type: PKCS12
     client-auth: want
-    trust-store: classpath:truststore.p12
+    trust-store: file:test/step-ca-data/certs/truststore.p12
     trust-store-password: changeit
     trust-store-type: PKCS12
 

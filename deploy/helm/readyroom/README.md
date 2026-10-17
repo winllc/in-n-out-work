@@ -173,6 +173,10 @@ service:
   externalTrafficPolicy: Local
 ```
 
+Both stores are required: the image contains no keystore or truststore, and the render fails without
+them (a truststore can be left out only with `clientAuth: none`, which turns certificate sign-in off).
+Put only the CAs that issue your users' certificates in the truststore.
+
 The keystore's certificate must name the host the Windows client's `BaseUrl` uses, for example
 `https://readyroom.example.com:8181/api/check` with the LoadBalancer, or
 `https://readyroom.example.com/api/check` through the ingress.
@@ -313,7 +317,7 @@ delete it.
 | `tls.clientAuth` | `want` | `SERVER_SSL_CLIENTAUTH` |
 | `tls.keystore.secretName`, `.secretKey`, `.type` | `""`, `keystore.p12`, `PKCS12` | Required with `tls.enabled` |
 | `tls.keystore.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `keystore-password` | |
-| `tls.truststore.*` | as keystore, `truststore.p12`, `truststore-password` | CAs of client certificates |
+| `tls.truststore.*` | as keystore, `truststore.p12`, `truststore-password` | CAs of client certificates; required with `tls.enabled` unless `tls.clientAuth` is `none` |
 | `windowsAuth.enabled` | `false` | Kerberos sign-in for the Windows client |
 | `windowsAuth.servicePrincipal` | `""` | Required when enabled |
 | `windowsAuth.keytab.secretName`, `.secretKey` | `""`, `http.keytab` | Required when enabled; mounted at `/etc/in-n-out/http.keytab` |

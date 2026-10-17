@@ -2,20 +2,21 @@ server:
   port: ${SERVER_PORT:8181}
   ssl:
     # Off by default so the application starts and is reachable over plain HTTP with no
-    # certificate setup. The keystore settings below are kept ready: SSL_ENABLED=true is the
-    # whole switch back, nothing else has to change.
+    # certificate setup.
     #
     # Note what is off with it. Client-certificate (X.509) sign-in needs TLS, so with this
     # false the only way in is the LDAP username and password form, and the Windows client's
     # logon, lock and unlock calls - which authenticate with a certificate - cannot work.
     # Turn it on for any deployment that relies on either.
+    #
+    # No keystore or truststore is packaged. With SSL_ENABLED=true, set SERVER_SSL_KEYSTORE and
+    # SERVER_SSL_KEYSTOREPASSWORD (the server's key and certificate), and - while client-auth
+    # asks for certificates - SERVER_SSL_TRUSTSTORE and SERVER_SSL_TRUSTSTOREPASSWORD (only the
+    # CAs whose client certificates may sign in). Without them the application refuses to
+    # start (config.SslStoresCheck) rather than fall back to a default it should not trust.
     enabled: ${SSL_ENABLED:false}
-    key-store: classpath:winhal.p12
-    key-store-password: capassword
     key-store-type: PKCS12
     client-auth: want
-    trust-store: classpath:truststore.p12
-    trust-store-password: changeit
     trust-store-type: PKCS12
 
 logging:

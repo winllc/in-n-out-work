@@ -95,6 +95,23 @@ Call with: dict "image" <image values> "root" $ "tag" <default tag>
 {{- toYaml $ctx -}}
 {{- end -}}
 
+{{/*
+Settings that cannot work as given: fails the render and says what to set. Included by the Deployment.
+The image holds no keystore or truststore, and ReadyRoom refuses to start with TLS on without them.
+*/}}
+{{- define "readyroom.validate" -}}
+{{- $v := .Values -}}
+{{- if and $v.tls.enabled (not $v.tls.keystore.secretName) -}}
+{{- fail "tls.keystore.secretName is required when tls.enabled: a Secret holding your PKCS#12 keystore (the image has none)" -}}
+{{- end -}}
+{{- if and $v.tls.enabled (ne (toString $v.tls.clientAuth) "none") (not $v.tls.truststore.secretName) -}}
+{{- fail (printf "tls.truststore.secretName is required when tls.enabled with clientAuth %s: a Secret holding a PKCS#12 truststore with only the CAs that issue your users' client certificates (the image has none, and ReadyRoom does not fall back to Java's default CAs). Or set tls.clientAuth to none to turn certificate sign-in off" (toString $v.tls.clientAuth)) -}}
+{{- end -}}
+{{- if and $v.windowsAuth.enabled (not $v.windowsAuth.keytab.secretName) -}}
+{{- fail "windowsAuth.keytab.secretName is required when windowsAuth.enabled: a Secret holding the service principal's keytab" -}}
+{{- end -}}
+{{- end -}}
+
 {{/* The database host: the embedded StatefulSet's Service, or database.host (required). */}}
 {{- define "readyroom.dbHost" -}}
 {{- if .Values.database.embedded.enabled -}}
