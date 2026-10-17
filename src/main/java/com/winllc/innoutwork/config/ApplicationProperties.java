@@ -64,10 +64,17 @@ public class ApplicationProperties {
      */
     @Data
     public static class Logoff {
-        /** How long after a logon its session id can still identify the logoff. Older ones are refused. */
-        private int sessionMaxAgeHours = 24;
-        /** Logoff calls without a sign-in accepted from one client address per minute; the rest get 429. 0 turns it off. */
-        private int anonymousRequestsPerMinute = 120;
+        /**
+         * How long after a logon its session id can still identify the logoff; older ones are refused. A week, so a
+         * workstation left logged on over a weekend or a long shift still records its logoff.
+         */
+        private int sessionMaxAgeHours = 168;
+        /**
+         * Refused logoffs without a sign-in (unknown, used or expired session id) from one client address per minute.
+         * Past it, refused ones get 429 and are no longer audited one by one. Accepted logoffs never count, so many
+         * workstations behind one address are not held back. 0 turns it off.
+         */
+        private int refusedPerMinute = 30;
     }
 
     /**

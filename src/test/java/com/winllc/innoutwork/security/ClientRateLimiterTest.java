@@ -5,8 +5,10 @@ import org.junit.jupiter.api.Test;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.winllc.innoutwork.security.ClientRateLimiter.Outcome.FIRST_OVER;
+import static com.winllc.innoutwork.security.ClientRateLimiter.Outcome.OVER;
+import static com.winllc.innoutwork.security.ClientRateLimiter.Outcome.WITHIN;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class ClientRateLimiterTest {
 
@@ -17,27 +19,28 @@ class ClientRateLimiterTest {
     }
 
     @Test
-    void aClientIsRefusedOnceOverTheLimitForTheRestOfItsMinute() {
+    void aClientIsOverTheLimitForTheRestOfItsMinute() {
         ClientRateLimiter limiter = limiter(2);
 
-        assertTrue(limiter.tryAcquire("10.0.0.1"));
-        assertTrue(limiter.tryAcquire("10.0.0.1"));
-        assertFalse(limiter.tryAcquire("10.0.0.1"));
+        assertEquals(WITHIN, limiter.count("10.0.0.1"));
+        assertEquals(WITHIN, limiter.count("10.0.0.1"));
+        assertEquals(FIRST_OVER, limiter.count("10.0.0.1"), "the one that goes over is told apart");
+        assertEquals(OVER, limiter.count("10.0.0.1"));
 
         nanos.addAndGet(Duration.ofSeconds(59).toNanos());
-        assertFalse(limiter.tryAcquire("10.0.0.1"), "still the same minute");
+        assertEquals(OVER, limiter.count("10.0.0.1"), "still the same minute");
 
         nanos.addAndGet(Duration.ofSeconds(1).toNanos());
-        assertTrue(limiter.tryAcquire("10.0.0.1"), "a new minute");
+        assertEquals(WITHIN, limiter.count("10.0.0.1"), "a new minute");
     }
 
     @Test
     void eachAddressHasItsOwnCount() {
         ClientRateLimiter limiter = limiter(1);
 
-        assertTrue(limiter.tryAcquire("10.0.0.1"));
-        assertFalse(limiter.tryAcquire("10.0.0.1"));
-        assertTrue(limiter.tryAcquire("10.0.0.2"));
+        assertEquals(WITHIN, limiter.count("10.0.0.1"));
+        assertEquals(FIRST_OVER, limiter.count("10.0.0.1"));
+        assertEquals(WITHIN, limiter.count("10.0.0.2"));
     }
 
     @Test
@@ -45,7 +48,7 @@ class ClientRateLimiterTest {
         ClientRateLimiter limiter = limiter(0);
 
         for (int i = 0; i < 1000; i++) {
-            assertTrue(limiter.tryAcquire("10.0.0.1"));
+            assertEquals(WITHIN, limiter.count("10.0.0.1"));
         }
     }
 }
