@@ -1,0 +1,39 @@
+# OpenShift: the restricted SCC assigns the ids; a Route with passthrough so client certificates
+# (the Windows client) reach ReadyRoom, and Windows (Kerberos) sign-in.
+openshift:
+  enabled: true
+database:
+  host: postgres.example.internal
+  existingSecret: readyroom-db
+ldap:
+  host: ldap.example.internal
+  bindDn: CN=readyroom-svc,OU=Service Accounts,DC=example,DC=com
+  existingSecret: readyroom-ldap
+  userBaseDn: DC=example,DC=com
+  groupBaseDns:
+    - "OU=Groups,DC=example,DC=com"
+superUserDns:
+  - "CN=Jane Admin,OU=Users,DC=example,DC=com"
+tls:
+  enabled: true
+  keystore:
+    secretName: readyroom-tls
+    existingSecret: readyroom-tls-passwords
+  truststore:
+    secretName: readyroom-tls
+    existingSecret: readyroom-tls-passwords
+windowsAuth:
+  enabled: true
+  servicePrincipal: HTTP/readyroom.apps.example.com@EXAMPLE.COM
+  keytab:
+    secretName: readyroom-keytab
+  krb5Conf: |
+    [libdefaults]
+      default_realm = EXAMPLE.COM
+route:
+  enabled: true
+  host: readyroom.apps.example.com
+  tls:
+    termination: passthrough
+license:
+  existingSecret: readyroom-license

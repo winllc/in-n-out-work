@@ -1,0 +1,17 @@
+# Minimal install: an external PostgreSQL and directory, the values the chart requires.
+database:
+  host: postgres.example.internal
+  password: example-db-password
+ldap:
+  host: ldap.example.internal
+  bindDn: CN=readyroom-svc,OU=Service Accounts,DC=example,DC=com
+  bindPassword: example-ldap-password
+  userBaseDn: DC=example,DC=com
+  groupBaseDns:
+    - OU=Groups,DC=example,DC=com
+superUserDns:
+  - CN=Jane Admin,OU=Users,DC=example,DC=com
+smtp:
+  host: smtp.example.internal
+  from: readyroom@example.com
+publicUrl: http://readyroom.example.com:8181

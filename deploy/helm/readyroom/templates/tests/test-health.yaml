@@ -1,0 +1,50 @@
+{{- if .Values.tests.enabled -}}
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{ include "readyroom.fullname" . }}-test-health
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: test
+  annotations:
+    helm.sh/hook: test
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  restartPolicy: Never
+  automountServiceAccountToken: false
+  {{- with .Values.imagePullSecrets }}
+  imagePullSecrets:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  securityContext:
+    {{- include "readyroom.podSecurityContext" (dict "ctx" .Values.podSecurityContext "root" .) | nindent 4 }}
+  containers:
+    # The ReadyRoom image has curl. Liveness and readiness, and the sign-in page, which must answer
+    # even without a license (it is how an administrator reaches the license screen).
+    - name: health
+      image: {{ include "readyroom.appImage" . }}
+      imagePullPolicy: {{ .Values.image.pullPolicy }}
+      command:
+        - sh
+        - -c
+        - |
+          set -e
+          base="{{ ternary "https" "http" .Values.tls.enabled }}://{{ include "readyroom.fullname" . }}:{{ .Values.service.port }}"
+          curl -kfsS --retry 5 --retry-delay 5 --retry-all-errors "$base/actuator/health/liveness"; echo
+          curl -kfsS "$base/actuator/health/readiness"; echo
+          curl -kfsS -o /dev/null -w 'sign-in page: HTTP %{http_code}\n' "$base/login"
+      securityContext:
+        {{- include "readyroom.containerSecurityContext" . | nindent 8 }}
+      resources:
+        requests:
+          cpu: 10m
+          memory: 32Mi
+        limits:
+          memory: 128Mi
+      volumeMounts:
+        - name: tmp
+          mountPath: /tmp
+  volumes:
+    - name: tmp
+      emptyDir: {}
+{{- end }}

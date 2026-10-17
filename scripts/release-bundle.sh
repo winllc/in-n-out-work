@@ -13,7 +13,9 @@
 #   readyroom-<version>.tar.gz     unpacks to readyroom-<version>/ - see deploy/bundle/README.md
 #   sbom-<image>.spdx.json         one per image; made with syft when not already there (CI puts them
 #                                  there first with anchore/sbom-action). SKIP_SBOM=1 skips making them.
-#   SHA256SUMS                     over the tarball and the SBOMs
+#   readyroom-helm-<version>.tgz   the Helm chart, when already there (CI packages it first with
+#                                  helm package); included in SHA256SUMS
+#   SHA256SUMS                     over the tarball, the SBOMs and the Helm chart
 # Signing (SHA256SUMS.asc) and upload are CI steps; see "Releases" in the README.
 set -euo pipefail
 
@@ -132,9 +134,17 @@ for ref in "${images[@]}"; do
     [ -s "$OUT_DIR/$f" ] && sboms+=("$f")
 done
 
+# --- Helm chart --------------------------------------------------------------------------------------
+# Packaged by CI (helm package deploy/helm/readyroom) into $OUT_DIR before this script runs.
+extras=()
+CHART_TGZ="$PRODUCT-helm-$VERSION.tgz"
+if [ -s "$OUT_DIR/$CHART_TGZ" ]; then
+    extras+=("$CHART_TGZ")
+fi
+
 # --- checksums ---------------------------------------------------------------------------------------
-(cd "$OUT_DIR" && sha256sum "$TARBALL" "${sboms[@]}" > SHA256SUMS)
+(cd "$OUT_DIR" && sha256sum "$TARBALL" "${sboms[@]}" "${extras[@]}" > SHA256SUMS)
 
 echo
 echo "Release bundle for $PRODUCT $VERSION in $OUT_DIR:"
-(cd "$OUT_DIR" && ls -l "$TARBALL" "${sboms[@]}" SHA256SUMS)
+(cd "$OUT_DIR" && ls -l "$TARBALL" "${sboms[@]}" "${extras[@]}" SHA256SUMS)
