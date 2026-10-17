@@ -204,3 +204,12 @@ application:
     # userPrincipalName with strip-realm: false.
     account-attribute: sAMAccountName
     strip-realm: true
+  logoff:
+    # The Windows client's logoff (POST /api/check/out) runs after the user's profile has gone and cannot sign
+    # in, so it sends back the session id its logon was answered with. That id identifies one logoff, of the
+    # user who logged on, for this long after the logon; a later or second logoff with it is refused.
+    session-max-age-hours: 24
+    # Logoffs without a sign-in accepted from one client address per minute; the rest get 429. Many
+    # workstations behind one NAT address, or a proxy whose forwarded headers ReadyRoom does not read
+    # (server.forward-headers-strategy), share one count: raise it for them. 0 turns the limit off.
+    anonymous-requests-per-minute: 120
