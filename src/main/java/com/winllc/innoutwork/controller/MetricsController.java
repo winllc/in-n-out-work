@@ -1,5 +1,8 @@
 package com.winllc.innoutwork.controller;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
@@ -44,6 +47,13 @@ public class MetricsController {
     private final MetricsService metricsService;
     private final AccountabilityMetricsService accountabilityMetricsService;
 
+    private AuditLog audit = AuditLog.NOOP;
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
+    }
+
     public MetricsController(ApplicationProperties properties,
                              CacheService cacheService, CheckInOutService checkInOutService, MetricsService metricsService,
                              AccountabilityMetricsService accountabilityMetricsService) {
@@ -79,6 +89,12 @@ public class MetricsController {
         mv.addObject("loginByTimeChartData", jsonData2);
         mv.addObject("accountability", accountabilityMetricsService.forDay(
                 CheckInOutService.getDateTimeFromSession(session).toLocalDate()));
+
+        // The organization-wide metrics report: who was in, when, and which agents stopped reporting.
+        audit.record(AuditEntry.of(AuditEntry.Category.DATA, "data.exported")
+                .detail("report", "metrics")
+                .detail("format", "html")
+                .detail("day", CheckInOutService.getDateTimeFromSession(session).toLocalDate().toString()));
 
         return mv;
     }

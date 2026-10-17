@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Audit log</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">Audit log</span>
+
+<div layout:fragment="page-actions">
+    <a class="btn" id="export-csv" th:href="@{/app/admin/audit/export(format='csv')} + ${query.isEmpty() ? '' : '&' + query}">
+        <i class="ti ti-file-spreadsheet me-1"></i>Export CSV
+    </a>
+    <a class="btn" id="export-ndjson" th:href="@{/app/admin/audit/export(format='ndjson')} + ${query.isEmpty() ? '' : '&' + query}">
+        <i class="ti ti-file-code me-1"></i>Export NDJSON
+    </a>
+    <form th:action="@{/app/admin/audit/verify}" method="post" class="d-inline">
+        <button type="submit" class="btn btn-primary" id="verify-button">
+            <i class="ti ti-shield-check me-1"></i>Verify integrity
+        </button>
+    </form>
+</div>
+
+<div layout:fragment="content">
+
+    <div th:if="${notice}" class="alert alert-success" role="status" id="audit-notice" th:text="${notice}"></div>
+    <div th:if="${error}" class="alert alert-danger" role="alert" id="audit-error" th:text="${error}"></div>
+    <div th:if="${newToken}" class="alert alert-warning" role="status" id="new-token">
+        <div class="mb-2">
+            <strong>New audit API token <span th:text="${newTokenName}"></span>.</strong>
+            Copy it now: it is shown only this once, and only its hash is kept.
+        </div>
+        <div class="input-group">
+            <input type="text" class="form-control font-monospace" id="new-token-value" readonly th:value="${newToken}">
+            <button class="btn" type="button" id="copy-new-token" title="Copy"><i class="ti ti-copy"></i></button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card mb-3" id="audit-filters">
+        <div class="card-body">
+            <form th:action="@{/app/admin/audit}" method="get" class="row g-2 align-items-end">
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label" for="f-from">From</label>
+                    <input type="datetime-local" class="form-control" id="f-from" name="from" th:value="${params['from']}">
+                </div>
+                <div class="col-sm-6 col-lg-3">
+                    <label class="form-label" for="f-to">To</label>
+                    <input type="datetime-local" class="form-control" id="f-to" name="to" th:value="${params['to']}">
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <label class="form-label" for="f-category">Category</label>
+                    <select class="form-select" id="f-category" name="category">
+                        <option value="">Any</option>
+                        <option th:each="c : ${categories}" th:value="${c}" th:text="${c}"
+                                th:selected="${c == params['category']}"></option>
+                    </select>
+                </div>
+                <div class="col-sm-8 col-lg-4">
+                    <label class="form-label" for="f-action">Action</label>
+                    <select class="form-select" id="f-action" name="action">
+                        <option value="">Any</option>
+                        <option th:each="a : ${actions}" th:value="${a}" th:text="${a}"
+                                th:selected="${a == params['action']}"></option>
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <label class="form-label" for="f-outcome">Outcome</label>
+                    <select class="form-select" id="f-outcome" name="outcome">
+                        <option value="">Any</option>
+                        <option th:each="o : ${outcomes}" th:value="${o}" th:text="${o}"
+                                th:selected="${o == params['outcome']}"></option>
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <label class="form-label" for="f-severity">Severity</label>
+                    <select class="form-select" id="f-severity" name="severity">
+                        <option value="">Any</option>
+                        <option th:each="s : ${severities}" th:value="${s}" th:text="${s}"
+                                th:selected="${s == params['severity']}"></option>
+                    </select>
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <label class="form-label" for="f-actor">Actor contains</label>
+                    <input type="text" class="form-control" id="f-actor" name="actor" th:value="${params['actor']}">
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <label class="form-label" for="f-target">Target contains</label>
+                    <input type="text" class="form-control" id="f-target" name="target" th:value="${params['target']}">
+                </div>
+                <div class="col-sm-4 col-lg-2">
+                    <label class="form-label" for="f-ip">Source IP</label>
+                    <input type="text" class="form-control" id="f-ip" name="ip" th:value="${params['ip']}">
+                </div>
+                <div class="col-sm-8 col-lg-2">
+                    <label class="form-label" for="f-q">Text</label>
+                    <input type="search" class="form-control" id="f-q" name="q" th:value="${params['q']}"
+                           placeholder="anywhere in the event">
+                </div>
+                <div class="col-12 d-flex gap-2">
+                    <button type="submit" class="btn btn-primary"><i class="ti ti-filter me-1"></i>Filter</button>
+                    <a class="btn btn-link link-secondary" th:href="@{/app/admin/audit}">Clear</a>
+                    <span class="ms-auto text-secondary small align-self-center">
+                        Times are <span th:text="${zone}">America/New_York</span> in the filter; the table shows your
+                        local time (hover for UTC).
+                    </span>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Events, newest first -->
+    <div class="card mb-3" id="audit-events">
+        <div class="card-header">
+            <h3 class="card-title">Events</h3>
+            <div class="card-actions text-secondary small" id="audit-count"
+                 th:text="${events.totalElements + ' event' + (events.totalElements == 1 ? '' : 's')}">0 events</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-vcenter table-hover card-table" id="audit-table">
+                <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Severity</th>
+                    <th>Action</th>
+                    <th>Outcome</th>
+                    <th>Actor</th>
+                    <th>Target</th>
+                    <th>Source IP</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:if="${events.empty}">
+                    <td colspan="7" class="text-secondary text-center py-4">No events match.</td>
+                </tr>
+                <tr th:each="e : ${events.content}" class="audit-row" role="link" tabindex="0"
+                    th:attr="data-href=@{/app/admin/audit/events/{seq}(seq=${e.seq})}" th:id="${'audit-row-' + e.seq}">
+                    <td class="text-nowrap">
+                        <time class="audit-time" th:attr="datetime=${e.time.toString()}" th:title="${e.time.toString()}"
+                              th:text="${e.time.toString()}"></time>
+                    </td>
+                    <td>
+                        <span class="badge"
+                              th:classappend="${e.severity == 'alert'} ? 'bg-red-lt' : (${e.severity == 'warning'} ? 'bg-yellow-lt' : (${e.severity == 'notice'} ? 'bg-blue-lt' : 'bg-secondary-lt'))"
+                              th:text="${e.severity}">info</span>
+                    </td>
+                    <td><a th:href="@{/app/admin/audit/events/{seq}(seq=${e.seq})}" th:text="${e.action}">auth.login</a></td>
+                    <td>
+                        <span th:classappend="${e.outcome == 'success'} ? 'text-green' : 'text-red'"
+                              th:text="${e.outcome}">success</span>
+                    </td>
+                    <td class="text-truncate" style="max-width: 16rem"
+                        th:title="${e.actorId}"
+                        th:text="${e.actorName != null ? e.actorName : (e.actorId != null ? e.actorId : e.actorType)}"></td>
+                    <td class="text-truncate" style="max-width: 16rem"
+                        th:title="${e.targetType != null ? e.targetType + ': ' + e.targetId : ''}"
+                        th:text="${e.targetName != null ? e.targetName : e.targetId}"></td>
+                    <td class="font-monospace small" th:text="${e.sourceIp}"></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer d-flex align-items-center" th:if="${events.totalPages > 1}" id="audit-paging">
+            <p class="m-0 text-secondary"
+               th:text="${'Page ' + (events.number + 1) + ' of ' + events.totalPages}">Page 1 of 1</p>
+            <ul class="pagination m-0 ms-auto">
+                <li class="page-item" th:classappend="${events.first} ? 'disabled'">
+                    <a class="page-link" id="audit-prev"
+                       th:href="@{/app/admin/audit} + '?page=' + ${events.number - 1} + ${query.isEmpty() ? '' : '&' + query}">
+                        <i class="ti ti-chevron-left"></i> prev
+                    </a>
+                </li>
+                <li class="page-item" th:classappend="${events.last} ? 'disabled'">
+                    <a class="page-link" id="audit-next"
+                       th:href="@{/app/admin/audit} + '?page=' + ${events.number + 1} + ${query.isEmpty() ? '' : '&' + query}">
+                        next <i class="ti ti-chevron-right"></i>
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="row row-cards">
+        <!-- Delivery to the SIEM outputs -->
+        <div class="col-lg-7">
+            <div class="card" id="audit-delivery">
+                <div class="card-header">
+                    <h3 class="card-title">Delivery</h3>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-vcenter card-table">
+                        <thead>
+                        <tr>
+                            <th>Output</th>
+                            <th>Status</th>
+                            <th>Last delivered</th>
+                            <th>Backlog</th>
+                            <th>Last error</th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:each="o : ${outputs}" th:id="${'output-' + o.name()}">
+                            <td>
+                                <div th:text="${o.name()}">splunk</div>
+                                <div class="small text-secondary text-truncate" style="max-width: 14rem"
+                                     th:text="${o.destination()}" th:title="${o.destination()}"></div>
+                            </td>
+                            <td>
+                                <span class="badge" th:if="${!o.enabled()}" th:classappend="'bg-secondary-lt'">off</span>
+                                <span class="badge bg-red-lt" th:if="${o.enabled() and o.failingSince() != null}">failing</span>
+                                <span class="badge bg-green-lt" th:if="${o.enabled() and o.failingSince() == null}">on</span>
+                            </td>
+                            <td>
+                                <span th:if="${o.lastSeq() != null}" th:text="${'seq ' + o.lastSeq()}"></span>
+                                <div class="small text-secondary" th:if="${o.lastDeliveredAt() != null}">
+                                    <time class="audit-time" th:attr="datetime=${o.lastDeliveredAt().toString()}"
+                                          th:text="${o.lastDeliveredAt().toString()}"></time>
+                                </div>
+                            </td>
+                            <td th:text="${o.backlog()}"></td>
+                            <td class="small">
+                                <span th:text="${o.lastError()}" class="text-red"></span>
+                                <div class="text-secondary" th:if="${o.lastErrorAt() != null}">
+                                    <time class="audit-time" th:attr="datetime=${o.lastErrorAt().toString()}"
+                                          th:text="${o.lastErrorAt().toString()}"></time>
+                                </div>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="card-footer small text-secondary">
+                    Outputs are configured with the <code>ENS_AUDIT_*</code> environment variables. SIEMs can also pull
+                    <code>GET /api/audit/events?after=&lt;seq&gt;</code> with a token below.
+                    Retention: <strong id="audit-retention"
+                                       th:text="${retentionDays > 0 ? retentionDays + ' days' : 'kept forever'}">kept forever</strong>
+                    (<code>ENS_AUDIT_RETENTION_DAYS</code>).
+                </div>
+            </div>
+        </div>
+
+        <!-- Pull API tokens -->
+        <div class="col-lg-5">
+            <div class="card" id="tokens">
+                <div class="card-header">
+                    <h3 class="card-title">API tokens</h3>
+                </div>
+                <div class="card-body">
+                    <form th:action="@{/app/admin/audit/tokens}" method="post" class="d-flex gap-2">
+                        <input type="text" class="form-control" name="name" maxlength="200" placeholder="Name, e.g. Splunk"
+                               aria-label="Token name" required>
+                        <button type="submit" class="btn btn-primary text-nowrap" id="create-token">
+                            <i class="ti ti-key me-1"></i>Create
+                        </button>
+                    </form>
+                    <p class="form-hint mt-2 mb-0">Read-only access to the audit trail, for a SIEM. Shown once.</p>
+                </div>
+                <div class="list-group list-group-flush" id="token-list">
+                    <div class="list-group-item text-secondary" th:if="${#lists.isEmpty(tokens)}">No tokens yet.</div>
+                    <div class="list-group-item" th:each="t : ${tokens}" th:id="${'token-' + t.id}">
+                        <div class="d-flex align-items-center">
+                            <div class="me-auto">
+                                <div>
+                                    <span th:text="${t.name}">Splunk</span>
+                                    <code class="small" th:text="${t.tokenPrefix + '…'}">ensat_abcd…</code>
+                                    <span class="badge bg-secondary-lt" th:if="${!t.active}">revoked</span>
+                                </div>
+                                <div class="small text-secondary">
+                                    Created <time class="audit-time" th:attr="datetime=${t.createdAt.toString()}"
+                                                  th:text="${t.createdAt.toString()}"></time>
+                                    by <span th:text="${t.createdBy}"></span>.
+                                    <span th:if="${t.lastUsedAt != null}">Last used
+                                        <time class="audit-time" th:attr="datetime=${t.lastUsedAt.toString()}"
+                                              th:text="${t.lastUsedAt.toString()}"></time>.</span>
+                                    <span th:if="${t.lastUsedAt == null}">Never used.</span>
+                                </div>
+                            </div>
+                            <form th:if="${t.active}" th:action="@{/app/admin/audit/tokens/{id}/revoke(id=${t.id})}"
+                                  method="post">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">Revoke</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Local time for display; the title keeps UTC.
+        document.querySelectorAll("time.audit-time").forEach(function (el) {
+            const when = new Date(el.getAttribute("datetime"));
+            if (!isNaN(when)) {
+                el.textContent = when.toLocaleString();
+                el.title = el.getAttribute("datetime");
+            }
+        });
+        document.querySelectorAll("tr.audit-row").forEach(function (row) {
+            const go = function () { window.location.href = row.dataset.href; };
+            row.style.cursor = "pointer";
+            row.addEventListener("click", function (e) { if (e.target.tagName !== "A") go(); });
+            row.addEventListener("keydown", function (e) { if (e.key === "Enter") go(); });
+        });
+        const copy = document.getElementById("copy-new-token");
+        if (copy) {
+            copy.addEventListener("click", function () {
+                const field = document.getElementById("new-token-value");
+                field.select();
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(field.value);
+                } else {
+                    document.execCommand("copy");
+                }
+            });
+        }
+    </script>
+</div>
+</body>
+</html>

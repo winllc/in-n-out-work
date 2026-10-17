@@ -16,8 +16,8 @@
 #   docker-compose.tls.yml           your own TLS keystore (and client-certificate truststore)
 #   docker-compose.windows-auth.yml  Windows (Kerberos) sign-in: krb5.conf and the service keytab
 #
-# The project name is fixed, so the named volumes (the database, and the license with this
-# installation's id) are the same ones whichever directory a release is unpacked into; upgrade.sh
+# The project name is fixed, so the named volumes (the database, the license with this installation's
+# id, and the audit log file) are the same ones whichever directory a release is unpacked into; upgrade.sh
 # relies on this. Never "docker compose down -v": it deletes them.
 
 name: readyroom
@@ -49,7 +49,8 @@ services:
       postgres:
         condition: service_healthy
     # Every variable in .env reaches the application, so any setting in the README's Configuration
-    # section can be added there as an environment variable without touching this file.
+    # section can be added there as an environment variable without touching this file. That includes
+    # every ENS_AUDIT_* audit logging variable (see env.template).
     env_file:
       - path: .env
         required: true
@@ -58,6 +59,9 @@ services:
       # across upgrades like the database. install.sh/upgrade.sh copy license/license.lic in when it
       # holds none; otherwise upload licenses on the license screen (/app/admin/license).
       - ens-license:/var/lib/ens/readyroom
+      # The audit log file, when ENS_AUDIT_FILE is set (/var/log/ens/readyroom/audit.jsonl), kept across
+      # upgrades for a forwarder to read. Unused otherwise.
+      - ens-audit:/var/log/ens
     ports:
       - "${READYROOM_BIND_ADDRESS:-0.0.0.0}:${READYROOM_PORT:-8181}:8181"
     healthcheck:
@@ -83,3 +87,4 @@ networks:
 volumes:
   postgres_data:
   ens-license:
+  ens-audit:

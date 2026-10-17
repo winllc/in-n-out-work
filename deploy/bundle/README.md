@@ -5,8 +5,9 @@ installs the ReadyRoom server with Docker Compose. Everything it needs is includ
 images are in `images/`, so a site without internet access needs nothing else.
 
 Full documentation: https://winllc.github.io/ens-apps-documentation/readyroom/install/ (installation,
-configuration, Windows authentication, licensing). For Kubernetes or OpenShift, install with the Helm
-chart instead (`readyroom-helm-__VERSION__.tgz` in the release download).
+configuration, Windows authentication, licensing; audit logging at
+https://winllc.github.io/ens-apps-documentation/audit-logging/). For Kubernetes or OpenShift, install
+with the Helm chart instead (`readyroom-helm-__VERSION__.tgz` in the release download).
 
 ## What you need
 
@@ -20,6 +21,9 @@ chart instead (`readyroom-helm-__VERSION__.tgz` in the release download).
 
 ReadyRoom keeps its own records in the bundled PostgreSQL 16 container, in the Docker volume
 `readyroom_postgres_data`, and its license and installation id in the volume `readyroom_ens-license`.
+Its audit trail is in the database too (Administration > Audit log); to send it to Splunk or another
+SIEM, set the `ENS_AUDIT_*` lines in `.env` (see `env.template`). The optional audit log file goes to
+the volume `readyroom_ens-audit`.
 
 ## Verify the download
 

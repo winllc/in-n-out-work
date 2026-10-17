@@ -34,6 +34,9 @@ ENV ENS_LICENSE_STATE_DIR=/var/lib/ens/readyroom \
     ENS_LICENSE_FILE=/var/lib/ens/readyroom/license.lic
 RUN mkdir -p /var/lib/ens/readyroom && chown -R 185:0 /var/lib/ens && chmod -R 0770 /var/lib/ens
 VOLUME /var/lib/ens
+# The audit log file, when ENS_AUDIT_FILE is set; as in the production Dockerfile.
+RUN mkdir -p /var/log/ens/readyroom && chown -R 185:0 /var/log/ens && chmod -R 0770 /var/log/ens
+VOLUME /var/log/ens
 USER 185
 
 WORKDIR /app

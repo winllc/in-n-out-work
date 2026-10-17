@@ -119,6 +119,8 @@ services:
     volumes:
       - ./license:/license:ro
       - demo_ens_license:/var/lib/ens/readyroom
+      # The audit log file, when ENS_AUDIT_FILE=/var/log/ens/readyroom/audit.jsonl.
+      - demo_ens_audit:/var/log/ens
     restart: "no"
     networks:
       - demo
@@ -142,12 +144,29 @@ services:
       # The packaged defaults already name the postgres and openldap services, so there is
       # nothing to override here and no mounted config file.
       JAVA_OPTS: ""
+      # Audit logging (README: Audit logging): passed through from the shell or a .env file beside this one.
+      ENS_AUDIT_STDOUT: ${ENS_AUDIT_STDOUT:-true}
+      ENS_AUDIT_FILE: ${ENS_AUDIT_FILE:-}
+      ENS_AUDIT_FILE_KEEP: ${ENS_AUDIT_FILE_KEEP:-30}
+      ENS_AUDIT_RETENTION_DAYS: ${ENS_AUDIT_RETENTION_DAYS:-0}
+      ENS_AUDIT_SPLUNK_URL: ${ENS_AUDIT_SPLUNK_URL:-}
+      ENS_AUDIT_SPLUNK_TOKEN: ${ENS_AUDIT_SPLUNK_TOKEN:-}
+      ENS_AUDIT_SPLUNK_TOKEN_FILE: ${ENS_AUDIT_SPLUNK_TOKEN_FILE:-}
+      ENS_AUDIT_SPLUNK_INDEX: ${ENS_AUDIT_SPLUNK_INDEX:-}
+      ENS_AUDIT_SPLUNK_SOURCETYPE: ${ENS_AUDIT_SPLUNK_SOURCETYPE:-ens:audit}
+      ENS_AUDIT_SPLUNK_INSECURE: ${ENS_AUDIT_SPLUNK_INSECURE:-false}
+      ENS_AUDIT_SYSLOG_HOST: ${ENS_AUDIT_SYSLOG_HOST:-}
+      ENS_AUDIT_SYSLOG_PORT: ${ENS_AUDIT_SYSLOG_PORT:-}
+      ENS_AUDIT_SYSLOG_PROTOCOL: ${ENS_AUDIT_SYSLOG_PROTOCOL:-tcp}
+      ENS_AUDIT_SYSLOG_FACILITY: ${ENS_AUDIT_SYSLOG_FACILITY:-local0}
     # The demo needs a license like any other deployment: without one it shows only the license
     # screen. Download an evaluation license for ReadyRoom from the ENS portal and save it as
     # ./license/license.lic before "up"; license-init copies it into this volume. (The demo is
     # read-only, so the license screen's upload is refused here.)
     volumes:
       - demo_ens_license:/var/lib/ens/readyroom
+      # The audit log file, when ENS_AUDIT_FILE=/var/log/ens/readyroom/audit.jsonl.
+      - demo_ens_audit:/var/log/ens
     # No port published to the host. Demo mode has no authentication, so binding it to the host by
     # default would put an unauthenticated copy of the application on the machine's interfaces for
     # anything that can reach them. It listens on 8181 inside the demo network, which is where
@@ -215,3 +234,4 @@ volumes:
   demo_openldap_data:
   demo_openldap_config:
   demo_ens_license:
+  demo_ens_audit:

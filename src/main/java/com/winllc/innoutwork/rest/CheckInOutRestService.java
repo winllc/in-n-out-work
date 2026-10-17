@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.rest;
 
+import com.winllc.innoutwork.audit.SecurityAudit;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.constant.CheckInOutEnum;
@@ -8,10 +9,12 @@ import com.winllc.innoutwork.data.CheckInOut;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.service.CheckInOutService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -35,12 +38,20 @@ public class CheckInOutRestService {
 
     private final CheckInOutService checkInOutService;
 
+    /** Records the logoff call's unknown session ids as failed sign-ins; absent in test slices. */
+    private SecurityAudit securityAudit;
+
     public CheckInOutRestService(CheckInOutService checkInOutService) {
         this.checkInOutService = checkInOutService;
     }
 
+    @Autowired(required = false)
+    public void setSecurityAudit(SecurityAudit securityAudit) {
+        this.securityAudit = securityAudit;
+    }
+
     @PostMapping("/{action}")
-    public CheckInOutRecord checkIn(Authentication auth,
+    public CheckInOutRecord checkIn(Authentication auth, HttpServletRequest request,
                         @PathVariable String action,
                         @RequestBody CheckInOut checkInOut) {
         log.debug("Status change {} request received: {}, for user: {}", action, checkInOut, auth != null ? auth.getName() : "NONE");
@@ -54,6 +65,10 @@ public class CheckInOutRestService {
 
             if (optionalRecord.isPresent()) {
                 dn = LdapDn.normalize(optionalRecord.get().getDn());
+            }
+            if (dn == null && "out".equals(action) && securityAudit != null) {
+                // The logoff call cannot sign in; it is identified only by the session id cached at logon.
+                securityAudit.unknownClientSession(request);
             }
 
             // After Windows sign-in the account name comes from the verified ticket, not the request body.

@@ -2,8 +2,11 @@ package com.winllc.innoutwork.license;
 
 import com.enssolutions.license.LicenseCheck;
 import com.enssolutions.license.LicenseManager;
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import java.util.Map;
@@ -31,8 +34,15 @@ public class LicensedJobs {
     /** Why each job last skipped, so a paused job says so once rather than every few minutes. */
     private final Map<String, String> reported = new ConcurrentHashMap<>();
 
+    private AuditLog audit = AuditLog.NOOP;
+
     public LicensedJobs(LicenseManager licenses) {
         this.licenses = licenses;
+    }
+
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
     }
 
     public boolean mayRun(LicensedFeature feature, String job) {
@@ -48,6 +58,15 @@ public class LicensedJobs {
                 : "paused while the license is " + check.state() + ": " + check.message();
         if (!why.equals(reported.put(job, why))) {
             log.info("{}: skipping, {}", job, why);
+            // Once per change of reason (a mode change, a feature dropped), not on every skipped run.
+            audit.recordQuietly(AuditEntry.of(AuditEntry.Category.SYSTEM, "job.skipped")
+                    .actor(AuditEntry.Actor.system())
+                    .target("job", job, job)
+                    .detail("job", job)
+                    .detail("feature", feature.id())
+                    .detail("licenseState", check.state().name())
+                    .detail("licenseMode", check.mode().name())
+                    .detail("reason", why));
         }
         return false;
     }
