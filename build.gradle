@@ -1,7 +1,7 @@
 plugins {
     id 'java'
     id 'org.springframework.boot' version '4.1.1'
-    id 'io.spring.dependency-management' version '1.1.6'
+    id 'io.spring.dependency-management' version '1.1.7'
 }
 
 group = 'com.winllc.innoutwork'
@@ -62,7 +62,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-cache'
 
     // https://mvnrepository.com/artifact/org.apache.commons/commons-lang3
-    implementation("org.apache.commons:commons-lang3:3.20.0")
+    implementation("org.apache.commons:commons-lang3:3.21.0")
 
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
@@ -85,7 +85,7 @@ dependencies {
     testImplementation 'org.bouncycastle:bcpkix-jdk18on:1.86'
     // An in-process Kerberos server, so Windows sign-in is tested with real tickets and a real keytab.
     testImplementation 'org.apache.kerby:kerb-simplekdc:2.1.2'
-    testImplementation platform('org.junit:junit-bom:6.1.0-M1')
+    testImplementation platform('org.junit:junit-bom:6.1.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }
 
