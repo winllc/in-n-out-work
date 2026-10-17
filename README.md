@@ -19,7 +19,7 @@ installation guide: https://winllc.github.io/ens-apps-documentation/readyroom/in
 
 | | What | Where it comes from |
 |---|---|---|
-| **Release package** | `readyroom-<version>.tar.gz`: Docker Compose deployment of ReadyRoom and PostgreSQL 16 with `install.sh`, `upgrade.sh`, `env.template`, the Windows client and the container images (works air-gapped) | The signed release download (see [Releases](#releases)); sources in [`deploy/bundle/`](deploy/bundle/) |
+| **Release package** | `readyroom-<version>.tar.gz`: Docker Compose deployment of ReadyRoom and PostgreSQL 16 with `install.sh`, `upgrade.sh`, `backup.sh`, `restore.sh`, `env.template`, the Windows client and the container images (works air-gapped) | The signed release download (see [Releases](#releases)); sources in [`deploy/bundle/`](deploy/bundle/) |
 | **Helm chart** | `readyroom` for Kubernetes and OpenShift, against your PostgreSQL (or an embedded one for evaluation) | `oci://ghcr.io/winllc/charts/readyroom`, or `readyroom-helm-<version>.tgz` in the release download; sources and every value in [`deploy/helm/readyroom/`](deploy/helm/readyroom/README.md) |
 
 ```bash
@@ -56,10 +56,13 @@ notes, favorites and calendar events.
 
 ### Authentication
 
-`SecurityConfig` prefers a client certificate and uses the **full subject DN as
-the username** (`subjectPrincipalRegex("(.*)")`), which `AppUserDetailsService`
-resolves against LDAP. Browsers without a certificate fall back to the branded
-form login at `/login`, validated by the LDAP authentication provider.
+`SecurityConfig` prefers a client certificate. By default the **full subject DN is
+the user's directory DN**, which `AppUserDetailsService` resolves against LDAP; a
+filter on the certificate's UPN, EDIPI, e-mail or UUID can be configured instead,
+along with an issuer allowlist, revocation checking and certificates forwarded by a
+TLS-terminating proxy (see [Client certificates](#client-certificates-cacpiv)).
+Browsers without a certificate fall back to the branded form login at `/login`,
+validated by the LDAP authentication provider.
 
 The Windows client's check-in, lock and unlock calls can also sign in with the
 user's Windows logon (Kerberos). This is off by default; see
@@ -88,7 +91,72 @@ Every other post, put and delete needs a CSRF token: forms built with `th:action
 carry it, and `layout.html` adds it to the pages' `fetch()` calls from its `_csrf`
 meta tags. The Windows client's `/api/check/**` is exempt. The session cookie is
 `SameSite=Lax` and `HttpOnly`, and `Secure` with `SSL_ENABLED=true` or
-`SESSION_COOKIE_SECURE=true` (for a proxy that terminates TLS).
+`ENS_COOKIE_SECURE=true` (for a proxy that terminates TLS; `SESSION_COOKIE_SECURE`
+is the older name and still works).
+
+### Browser security headers
+
+Every response carries (`web.SecurityHeadersFilter`):
+
+| Header | Value |
+|---|---|
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'nonce-…'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'` |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains`, on HTTPS requests only |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` |
+
+Scripts run only from ReadyRoom itself or inline with the request's nonce: templates
+mark each inline `<script>` with `th:attr="nonce=${cspNonce}"`, and inline event
+handlers (`onclick=` and the like) are not used; `static/js/behaviours.js` provides
+`data-confirm` on forms and `data-hide-on-error` on images instead.
+`ContentSecurityPolicyTemplatesTest` fails the build on a template that breaks
+either rule.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_CSP_REPORT_ONLY` | `false` | `true` sends `Content-Security-Policy-Report-Only` instead: browsers report what the policy would block but do not block it. An escape hatch for a page the policy breaks; warned at startup. |
+| `ENS_COOKIE_SECURE` | `false` | Always mark the session cookie `Secure` (it is anyway with `SSL_ENABLED=true`) |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | (none) | `framework` behind a proxy that terminates TLS: ReadyRoom then takes the scheme, host and client address from `X-Forwarded-*`, so it knows a request was HTTPS. Only when every request comes through that proxy. The Helm chart sets it, and `ENS_COOKIE_SECURE=true`, whenever an ingress or route terminates TLS. |
+
+### Notice-and-consent banner
+
+For DoD and other U.S. Government sites (DISA STIG), ReadyRoom can show the notice-and-consent banner
+before any sign-in. It is enforced on the server (`security.ConsentFilter`): while it is on, nothing signs
+in — the password form, a client certificate, anything — until the browser session has pressed **I agree**
+on `/consent`. Before that, pages redirect to the banner, browser API calls get `401`
+(`{"error":"consent_required"}`), and a client certificate is ignored. Agreeing is recorded in the session
+and audited as `auth.consent-acknowledged`; signing out, or the session ending, means agreeing again.
+
+Machine endpoints are not browser sessions and are exempt: the Windows client's API (`/api/check/**`), the
+audit pull API (`/api/audit/events`, bearer tokens), `/actuator/health` and, on the management port,
+`/actuator/prometheus`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_CONSENT_BANNER_ENABLED` | `false` | Show and enforce the banner before sign-in |
+| `ENS_CONSENT_BANNER_TITLE` | `U.S. Government (USG) Information System (IS) Notice and Consent` | |
+| `ENS_CONSENT_BANNER_TEXT` | the standard DoD notice-and-consent text | Plain text; blank lines separate paragraphs |
+| `ENS_CONSENT_BANNER_FILE` | (none) | Read the text from this file instead (wins over `_TEXT`); an unreadable file stops startup |
+
+### Session lifetime
+
+Signed-in browser sessions end after a period of inactivity, at an absolute limit after sign-in however
+busy, and optionally when the user has too many (`security.SessionControls`). An ended session goes back
+to sign-in (`/login?expired`; API calls get `401`) and is audited as `auth.session-expired` with `reason`
+`idle`, `absolute` or `concurrent`. The Windows client's API is exempt.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_SESSION_IDLE_TIMEOUT` | `30m` | Idle timeout (a Spring duration: `15m`, `1h`) |
+| `ENS_SESSION_ADMIN_IDLE_TIMEOUT` | same as idle | A shorter idle timeout for administrators (STIG suggests `15m`) |
+| `ENS_SESSION_ABSOLUTE_TIMEOUT` | `12h` | A session ends this long after sign-in |
+| `ENS_SESSION_MAX_PER_USER` | `0` (no limit) | Concurrent sessions per user; past it the oldest is ended (STIG suggests `3`) |
+
+Timeouts under a minute, or a negative limit, stop startup with the setting's name. ReadyRoom had no idle
+setting of its own before; Spring Boot's `SERVER_SERVLET_SESSION_TIMEOUT` no longer decides how long a
+signed-in session lasts, `ENS_SESSION_IDLE_TIMEOUT` does.
 
 ### Roles
 
@@ -140,11 +208,14 @@ lock and unlock sign in:
 
 > **The server needs TLS for this.** Certificate sign-in cannot work over plain
 > HTTP, and TLS is off in the defaults, so a server the Windows client talks to
-> must terminate TLS itself: `SSL_ENABLED=true` with `docker-compose.tls.yml` in
+> must terminate TLS itself (`SSL_ENABLED=true` with `docker-compose.tls.yml` in
 > the release package, or `tls.enabled` in the Helm chart, reached through TLS
-> passthrough or a LoadBalancer Service (an ingress that terminates TLS cannot
-> pass the client certificate on). Windows sign-in likewise: the ticket goes
-> over the same connection.
+> passthrough or a LoadBalancer Service), or sit behind a proxy that terminates
+> TLS, verifies the client certificate and forwards it in a header
+> (`ENS_X509_SOURCE=header`; the Helm chart's `x509.source: header` with an
+> edge-terminating ingress). The client needs no change for either: it speaks
+> HTTPS with its certificate to whatever answers `BaseUrl`. Windows sign-in
+> likewise: the ticket travels in an HTTP header.
 
 Install the script and register the scheduled tasks (login, lock, unlock,
 logout and disconnect) from an **elevated** prompt:
@@ -302,7 +373,11 @@ its own values. Two ways, both without editing the file:
 | Situation | How |
 |---|---|
 | The app on your host, services in compose | `--spring.profiles.active=local` (`application-local.yml`: localhost, published ports) |
-| A real deployment (the release package's `.env`, or the Helm chart's values) | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` |
+| A real deployment (the release package's `.env`, or the Helm chart's values) | `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD`, `SPRING_LDAP_URLS` (`ldaps://dc1.example.com:636`), `LDAP_USERNAME`, `LDAP_PASSWORD` |
+
+Use `ldaps://` for any real directory: the sign-in form checks users' passwords by binding to it, so over
+plain `ldap://` (what `LDAP_HOST`/`LDAP_PORT` build, for the development stacks) they cross the network in
+clear text, and ReadyRoom logs a WARN at startup saying so. ReadyRoom does not negotiate StartTLS.
 
 ### Port and TLS
 
@@ -337,16 +412,29 @@ values that most often need changing per deployment:
 | `user-base-dn` | Base DN for user searches |
 | `user-ldap-filter` | Filter identifying user entries; defaults to `(objectclass=inetOrgPerson)`. Used alone to enumerate and count users, and combined into an AND for search, reports and the org chart, so it applies everywhere users are looked up. Parentheses are added if omitted. |
 | `groups[].groups-base-dn` | One entry per top-level group tree shown in the UI |
-| `super-user-dns` | DNs always treated as `ADMIN` |
+| `super-user-dns` | DNs always treated as `ADMIN` (`APPLICATION_SUPERUSERDNS_0`, `_1`, ...). None are packaged; startup warns when there are none |
 | `user-ldap-*-attribute` | Maps LDAP attributes to organization, location, branch, employee type, manager, duty sub-organization |
 | `duty-sub-org-groups-base-dn` | Enables the org chart; blank disables it |
 | `ldap.max-pages` | Most pages one paged search reads before returning what it has (default 1000). Bounds a directory that keeps returning a paging cookie, which would otherwise hold the request open indefinitely. |
-| `checkOutAfterMinutes` | Idle time before `MarkInactiveCron` auto-checks-out a session |
+| `checkOutAfterMinutes` | Minutes a session may stay locked before `MarkInactiveCron` checks it out (default 240; the packaged configuration used to say 2) |
+| `notification-sender-email` | The From address of absence alerts; required once `SPRING_MAIL_HOST` is set (startup stops without it) |
 | `application-base-url` | Used in notification emails |
 
 Two background jobs run on intervals set by `inactive-cron` and
 `send-absent-notification-cron`: one auto-checks-out idle users, the other emails
 absence notifications.
+
+These settings are validated at startup: an impossible value (`checkOutAfterMinutes` 0, an
+`application-base-url` that is not http(s), a sender that is not an e-mail address, a negative limit, an
+empty `user-base-dn`, an unknown `ENS_AUDIT_SYSLOG_PROTOCOL`) stops ReadyRoom with the setting's name rather
+than taking effect.
+
+**Mail.** No mail server is packaged: set `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`,
+`SPRING_MAIL_PASSWORD` and `APPLICATION_NOTIFICATIONSENDEREMAIL`; without a host absence alerts are recorded
+but not e-mailed (warned at startup). STARTTLS is required when enabled, the server's certificate is checked
+against the JVM's trust store, and connecting, reading and writing each time out after 30 seconds. Trusting
+a mail server's certificate without checking it is an explicit opt-in:
+`SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST=<mail host>` (or `*`, any; not FIPS- or STIG-appropriate).
 
 ### Org chart parsing
 
@@ -432,6 +520,71 @@ The demo stacks (containers, or `bootRun` with the `demo` profile) are under
 | `demo.enabled` | The only thing that turns demo mode on. Default `false`. |
 | `demo.banner` | Banner text shown on every page. |
 | `demo.accounts` | The rows of the login page's tile: `role`, `username`, `password`, `description`. Empty by default, so a deployment that never asked for demo mode publishes nothing even if accounts are configured. |
+
+## Client certificates (CAC/PIV)
+
+Client-certificate sign-in is on whenever ReadyRoom terminates TLS and asks for certificates
+(`SSL_ENABLED=true`, `SERVER_SSL_CLIENTAUTH=want`), or whenever certificates come from a proxy
+(`ENS_X509_SOURCE=header`). Every chain that accepts certificates — the browser pages, the Windows client's
+check-ins with or without Windows sign-in, demo mode — applies the same rules (`security.x509`). Each refusal
+is audited as a failed `auth.login` (`details.method` `x509`) with its reason: `certificate revoked`,
+`revocation unknown`, `issuer not allowed`, `no single directory user matches`, `certificate has no upn`,
+`proxy secret missing or wrong`, `certificate not issued by a trusted CA`, ...
+
+**Who a certificate signs in as.** By default its subject DN must be the user's directory DN, as before.
+`ENS_X509_USER_FILTER` finds the user with an LDAP filter instead, searched under `user-base-dn` together
+with `user-ldap-filter`; exactly one entry must match, or nobody signs in. Values are LDAP-filter-escaped.
+
+| Placeholder | Value |
+|---|---|
+| `{upn}` | The subject alternative name otherName UserPrincipalName (OID 1.3.6.1.4.1.311.20.2.3) |
+| `{edipi}` | The DoD EDIPI: the digits before `@` of a UPN `1234567890@mil`, or else the trailing `.NNNNNNNNNN` of the CN (`LAST.FIRST.MI.1234567890`) |
+| `{email}` | The rfc822Name subject alternative name, or else the subject's emailAddress |
+| `{uuid}` | The UUID of a `urn:uuid:` URI subject alternative name (PIV FASC-N UUID), without the `urn:uuid:` |
+| `{subject}`, `{cn}` | The subject DN (RFC 2253), its most specific CN |
+
+For example `(userPrincipalName={upn})` for Active Directory and CAC, or
+`(|(employeeNumber={edipi})(mail={email}))`.
+
+**Revocation.** Off by default, for upgrades; with certificate sign-in on and revocation off, startup warns
+that STIG requires it. OCSP asks the certificate's responder (AIA), or `ENS_X509_OCSP_RESPONDER_URL`; CRLs
+come from the certificate's http(s) distribution points, or only from `ENS_X509_CRL_DIR` when that is set
+(air-gapped sites: drop the CA's CRLs there; changed files are re-read). Network fetches time out after 5 s
+(connect) and 10 s (response), follow no redirects, are capped at 1 MB (OCSP) and 20 MB (CRL), and never go
+to a link-local or cloud metadata address. The JDK's PKIX validator judges every answer, configured for that
+check only. The issuer's certificate must be known: in the chain the client sent, `ENS_X509_TRUSTED_CA_FILE`
+or the TLS trust store.
+
+**Certificates from a TLS-terminating proxy** (`ENS_X509_SOURCE=header`). The proxy (an ingress, a load
+balancer) verifies the client certificate and forwards it, URL-encoded PEM as nginx's
+`$ssl_client_escaped_cert` sends it, in `ENS_X509_HEADER`, together with the shared secret in
+`X-ENS-Proxy-Secret`. ReadyRoom takes the certificate only from an address in `ENS_X509_TRUSTED_PROXIES`
+with the right secret (compared in constant time), checks it chains to `ENS_X509_TRUSTED_CA_FILE` (or the
+TLS trust store) and is valid, and otherwise ignores it (audited). A certificate on the connection itself is
+not used in this mode. ReadyRoom refuses to start in header mode without a secret of 32 characters or more,
+or without a CA. Let nothing but the proxy reach ReadyRoom's port. For nginx:
+
+```nginx
+ssl_client_certificate /etc/nginx/user-cas.pem;
+ssl_verify_client optional;
+proxy_set_header X-SSL-Client-Cert $ssl_client_escaped_cert;
+proxy_set_header X-ENS-Proxy-Secret "<the secret>";
+```
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_X509_SOURCE` | `servlet` | `servlet` (ReadyRoom terminates TLS) or `header` (a trusted proxy forwards the certificate) |
+| `ENS_X509_HEADER` | `X-SSL-Client-Cert` | The header the certificate arrives in (ingress-nginx: `ssl-client-cert`) |
+| `ENS_X509_TRUSTED_PROXIES` | `127.0.0.1/32;::1/128` | Addresses (CIDRs) allowed to send it, `;` or `,` separated |
+| `ENS_X509_PROXY_SECRET_FILE` / `ENS_X509_PROXY_SECRET` | (none) | The secret the proxy sends in `X-ENS-Proxy-Secret`, 32 characters or more; the file wins. Required in header mode |
+| `ENS_X509_TRUSTED_CA_FILE` | (none) | PEM certificates of the CAs that issue user certificates: header mode's chain check (required there unless the TLS trust store is configured), and issuers for revocation |
+| `ENS_X509_USER_FILTER` | (none: subject DN = directory DN) | LDAP filter template finding the user |
+| `ENS_X509_ALLOWED_ISSUERS` | (none: any trusted CA) | Issuer DNs whose certificates may sign in, `;` separated (DNs contain commas); others are refused even when a trusted CA chains to them |
+| `ENS_X509_REVOCATION` | `off` | `off`, `ocsp`, `crl` or `ocsp-then-crl` |
+| `ENS_X509_OCSP_RESPONDER_URL` | (the certificate's AIA) | A responder to ask instead, e.g. a local OCSP relay |
+| `ENS_X509_CRL_DIR` | (none) | A directory of CRL files (DER or PEM); with it set, distribution points are never fetched |
+| `ENS_X509_REVOCATION_FAIL` | `closed` | `closed` refuses a certificate whose status cannot be determined; `open` allows it with a WARN |
+| `ENS_X509_REVOCATION_CACHE` | `10m` | How long a good or revoked answer is kept, per issuer and serial |
 
 ---
 
@@ -554,15 +707,14 @@ hash chained to the previous event's, so a changed, removed or reordered event i
 verification. Writers are serialized by a row lock on the single-row `audit_chain_head` table, which
 holds across application instances. A security change that cannot be audited does not happen: role,
 permission, settings and calendar changes are committed together with their event, a sign-in fails if
-its event cannot be stored, and a license upload is refused while the store is unavailable. Run
-[`db/migrations/002_audit_log.sql`](db/migrations/002_audit_log.sql) once to make the table
-append-only in the database itself (see [Database migrations](#database-migrations)).
+its event cannot be stored, and a license upload is refused while the store is unavailable. The table is
+append-only in the database itself: a trigger refuses every UPDATE (see [Database migrations](#database-migrations)).
 
 **What is recorded** (action ids; never renamed):
 
 | Category | Actions |
 |---|---|
-| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout` |
+| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout`, `auth.consent-acknowledged` (the notice-and-consent banner, with the client address), `auth.session-expired` (`reason` `idle`, `absolute` or `concurrent`) |
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
 | account | `person.created` (a new tracked person, at first sign-in or lookup), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
 | configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |
@@ -634,46 +786,127 @@ whole trail, so expect duplicates by `id`.
 
 ## Database migrations
 
-Hibernate creates tables and columns (`ddl-auto: update`) but not indexes or
-constraints. Those come from the scripts in [`db/migrations/`](db/migrations/),
-which run with `psql`. The Helm chart runs them for you: a Job on every install
-and upgrade waits until ReadyRoom has created its tables and then runs each
-script (`migrations.enabled`, on by default). The release package ships them in
-`migrations/`, to run by hand as below when the release notes say so.
+ReadyRoom migrates its own schema with [Flyway](https://documentation.red-gate.com/flyway) when it starts,
+before it serves anything. The migrations are in
+[`src/main/resources/db/migration/`](src/main/resources/db/migration/) and run in version order; each runs
+once per database, recorded in the table `flyway_schema_history`. Hibernate only checks the result
+(`ddl-auto: validate`): ReadyRoom does not start against a schema that does not match it. Nothing is run by
+hand any more, and neither the release package nor the Helm chart carries scripts. How to add a migration:
+[`db/README.md`](db/README.md).
 
-**`001_indexes_and_unique_user_dn.sql`** adds the indexes the DN and date lookups
-need, and makes a user DN unique ignoring case. Before adding that constraint it
-merges any user rows that differ only by DN case: the lowest id is kept, the
-first non-empty value of each field wins, the highest role wins, and favourite
-groups, alternate managers and group permissions are combined. The number of
-merged rows is printed.
+**`V1__baseline.sql`** is the whole schema: every table and column, the indexes for the DN and date
+lookups, one user record per DN ignoring case, and the audit trail's append-only trigger. It is written to
+be safe on any database it meets: on an empty one it creates everything, and on one an earlier release
+created it adds only what is missing. That covers what the old psql scripts did
+([`db/legacy/`](db/legacy/), kept for reference only): user rows whose DNs differ only by letter case are
+merged before the unique index is built (the lowest id is kept, the first non-empty value of each field
+wins, the highest role wins, and favourite groups, alternate managers and permissions are combined), and an
+index an interrupted script left invalid is rebuilt.
 
-1. Start the application against the database once, so the tables exist (the
-   script stops with an error if they don't).
-2. Back up the database.
-3. Run the script:
+**Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
+Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the
+`spring.flyway.baseline-*` settings) and runs V1 on it. Where the old scripts had already run, V1 finds
+almost everything in place and finishes in seconds; where they had not, it builds the indexes, which on a
+large check-in table makes that one start take a few minutes (the Helm chart's startup probe allows 10).
+The log shows `Migrating schema "public" to version "1 - baseline"` and, when user rows were merged,
+`Merging N duplicate user record(s)`. If a migration fails, ReadyRoom does not start and nothing of that
+migration is applied (each runs in one transaction): fix the cause the log names and start it again.
 
-   ```bash
-   psql "postgresql://USER:PASSWORD@HOST:5432/DB" -v ON_ERROR_STOP=1 -f db/migrations/001_indexes_and_unique_user_dn.sql
-   ```
+**A separate migration account (optional).** By default ReadyRoom migrates with its own database account
+(`DB_USERNAME`). To limit that account to reading and writing rows, give the schema to another one:
 
-   Or, for a database in a container:
+| Variable | Default | Purpose |
+|---|---|---|
+| `SPRING_FLYWAY_USER` | (`DB_USERNAME`) | The account Flyway connects as; it owns the tables it creates |
+| `SPRING_FLYWAY_PASSWORD` | (`DB_PASSWORD`) | Its password |
 
-   ```bash
-   docker exec -i POSTGRES_CONTAINER psql -U USER -d DB -v ON_ERROR_STOP=1 < db/migrations/001_indexes_and_unique_user_dn.sql
-   ```
+Create both accounts and the database, owned by the migration account, then, connected as the migration
+account, before ReadyRoom first starts:
 
-- Do **not** add `--single-transaction` (`-1`). The indexes are built with
-  `CREATE INDEX CONCURRENTLY`, so the app can keep running and writing while they
-  build, and that cannot happen inside a transaction. Only the short merge step
-  takes a lock, and only on `user_records`.
-- The script is safe to run again. Existing indexes are skipped, and an index
-  left invalid by an interrupted run is dropped and rebuilt.
-- Deploy the application version that expects the unique DN (it handles the
-  constraint when two requests create the same user at once) with or after the
-  migration.
+```sql
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;            -- PostgreSQL 14 and older; 15+ already does this
+GRANT USAGE ON SCHEMA public TO readyroom;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO readyroom;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO readyroom;
+```
 
----
+For an existing database, whose tables the application's account created and owns, first hand them over
+(`REASSIGN OWNED BY readyroom TO readyroom_owner;` as a superuser), then run the statements above and
+`GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO readyroom;` and
+`GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO readyroom;`. The Helm chart's values are
+`database.migration.username` and `database.migration.password` (or `.existingSecret`).
+
+## FIPS 140-3
+
+ReadyRoom implements no cryptography of its own. TLS (to browsers, the Windows client, the directory, the
+mail server, the database and the audit outputs), certificate and revocation checking, hashing and random
+numbers all come from the Java platform's security providers, through the standard JCA/JSSE interfaces.
+The image is built on Red Hat UBI 9 OpenJDK 21: on a RHEL host in FIPS mode (`fips-mode-setup --enable`, or
+an OpenShift cluster installed with FIPS), Red Hat's OpenJDK switches to its FIPS configuration
+automatically, using the host's FIPS-validated NSS and OpenSSL modules and the system crypto policy. Run
+ReadyRoom there, with that image, for FIPS 140-3; ReadyRoom does not claim validation of its own.
+
+What ReadyRoom uses: SHA-256 for the audit hash chain, the pull-API token hashes and the session id
+fingerprints; SHA-1 only to name a certificate in an OCSP request (the CertID RFC 6960 defines, not a
+signature); the platform's `SecureRandom` for session ids, CSRF tokens, CSP nonces and tokens; Ed25519 to
+verify the ENS license signature (see below). BouncyCastle is used by the tests only and is not in the
+image.
+
+Options that are not FIPS-appropriate, or weaken what FIPS mode protects, and should stay off in a FIPS
+deployment:
+
+| Setting | Why |
+|---|---|
+| `ENS_AUDIT_SPLUNK_INSECURE=true` | Skips the Splunk HEC certificate check |
+| `SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST=*` (or a host name) | Trusts the mail server's certificate without checking it |
+| `SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=false` | Mail, and its credentials, in clear text |
+| `ldap://` directory URLs | Passwords and directory data in clear text (warned at startup) |
+| `SSL_ENABLED=false` without a TLS-terminating proxy | Everything in clear text |
+| `-SkipCertificateCheck` on the Windows client | Trusts any server certificate |
+| `ENS_X509_REVOCATION=off`, `ENS_X509_REVOCATION_FAIL=open` | Revoked or unchecked certificates sign in (STIG) |
+| Keystores and trust stores (`SERVER_SSL_KEYSTORE`, `SERVER_SSL_TRUSTSTORE`) in a format or with algorithms the FIPS provider does not accept | Load them as PKCS#12 made with FIPS-approved algorithms (AES, SHA-256), or as the provider requires |
+
+### License verification under FIPS
+
+Placeholder: the ENS license library's FIPS test results (Ed25519 signature verification with the platform's
+FIPS providers) are to be added here.
+
+## Monitoring and logs
+
+**Health.** `/actuator/health` is open to anyone with the status only; administrators also see each
+component. The Kubernetes probes use its groups:
+
+| Path | Includes |
+|---|---|
+| `/actuator/health/liveness` | ReadyRoom's own state only, so an outage elsewhere never restarts it |
+| `/actuator/health/readiness` | Also the database (`db`), the directory (`ldap`) and whether the audit trail can be written (`auditStore`); the mail server is in neither |
+
+**Metrics.** Prometheus metrics are exposed only on a separate management port. Set
+`MANAGEMENT_SERVER_PORT` (Spring Boot's own setting; unset by default, and then no metrics are exposed at
+all): actuator then moves to that port, plain HTTP, where `/actuator/health` and `/actuator/prometheus`
+are open without signing in. Keep that port for the cluster's monitoring: never publish it through an
+ingress, route or the host. ReadyRoom's own port then has no actuator endpoints, so point health checks at
+the management port (the image's `HEALTHCHECK` does). The Helm chart does all this by default
+(`metrics.enabled`, port 9090, with an optional `ServiceMonitor`).
+
+| Metric | Type | |
+|---|---|---|
+| `ens_license_mode{mode}` | gauge | 1 for the license mode in effect (`full`, `read_only`, `unlicensed`), 0 for the others |
+| `ens_license_days_remaining` | gauge | Days until the license (or its grace period) ends; no value for a perpetual license |
+| `ens_audit_events_total{category,outcome}` | counter | Audit events stored |
+| `ens_audit_forward_failures_total{output}` | counter | Failed deliveries to an audit output (`splunk`, `syslog`) |
+| `ens_auth_attempts_total{method,outcome}` | counter | Sign-ins by method (`ldap`, `x509`, `sso`, `api-token`, `session-id`) and outcome (`success`, `failure`), the Windows client's included |
+| `ens_readyroom_checkins_total{action}` | counter | The Windows client's events recorded (`in`, `lock`, `unlock`, `out`) |
+| `ens_readyroom_people_in` | gauge | People whose latest event today is a check-in or unlock (refreshed at most once a minute) |
+| `ens_readyroom_alerts_sent_total` | counter | Absence alert e-mails sent |
+| `ens_readyroom_logoffs_refused_total{reason}` | counter | Logoffs refused: `unknown_session`, `rate_limited` |
+
+Spring Boot's own JVM, HTTP, database pool and Tomcat metrics are there too, tagged `application="readyroom"`.
+
+**Logs.** `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` writes each log line as one JSON object (Elastic Common
+Schema; `logstash` and `gelf` also work) for a log collector; unset, lines are plain text. The Helm chart's
+`logFormat` is `json` by default. The audit lines on stdout (`ENS_AUDIT_STDOUT`) are raw `ens-audit/1`
+JSON either way.
 
 ## Performance and tuning
 
@@ -808,9 +1041,11 @@ update both when the branding changes.
 ```
 
 JUnit 5 + Mockito, with `@WebMvcTest` slices for the controllers. LDAP code
-runs against an in-memory UnboundID directory. Tests of the migration script and
-of concurrent writes run against PostgreSQL in a container (Testcontainers), and
-are skipped when Docker is not available. Windows sign-in is tested with real
+runs against an in-memory UnboundID directory. Tests of the Flyway migrations, the
+audit store and concurrent writes run against PostgreSQL in a container (Testcontainers),
+on a schema Flyway built, and are skipped when Docker is not available. The other
+repository tests use H2 with the schema built from the entities (`create-drop`, Flyway
+off): V1 uses PostgreSQL-only SQL (PL/pgSQL blocks) and H2 cannot run it. Windows sign-in is tested with real
 Kerberos tickets from an in-process KDC (Apache Kerby), no domain needed.
 
 Licensing is tested with the ENS portal's published TEST key, which no build trusts: the test
@@ -880,7 +1115,7 @@ reachable by others.
 | `demo-seed-db` | Loads the check-in/out history and the manager role once the tables exist, then exits |
 
 The seeders are what make one `up` enough. One waits for the directory and loads the users and
-groups; the other **waits for the application to create its tables** — Hibernate does that on first
+groups; the other **waits for the application to create its tables** — Flyway does that on first
 start, so there is nothing to insert into before then — and only then writes the records. No second
 command, and re-running re-seeds cleanly: the LDAP load tolerates entries that already exist and the
 SQL deletes its own previous rows.
@@ -955,8 +1190,9 @@ OpenShift) holds the license and the licensing state; keep it on a persistent, w
 Start it without a license, sign in as an administrator and upload one at `/app/admin/license`, or
 copy one in: `docker cp license.lic readyroom:/var/lib/ens/readyroom/license.lic` (it must be
 readable by user 185). Never bake a license into an image.
-The base images can be swapped for a mirror with `--build-arg BUILD_IMAGE=...` and
-`--build-arg RUNTIME_IMAGE=...`.
+The base images are pinned by digest (the tag kept for reading; Dependabot proposes new digests) and can
+be swapped for a mirror with `--build-arg BUILD_IMAGE=...` and `--build-arg RUNTIME_IMAGE=...`. The
+runtime stage applies the operating system's security updates (`microdnf update`) at build time.
 
 The health check reports what actuator reports, which includes the mail server: if the SMTP host in
 `spring.mail` cannot be reached the container shows as unhealthy. Point it at a reachable server, or
@@ -984,7 +1220,7 @@ builds the customer release bundle with `scripts/release-bundle.sh`:
 
 | File | What |
 |---|---|
-| `readyroom-1.2.3.tar.gz` | Unpacks to `readyroom-1.2.3/`: `README.md`, `install.sh`, `upgrade.sh`, a production `docker-compose.yml` (ReadyRoom and PostgreSQL 16, the customer's LDAP and SMTP from `.env`) with optional TLS and Windows sign-in overrides, `env.template`, `license/`, the Windows client, the database migrations, and `images/readyroom-images-1.2.3.tar` (`docker save` of both images, for air-gapped sites). Sources in `deploy/bundle/`. |
+| `readyroom-1.2.3.tar.gz` | Unpacks to `readyroom-1.2.3/`: `README.md`, `install.sh`, `upgrade.sh`, `backup.sh`, `restore.sh`, a production `docker-compose.yml` (ReadyRoom and PostgreSQL 16, the customer's LDAP and SMTP from `.env`) with optional TLS and Windows sign-in overrides, `env.template`, `license/`, the Windows client, and `images/readyroom-images-1.2.3.tar` (`docker save` of both images, for air-gapped sites). Sources in `deploy/bundle/`. |
 | `readyroom-helm-1.2.3.tgz` | The Helm chart (`deploy/helm/readyroom`), packaged as version 1.2.3 and also pushed to `oci://ghcr.io/winllc/charts/readyroom` |
 | `sbom-in-n-out-work.spdx.json`, `sbom-postgres.spdx.json` | SPDX SBOMs of the two images |
 | `SHA256SUMS` | Checksums of the files above |
@@ -1022,6 +1258,34 @@ gpg --verify SHA256SUMS.asc SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
 ```
 
+**Verifying the image and the chart.** On a release tag CI signs the published image and Helm chart with
+cosign, keyless (Sigstore, the workflow's GitHub OIDC identity), by digest, and attaches the image's SPDX
+SBOM as a signed attestation:
+
+```bash
+cosign verify ghcr.io/winllc/in-n-out-work@<digest> \
+  --certificate-identity-regexp 'https://github.com/winllc/in-n-out-work/.github/workflows/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-attestation --type spdxjson ghcr.io/winllc/in-n-out-work@<digest> \
+  --certificate-identity-regexp 'https://github.com/winllc/in-n-out-work/.github/workflows/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify ghcr.io/winllc/charts/readyroom@<digest> \
+  --certificate-identity-regexp 'https://github.com/winllc/in-n-out-work/.github/workflows/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+(`docker buildx imagetools inspect ghcr.io/winllc/in-n-out-work:1.2.3` shows a tag's digest.)
+
+**Supply chain.** Every GitHub Action is pinned to a commit SHA and every base image to a digest;
+Dependabot (`.github/dependabot.yml`) proposes weekly updates for Gradle, the Dockerfiles and the actions,
+minor and patch versions grouped. CodeQL (`.github/workflows/codeql.yml`) analyses the Java and JavaScript on
+every push, pull request and weekly. The `image` job scans the built image with Trivy (pinned by version
+and checksum) and fails on any HIGH or CRITICAL vulnerability that has a fix; accepted risks go in
+`.trivyignore`, each with its reason and a review date. Security fixes ahead of Spring Boot are pinned in
+`build.gradle` (`ext['tomcat.version']`, `ext['jackson-bom.version']`) until a Boot release includes them.
+ReadyRoom is proprietary to ENS Solutions (`LICENSE`, `LicenseRef-ENS-Commercial` in the image labels and the
+chart's annotations).
+
 ---
 
 ## Project layout
@@ -1045,7 +1309,8 @@ docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from sourc
 docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
-db/migrations/ Indexes, constraints and triggers Hibernate does not create; run with psql
+src/main/resources/db/migration/  Flyway migrations, run at startup (see db/README.md)
+db/legacy/     The psql scripts used before Flyway, for reference; db/perf/ the volume seed
 deploy/bundle/ The customer release bundle: production compose, env template, install/upgrade
 deploy/helm/readyroom/  The Helm chart (published to oci://ghcr.io/winllc/charts/readyroom)
 scripts/release-bundle.sh  Builds the release bundle (see Releases)

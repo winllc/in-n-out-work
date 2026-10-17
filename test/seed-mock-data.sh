@@ -378,8 +378,8 @@ for row in "${USERS[@]}"; do
 done
 
 if [[ "$SEED_TRANSPORT" == "network" ]]; then
-  # Hibernate creates the tables (ddl-auto=update), so there is nothing to insert into until the
-  # application has started at least once. The note at the end of this script is the manual
+  # The application creates the tables when it starts (Flyway), so there is nothing to insert into
+  # until it has started at least once. The note at the end of this script is the manual
   # equivalent; in the demo stack this is what makes one "up" enough.
   wait_for "the application to create its tables" schema_ready
 fi
@@ -433,6 +433,6 @@ echo "Today status: IN=Alice,Dave,Grace,Demo Admin  OUT=Bob,Erin  AWAY=Heidi,Fra
 echo
 echo "Note: user_records rows are created lazily by the app when a user is looked up."
 if [[ "$SEED_TRANSPORT" != "network" ]]; then
-  echo "      Start the app (which creates the DB schema via ddl-auto=update) at least once"
+  echo "      Start the app (which creates the DB schema with Flyway) at least once"
   echo "      before running this if the tables don't exist yet. Network mode waits instead."
 fi

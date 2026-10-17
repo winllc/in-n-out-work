@@ -2,6 +2,8 @@ package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.audit.AuditEntry;
 import com.winllc.innoutwork.audit.AuditLog;
+import com.winllc.innoutwork.metrics.EnsMetrics;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.config.ApplicationProperties;
@@ -52,6 +54,17 @@ public class NotificationService {
     @Autowired(required = false)
     public void setAuditLog(AuditLog audit) {
         this.audit = audit;
+    }
+
+    /** The mail sender is absent when no mail server is configured (SPRING_MAIL_HOST): alerts are then not sent. */
+    @Autowired
+    public NotificationService(ObjectProvider<JavaMailSender> mailSender, NotificationRepository notificationRepository,
+                               UserService userService, ApplicationProperties properties,
+                               @Qualifier("ldapUserLoadingCache") LoadingCache<String, LdapUser> userCache,
+                               SpringTemplateEngine thymeleafTemplateEngine,
+                               UserEventRecordRepository userEventRecordRepository) {
+        this(mailSender.getIfAvailable(), notificationRepository, userService, properties, userCache,
+                thymeleafTemplateEngine, userEventRecordRepository);
     }
 
     public NotificationService(JavaMailSender mailSender, NotificationRepository notificationRepository,
@@ -190,6 +203,10 @@ public class NotificationService {
     }
 
     public void sendNotification(NotificationRecord notification, String email) {
+        if (mailSender == null) {
+            log.debug("Not e-mailing notification {}: no mail server is configured", notification.getId());
+            return;
+        }
         if(ValueValidatorUtil.isValidEmail(email)) {
             try {
                 String notificationUrl = properties.getApplicationBaseUrl() + "/app/notifications/id/" + notification.getId();
@@ -218,6 +235,7 @@ public class NotificationService {
                 helper.setText(htmlBody, true);
 
                 mailSender.send(message);
+                EnsMetrics.alertSent();
                 log.info("Notification {} about {} sent to {}",
                         notification.getId(), notification.getAboutUserDn(), email);
             }catch (Exception e) {

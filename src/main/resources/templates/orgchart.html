@@ -102,7 +102,7 @@
         </div>
     </div>
 
-    <script>
+    <script th:attr="nonce=${cspNonce}">
         (function () {
             // Same collapsible-tree behaviour as the Groups page.
             HierarchyTree.init({

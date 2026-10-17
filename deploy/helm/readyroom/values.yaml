@@ -8,8 +8,8 @@
 # the ldap block, superUserDns, and publicUrl. See README.md for examples.
 
 global:
-  # Registry that replaces the registry part of every image this chart runs (ReadyRoom, PostgreSQL,
-  # the migration job and the busybox license helper), for an air-gapped site with a mirror. Images
+  # Registry that replaces the registry part of every image this chart runs (ReadyRoom, PostgreSQL
+  # and the busybox license helper), for an air-gapped site with a mirror. Images
   # are then pulled as <imageRegistry>/<path>: ghcr.io/winllc/in-n-out-work becomes
   # <imageRegistry>/winllc/in-n-out-work, postgres becomes <imageRegistry>/postgres.
   imageRegistry: ""
@@ -104,6 +104,35 @@ checkOutAfterMinutes: 240
 updateProfileUrl: ""
 # Application log level (LOGGING_LEVEL_COM_WINLLC_INNOUTWORK): info, or debug when diagnosing.
 logLevel: info
+# json: one JSON object per log line, Elastic Common Schema (LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs), for a log
+# collector. text: the usual readable lines. The audit lines (ENS_AUDIT_STDOUT) are raw JSON either way.
+logFormat: json
+
+# Content-Security-Policy-Report-Only instead of Content-Security-Policy (ENS_CSP_REPORT_ONLY): browsers
+# report what the policy would block but do not block it. An escape hatch for a page the policy breaks.
+csp:
+  reportOnly: false
+
+# The DoD notice-and-consent banner, shown and acknowledged before any sign-in (ENS_CONSENT_BANNER_*).
+# The Windows client's API is exempt.
+consentBanner:
+  enabled: false
+  # Empty: "U.S. Government (USG) Information System (IS) Notice and Consent".
+  title: ""
+  # Plain text, blank lines between paragraphs. Empty: the standard DoD notice-and-consent text.
+  text: ""
+  # Or the text from a ConfigMap of your own (mounted, ENS_CONSENT_BANNER_FILE); wins over text.
+  existingConfigMap: ""
+  existingConfigMapKey: banner.txt
+
+# Browser session lifetimes (ENS_SESSION_*), as durations: 30m, 12h. STIG suggests adminIdleTimeout 15m and
+# maxPerUser 3. Past maxPerUser (0: no limit) a user's oldest session ends.
+session:
+  idleTimeout: 30m
+  # Empty: the same as idleTimeout.
+  adminIdleTimeout: ""
+  absoluteTimeout: 12h
+  maxPerUser: 0
 
 # Users always treated as administrators, by full DN (APPLICATION_SUPERUSERDNS_n). At least one, or
 # nobody can administer ReadyRoom or reach the license screen.
@@ -126,7 +155,7 @@ database:
   existingSecretKey: password
 
   # A PostgreSQL inside the release: a single-replica StatefulSet with a PVC.
-  # EVALUATION ONLY, NO BACKUPS. Use your own PostgreSQL for production.
+  # EVALUATION ONLY (no backups unless backup.enabled). Use your own PostgreSQL for production.
   embedded:
     enabled: false
     image:
@@ -146,34 +175,54 @@ database:
       limits:
         memory: 1Gi
 
-# The scripts in db/migrations (indexes and constraints Hibernate does not create). ReadyRoom creates its
-# tables itself on start (Hibernate ddl-auto: update); this Job then waits for them and runs every
-# script with psql, on each install and upgrade. The scripts are safe to run again and run with the
-# application up (CREATE INDEX CONCURRENTLY). The Job uses the database image, which has psql.
-migrations:
-  enabled: true
-  # How long the Job waits for ReadyRoom to create the tables.
-  waitSeconds: 900
-  backoffLimit: 3
-  # Finished Jobs are removed after this many seconds.
-  ttlSecondsAfterFinished: 86400
+  # ReadyRoom migrates its schema itself (Flyway), at startup and before it serves anything, so there is no
+  # migration Job: an install or upgrade is migrated when the new pod starts. Optionally with a separate
+  # account that owns the schema, so the account above can be limited to reading and writing rows
+  # (SPRING_FLYWAY_USER and SPRING_FLYWAY_PASSWORD; the README lists the grants). Empty: the account above.
+  migration:
+    username: ""
+    password: ""
+    existingSecret: ""
+    existingSecretKey: migration-password
+
+# Scheduled pg_dump of ReadyRoom's database into a PVC (custom format, for pg_restore), with the database
+# image. Works with your PostgreSQL or the embedded one; it is no substitute for your database's own backups
+# and point-in-time recovery. Restoring: see the chart README.
+backup:
+  enabled: false
+  # Cron schedule (and optionally an IANA time zone; empty: the cluster's).
+  schedule: "17 2 * * *"
+  timeZone: ""
+  # Dumps older than this many days are deleted after each backup.
+  retentionDays: 14
+  activeDeadlineSeconds: 3600
+  persistence:
+    size: 10Gi
+    storageClass: ""
+    accessModes: ["ReadWriteOnce"]
+    existingClaim: ""
   resources:
     requests:
       cpu: 50m
       memory: 64Mi
     limits:
-      memory: 256Mi
+      memory: 512Mi
 
 # ---------------------------------------------------------------------------------------------------
 # Directory (your LDAP server or Active Directory)
 # ---------------------------------------------------------------------------------------------------
 
 ldap:
-  # Host and port; ReadyRoom connects with ldap://host:port (LDAP_HOST, LDAP_PORT).
+  # Host, port and scheme; ReadyRoom connects to <scheme>://host:port (SPRING_LDAP_URLS). ldaps, the
+  # default, encrypts the connection, and with it the passwords the sign-in form checks against the
+  # directory; ldap sends them in clear text (ReadyRoom warns at startup). The directory's certificate must
+  # be trusted by the JVM (a public CA is; for your own CA, a trust store via javaOpts and extraVolumes).
+  scheme: ldaps
   host: ""
-  port: 389
-  # The whole URL instead, for LDAPS: ldaps://ldap.example.com:636 (SPRING_LDAP_URLS). Takes precedence
-  # over host/port. The directory's certificate must be trusted by the JVM (a public CA is).
+  # Empty: 636 for ldaps, 389 for ldap.
+  port: ""
+  # The whole URL instead (SPRING_LDAP_URLS), e.g. ldaps://dc1.example.com:636; takes precedence over the
+  # three above.
   url: ""
   # A read-only service account (bind DN, or user@domain for AD) (LDAP_USERNAME).
   bindDn: ""
@@ -207,8 +256,8 @@ orgChart:
 # ---------------------------------------------------------------------------------------------------
 
 smtp:
-  # Your SMTP server (SPRING_MAIL_HOST, SPRING_MAIL_PORT). Set it: the packaged default is a
-  # development host.
+  # Your SMTP server (SPRING_MAIL_HOST, SPRING_MAIL_PORT). Empty: no absence alert e-mails (they are
+  # still recorded). With a host, from is required.
   host: ""
   port: 587
   username: ""
@@ -216,11 +265,13 @@ smtp:
   password: ""
   existingSecret: ""
   existingSecretKey: smtp-password
-  # SMTP AUTH and STARTTLS; set both false for a relay that takes neither.
+  # SMTP AUTH and STARTTLS (required when on: nothing is sent in clear text); set both false for a
+  # relay that takes neither.
   auth: true
   starttls: true
-  # Certificates trusted from the mail server: "*" (the packaged default) trusts any, or name your
-  # mail host to trust only certificates valid for it. Empty keeps the default.
+  # Empty: the mail server's certificate is checked against the JVM's trust store. An explicit opt-in
+  # otherwise: your mail host's name to trust its certificate as is, or "*" to trust any (not FIPS- or
+  # STIG-appropriate).
   sslTrust: ""
   # From address of notification e-mails (APPLICATION_NOTIFICATIONSENDEREMAIL).
   from: ""
@@ -232,12 +283,11 @@ smtp:
 # TLS and client certificates
 # ---------------------------------------------------------------------------------------------------
 
-# Off: plain HTTP on 8181, for browsers with username and password sign-in behind an ingress or route
-# that terminates TLS. Client-certificate (X.509) sign-in, which the Windows client's check-in, lock
-# and unlock calls use, needs ReadyRoom itself to terminate TLS: set enabled, supply the keystores,
-# and reach the pod with TLS passthrough (ingress-nginx ssl-passthrough, a route with termination:
-# passthrough) or a LoadBalancer Service. ReadyRoom does not read a client certificate from a header,
-# so an edge-terminating ingress cannot pass one on.
+# Off: plain HTTP on 8181, behind an ingress or route that terminates TLS. Client-certificate (X.509)
+# sign-in, which the Windows client's check-in, lock and unlock calls use, then needs x509.source:
+# header (the ingress forwards the certificate). Or ReadyRoom terminates TLS itself: set enabled, supply
+# the keystores, and reach the pod with TLS passthrough (ingress-nginx ssl-passthrough, a route with
+# termination: passthrough) or a LoadBalancer Service.
 tls:
   enabled: false
   # want: ask for a certificate but fall back to the password form (the default). need: require one.
@@ -264,6 +314,60 @@ tls:
     password: ""
     existingSecret: ""
     existingSecretKey: truststore-password
+
+# ---------------------------------------------------------------------------------------------------
+# Client certificates (X.509, CAC/PIV): where they come from, who they sign in as, revocation (ENS_X509_*)
+# ---------------------------------------------------------------------------------------------------
+
+x509:
+  # servlet: ReadyRoom terminates TLS itself and reads the certificate from the handshake (tls.enabled, with
+  # passthrough or a LoadBalancer). header: an ingress or route terminates TLS, verifies the client
+  # certificate and forwards it in a header, with the proxy secret; ReadyRoom takes it only from
+  # trustedProxies with that secret, and checks it chains to trustedCa. For ingress-nginx:
+  #   ingress.annotations:
+  #     nginx.ingress.kubernetes.io/auth-tls-secret: <namespace>/<Secret with ca.crt: your users' CAs>
+  #     nginx.ingress.kubernetes.io/auth-tls-verify-client: "optional"
+  #     nginx.ingress.kubernetes.io/auth-tls-pass-certificate-to-upstream: "true"
+  #     nginx.ingress.kubernetes.io/configuration-snippet: |
+  #       proxy_set_header X-ENS-Proxy-Secret "<the proxy secret>";
+  #   x509.header: ssl-client-cert
+  # and restrict networkPolicy.ingressFrom to the ingress controller, so nothing else can reach ReadyRoom.
+  # The Windows client works the same through the ingress: it only speaks HTTPS with its certificate.
+  source: servlet
+  # Header mode: the header the certificate arrives in, URL-encoded PEM. Empty: X-SSL-Client-Cert.
+  header: ""
+  # Header mode: the addresses allowed to send it (the ingress controller's pods), ; separated.
+  trustedProxies: "10.0.0.0/8;172.16.0.0/12;192.168.0.0/16"
+  # Header mode, required: the secret (32 characters or more) the proxy sends in X-ENS-Proxy-Secret, mounted
+  # as a file (ENS_X509_PROXY_SECRET_FILE). Inline, or from your own Secret.
+  proxySecret:
+    value: ""
+    existingSecret: ""
+    existingSecretKey: proxy-secret
+  # Header mode, required unless tls.truststore is set: PEM certificates of the CAs that issue your users'
+  # certificates (ENS_X509_TRUSTED_CA_FILE). Inline (--set-file x509.trustedCa.value=ca.pem), or your Secret.
+  trustedCa:
+    value: ""
+    existingSecret: ""
+    existingSecretKey: ca.pem
+  # An LDAP filter finding the user from the certificate (ENS_X509_USER_FILTER), with {upn}, {edipi},
+  # {email}, {uuid}, {subject} and {cn}; e.g. (userPrincipalName={upn}) for Active Directory and CAC.
+  # Empty: the certificate's subject DN is the user's directory DN.
+  userFilter: ""
+  # Issuer DNs whose certificates may sign in, ; separated (ENS_X509_ALLOWED_ISSUERS). Empty: any trusted CA.
+  allowedIssuers: ""
+  revocation:
+    # off, ocsp, crl or ocsp-then-crl (ENS_X509_REVOCATION). STIG requires one of the last three.
+    mode: "off"
+    # An OCSP responder to ask instead of each certificate's own (ENS_X509_OCSP_RESPONDER_URL).
+    ocspResponderUrl: ""
+    # CRL files (DER or PEM) from your ConfigMap, mounted at /etc/in-n-out/crl (ENS_X509_CRL_DIR): the
+    # air-gapped way; CRLs are then never fetched. Updates to it reach the pod and are re-read.
+    crlConfigMap: ""
+    # closed: refuse a certificate whose status cannot be found out; open: allow it, with a warning.
+    fail: closed
+    # How long a good or revoked answer is kept per certificate.
+    cache: 10m
 
 # ---------------------------------------------------------------------------------------------------
 # Windows (Kerberos) sign-in for the Windows client's check-in, lock and unlock calls
@@ -424,12 +528,37 @@ networkPolicy:
     extraPorts: []
 
 # ---------------------------------------------------------------------------------------------------
-# Probes (Spring Boot actuator; HTTPS when tls.enabled)
+# Metrics (Prometheus)
+# ---------------------------------------------------------------------------------------------------
+
+metrics:
+  # Actuator on a port of its own (MANAGEMENT_SERVER_PORT, plain HTTP): Prometheus metrics at
+  # /actuator/prometheus and the health probes, both open without sign-in. Added to the Service as port
+  # "metrics", for Prometheus inside the cluster; the ingress and route never publish it. The probes use it.
+  enabled: true
+  port: 9090
+  # NetworkPolicy peers allowed to the metrics port (with networkPolicy.enabled), e.g. Prometheus's namespace:
+  #  - namespaceSelector:
+  #      matchLabels:
+  #        kubernetes.io/metadata.name: monitoring
+  allowFrom: []
+  # A monitoring.coreos.com/v1 ServiceMonitor for the Prometheus Operator.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: ""
+    # Extra labels, e.g. the one your Prometheus selects ServiceMonitors by (release: prometheus).
+    labels: {}
+
+# ---------------------------------------------------------------------------------------------------
+# Probes (Spring Boot actuator; on the metrics port when metrics.enabled, else ReadyRoom's own port, HTTPS
+# when tls.enabled)
 # ---------------------------------------------------------------------------------------------------
 
 probes:
   startup:
-    # Up to 10 minutes for the first start, while Hibernate creates the schema.
+    # Up to 10 minutes for the first start, and for an upgrade while Flyway migrates the schema (building
+    # indexes on a large check-in table takes a while once).
     initialDelaySeconds: 10
     periodSeconds: 5
     failureThreshold: 120

@@ -10,8 +10,7 @@
 # Docker volumes shared by every release, so they are kept; the application updates its schema on
 # start. If the license volume holds no license yet, license/license.lic is copied in.
 #
-# Back up the database first:
-#     docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > readyroom-backup.sql
+# Back up first, from the current release's directory: ./backup.sh
 set -euo pipefail
 
 cd "$(dirname "$0")"

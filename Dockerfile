@@ -10,9 +10,10 @@
 # signs in and uploads the ENS license there. See Licensing in the README. test/Dockerfile is the same
 # build for the compose stacks.
 
-# The base images, overridable for a registry mirror (--build-arg BUILD_IMAGE=mirror.example/...).
-ARG BUILD_IMAGE=eclipse-temurin:21-jdk
-ARG RUNTIME_IMAGE=registry.access.redhat.com/ubi9/openjdk-21-runtime
+# The base images, overridable for a registry mirror (--build-arg BUILD_IMAGE=mirror.example/...). Pinned by
+# digest, the tag kept for reading; Dependabot proposes new digests.
+ARG BUILD_IMAGE=eclipse-temurin:21-jdk@sha256:23cc5734ff46e776f51ce66eb9ee08444fd47caabec0a95b7eb6e94be2d3696d
+ARG RUNTIME_IMAGE=registry.access.redhat.com/ubi9/openjdk-21-runtime:latest@sha256:856ee6542b8fdf09a065fd5439309fc3f3c821fb8efac48aa6191c93635dd907
 
 # ---- build stage -------------------------------------------------------------
 FROM ${BUILD_IMAGE} AS build
@@ -38,13 +39,17 @@ LABEL org.opencontainers.image.title="ReadyRoom" \
       org.opencontainers.image.description="ReadyRoom workforce check-in/out and accountability" \
       org.opencontainers.image.vendor="ENS Solutions, LLC" \
       org.opencontainers.image.url="https://ens-solutions.com/" \
+      org.opencontainers.image.source="https://github.com/winllc/in-n-out-work" \
+      org.opencontainers.image.licenses="LicenseRef-ENS-Commercial" \
       com.enssolutions.license.path="/var/lib/ens/readyroom/license.lic"
 
-# krb5-workstation: Kerberos configuration and the klist/kinit tools for checking the keytab used by Windows
-# sign-in (application.windows-auth). The JVM validates tickets itself. /etc/in-n-out is where the keytab is
-# mounted; group 0 is the runtime user's group (and OpenShift's arbitrary UIDs'), so it can read it.
+# Security updates published since the base image was built, then krb5-workstation: Kerberos configuration
+# and the klist/kinit tools for checking the keytab used by Windows sign-in (application.windows-auth). The
+# JVM validates tickets itself. /etc/in-n-out is where the keytab is mounted; group 0 is the runtime user's
+# group (and OpenShift's arbitrary UIDs'), so it can read it.
 USER root
-RUN microdnf install -y --nodocs krb5-workstation \
+RUN microdnf update -y --nodocs \
+ && microdnf install -y --nodocs krb5-workstation \
  && microdnf clean all \
  && mkdir -p /etc/in-n-out /app \
  && chgrp 0 /etc/in-n-out && chmod 0750 /etc/in-n-out \
@@ -84,9 +89,10 @@ EXPOSE 8181
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
 
 # /actuator/health is open to unauthenticated callers (the rest of /actuator is not). Plain HTTP by default;
-# with SSL_ENABLED=true the same port speaks TLS, hence the second try.
+# with SSL_ENABLED=true the same port speaks TLS, hence the second try. With MANAGEMENT_SERVER_PORT set,
+# actuator is on that port instead, always plain HTTP.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD curl -fsS -o /dev/null "http://127.0.0.1:${SERVER_PORT:-8181}/actuator/health" \
+    CMD curl -fsS -o /dev/null "http://127.0.0.1:${MANAGEMENT_SERVER_PORT:-${SERVER_PORT:-8181}}/actuator/health" \
      || curl -kfsS -o /dev/null "https://127.0.0.1:${SERVER_PORT:-8181}/actuator/health" \
      || exit 1
 

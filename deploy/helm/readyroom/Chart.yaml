@@ -17,3 +17,6 @@ keywords:
 maintainers:
   - name: ENS Solutions, LLC
     url: https://ens-solutions.com/
+annotations:
+  # Proprietary to ENS Solutions; see LICENSE in the source repository.
+  licenses: LicenseRef-ENS-Commercial

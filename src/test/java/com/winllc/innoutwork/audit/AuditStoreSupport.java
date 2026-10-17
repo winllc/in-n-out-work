@@ -22,6 +22,7 @@ public final class AuditStoreSupport {
             "spring.datasource.password=",
             "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.H2Dialect",
             "spring.jpa.hibernate.ddl-auto=create-drop",
+            "spring.flyway.enabled=false",
             "ens.audit.product=readyroom"
     };
 

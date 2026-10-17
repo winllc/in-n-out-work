@@ -289,7 +289,7 @@
         </div>
     </div>
 
-    <script>
+    <script th:attr="nonce=${cspNonce}">
         // Local time for display; the title keeps UTC.
         document.querySelectorAll("time.audit-time").forEach(function (el) {
             const when = new Date(el.getAttribute("datetime"));

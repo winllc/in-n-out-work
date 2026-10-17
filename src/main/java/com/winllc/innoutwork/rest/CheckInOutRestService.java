@@ -10,6 +10,7 @@ import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.data.AppUserDetails;
 import com.winllc.innoutwork.data.CheckInOut;
 import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.metrics.EnsMetrics;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.security.ClientRateLimiter;
 import com.winllc.innoutwork.service.CheckInOutService;
@@ -122,6 +123,7 @@ public class CheckInOutRestService {
         if (event != CheckInOutEnum.CHECK_OUT) {
             // The signed-in user's own event: a session id in the body does not change whose.
             CheckInOutRecord saved = checkInOutService.saveCheckInOutRecord(record);
+            EnsMetrics.checkIn(action);
             return ResponseEntity.ok(event == CheckInOutEnum.CHECK_IN
                     ? CheckInOutResponse.forCheckIn(saved)
                     : CheckInOutResponse.of(saved));
@@ -129,8 +131,9 @@ public class CheckInOutRestService {
 
         if (signedIn) {
             // Refused (403) if the session id is still usable and someone else's.
-            return ResponseEntity.ok(CheckInOutResponse.of(
-                    checkInOutService.saveSignedInCheckOut(record, checkInOut.getSessionId(), sessionMaxAge)));
+            CheckInOutRecord saved = checkInOutService.saveSignedInCheckOut(record, checkInOut.getSessionId(), sessionMaxAge);
+            EnsMetrics.checkIn(action);
+            return ResponseEntity.ok(CheckInOutResponse.of(saved));
         }
 
         // The logoff that cannot sign in: identified only by the session id cached at logon. A usable one is
@@ -138,12 +141,14 @@ public class CheckInOutRestService {
         // and the client does not retry, so a refusal would lose the check-out.
         Optional<CheckInOutRecord> saved = checkInOutService.saveSessionCheckOut(record, checkInOut.getSessionId(), sessionMaxAge);
         if (saved.isPresent()) {
+            EnsMetrics.checkIn(action);
             return ResponseEntity.ok(CheckInOutResponse.of(saved.get()));
         }
 
         // Refused. Only these count towards the address's limit; past it they are no longer audited one by one.
         ClientRateLimiter.Outcome outcome = refusedLogoffs.count(request.getRemoteAddr());
         if (outcome == ClientRateLimiter.Outcome.WITHIN) {
+            EnsMetrics.logoffRefused("unknown_session");
             if (securityAudit != null) {
                 securityAudit.unknownClientSession(request);
             }
@@ -157,6 +162,7 @@ public class CheckInOutRestService {
                 securityAudit.refusedClientSessionsLimited(request, refusedLogoffs.perMinute());
             }
         }
+        EnsMetrics.logoffRefused("rate_limited");
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header(HttpHeaders.RETRY_AFTER, String.valueOf(ClientRateLimiter.WINDOW.toSeconds()))
                 .contentType(MediaType.APPLICATION_JSON)

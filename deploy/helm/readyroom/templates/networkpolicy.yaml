@@ -1,7 +1,7 @@
 {{- if .Values.networkPolicy.enabled -}}
 {{- $v := .Values -}}
 {{- $np := $v.networkPolicy -}}
-{{- $ports := list (int $v.database.port) (int $v.ldap.port) (int $v.smtp.port) -}}
+{{- $ports := list (int $v.database.port) (int (include "readyroom.ldapPort" .)) (int $v.smtp.port) -}}
 {{- if $v.ldap.url -}}
 {{- $m := regexFind ":[0-9]+$" (trimSuffix "/" $v.ldap.url) -}}
 {{- $ports = append $ports (ternary (int (trimPrefix ":" $m)) 636 (ne $m "")) -}}
@@ -38,6 +38,14 @@ spec:
       from:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    {{- if and $v.metrics.enabled $v.metrics.allowFrom }}
+    # Prometheus.
+    - ports:
+        - port: {{ $v.metrics.port }}
+          protocol: TCP
+      from:
+        {{- toYaml $v.metrics.allowFrom | nindent 8 }}
+    {{- end }}
   egress:
     {{- if $np.egress.allowAll }}
     - {}
@@ -76,7 +84,7 @@ spec:
     {{- end }}
 {{- if $v.database.embedded.enabled }}
 ---
-# The embedded database: reachable from ReadyRoom and the migration Job only.
+# The embedded database: reachable from ReadyRoom and the backup job only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -99,25 +107,25 @@ spec:
         - podSelector:
             matchLabels:
               {{- include "readyroom.selectorLabels" . | nindent 14 }}
-              app.kubernetes.io/component: migrations
+              app.kubernetes.io/component: backup
       ports:
         - port: 5432
           protocol: TCP
 {{- end }}
-{{- if and $v.migrations.enabled (not $np.egress.allowAll) }}
+{{- if and $v.backup.enabled (not $np.egress.allowAll) }}
 ---
-# The migration Job: DNS and the database only.
+# The backup job: DNS and the database only.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "readyroom.fullname" . }}-migrations
+  name: {{ include "readyroom.fullname" . }}-backup
   labels:
     {{- include "readyroom.labels" . | nindent 4 }}
 spec:
   podSelector:
     matchLabels:
       {{- include "readyroom.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: migrations
+      app.kubernetes.io/component: backup
   policyTypes:
     - Ingress
     - Egress

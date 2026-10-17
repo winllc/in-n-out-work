@@ -44,7 +44,7 @@ database:
   host: postgres.example.com
   password: change-me             # or database.existingSecret
 ldap:
-  host: dc1.example.com
+  host: dc1.example.com           # ldaps://dc1.example.com:636 (ldap.scheme: ldaps is the default)
   bindDn: CN=readyroom-svc,OU=Service Accounts,DC=example,DC=com
   bindPassword: change-me
   userBaseDn: DC=example,DC=com
@@ -84,8 +84,8 @@ smtp:
   existingSecretKey: smtp-password
 ```
 
-The same `existingSecret` / `existingSecretKey` pair exists for `tls.keystore`, `tls.truststore` and
-`audit.splunk`.
+The same `existingSecret` / `existingSecretKey` pair exists for `database.migration`, `tls.keystore`,
+`tls.truststore` and `audit.splunk`.
 
 ### License
 
@@ -217,7 +217,7 @@ Mirror the images and point the chart at the mirror:
 | Image | Mirrored as |
 |---|---|
 | `ghcr.io/winllc/in-n-out-work:<version>` | `<registry>/winllc/in-n-out-work:<version>` |
-| `postgres:16` (migration Job; embedded database) | `<registry>/postgres:16` |
+| `postgres:16` (embedded database) | `<registry>/postgres:16` |
 | `busybox:1.36.1` (license init container) | `<registry>/busybox:1.36.1` |
 
 The release bundle's `images/` archive holds the ReadyRoom and PostgreSQL images (`docker load`, then
@@ -247,8 +247,49 @@ The password is generated and kept in the release's Secret unless you set `datab
 helm upgrade readyroom oci://ghcr.io/winllc/charts/readyroom --version 1.2.4 -n readyroom -f my-values.yaml
 ```
 
-Back up the database first. The license PVC and the database are kept; ReadyRoom updates its schema on
-start, and the migration Job runs the database scripts again (they skip what is already done).
+Back up the database first (see [Backups](#backups)). The license PVC and the database are kept. ReadyRoom
+migrates its schema itself when the new pod starts (Flyway, `src/main/resources/db/migration`), before it
+serves anything; the pod is ready once that is done. The first upgrade to a release with Flyway records the
+existing schema as version 0 and brings it up to date (it builds any index the old migration Job had not, so
+that one start takes longer on a large database). There is no migration Job any more; an old one from a
+previous release is removed by the upgrade.
+
+### Backups
+
+With `backup.enabled`, a CronJob runs `pg_dump` (custom format, with the database image so the version
+matches) on `backup.schedule` into a PVC (`backup.persistence`), and deletes dumps older than
+`backup.retentionDays`. It works with your PostgreSQL or the embedded one, but it is no substitute for your
+database's own backups and point-in-time recovery. The license PVC (the installation id) is not in it: snapshot
+that volume too. Copy the dumps off the cluster as well.
+
+```yaml
+backup:
+  enabled: true
+  schedule: "17 2 * * *"     # timeZone: America/New_York
+  retentionDays: 14
+  persistence:
+    size: 10Gi
+```
+
+To back up now: `kubectl -n readyroom create job --from=cronjob/readyroom-backup readyroom-backup-now`.
+
+To restore a dump (everything recorded since it is lost):
+
+```bash
+kubectl -n readyroom scale deploy/readyroom --replicas=0
+kubectl -n readyroom run readyroom-restore --rm -it --restart=Never --image=postgres:16 \
+  --overrides='{"spec":{"volumes":[{"name":"b","persistentVolumeClaim":{"claimName":"readyroom-backup"}}],
+    "containers":[{"name":"readyroom-restore","image":"postgres:16","stdin":true,"tty":true,
+    "command":["bash"],"volumeMounts":[{"name":"b","mountPath":"/backup"}]}]}}'
+# inside it:
+ls /backup
+PGPASSWORD=... pg_restore --clean --if-exists --no-owner --single-transaction --exit-on-error \
+  -h <database host> -U readyroom -d readyroom /backup/readyroom-<stamp>.dump
+exit
+kubectl -n readyroom scale deploy/readyroom --replicas=1
+```
+
+ReadyRoom migrates an older dump's schema forward when it starts; restore into the same or a newer release.
 
 ### Uninstall
 
@@ -287,19 +328,29 @@ delete it.
 | `checkOutAfterMinutes` | `240` | `APPLICATION_CHECKOUTAFTERMINUTES` |
 | `updateProfileUrl` | `""` | `APPLICATION_UPDATEPROFILEURL` |
 | `logLevel` | `info` | `LOGGING_LEVEL_COM_WINLLC_INNOUTWORK` |
+| `logFormat` | `json` | `json`: ECS JSON log lines (`LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`); `text`: plain lines |
+| `csp.reportOnly` | `false` | `ENS_CSP_REPORT_ONLY`: report the Content-Security-Policy instead of enforcing it |
+| `consentBanner.enabled` | `false` | `ENS_CONSENT_BANNER_ENABLED`: the DoD notice-and-consent banner before any sign-in |
+| `consentBanner.title`, `.text` | `""` | `ENS_CONSENT_BANNER_TITLE`, `_TEXT`; empty: the standard DoD title and text |
+| `consentBanner.existingConfigMap`, `.existingConfigMapKey` | `""`, `banner.txt` | The text from your ConfigMap (`ENS_CONSENT_BANNER_FILE`); wins over `text` |
+| `session.idleTimeout`, `.adminIdleTimeout`, `.absoluteTimeout`, `.maxPerUser` | `30m`, `""`, `12h`, `0` | `ENS_SESSION_*`; STIG suggests `adminIdleTimeout: 15m`, `maxPerUser: 3` |
 | `superUserDns` | `[]` | `APPLICATION_SUPERUSERDNS_n`: administrators by DN; at least one |
 | `database.host` | `""` | Required unless embedded |
 | `database.port`, `.name`, `.username` | `5432`, `readyroom`, `readyroom` | |
 | `database.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `password` | Required (generated for the embedded database) |
-| `database.embedded.enabled` | `false` | PostgreSQL StatefulSet: evaluation only, no backups |
-| `database.embedded.image.*` | `postgres`, `16` | Also the migration Job's image |
+| `database.embedded.enabled` | `false` | PostgreSQL StatefulSet: evaluation only (no backups unless `backup.enabled`) |
+| `backup.enabled` | `false` | A CronJob running `pg_dump` into a PVC |
+| `backup.schedule`, `.timeZone` | `17 2 * * *`, `""` | When |
+| `backup.retentionDays` | `14` | Dumps older than this are deleted |
+| `backup.persistence.*` | 10Gi, RWO | `size`, `storageClass`, `accessModes`, `existingClaim` |
+| `backup.activeDeadlineSeconds`, `.resources` | `3600`, small | |
+| `database.embedded.image.*` | `postgres`, `16` | |
 | `database.embedded.persistence.*` | 8Gi, RWO | `size`, `storageClass`, `accessModes`, `existingClaim` |
 | `database.embedded.resources` | 100m / 256Mi, limit 1Gi | |
-| `migrations.enabled` | `true` | Run `db/migrations` with psql after ReadyRoom creates its tables |
-| `migrations.waitSeconds` | `900` | How long the Job waits for the tables |
-| `migrations.backoffLimit`, `.ttlSecondsAfterFinished`, `.resources` | `3`, `86400`, small | |
-| `ldap.host`, `ldap.port` | `""`, `389` | `LDAP_HOST`, `LDAP_PORT` |
-| `ldap.url` | `""` | `SPRING_LDAP_URLS`, e.g. `ldaps://dc1.example.com:636`; overrides host and port |
+| `database.migration.username` | `""` | `SPRING_FLYWAY_USER`: a separate account that owns the schema and migrates it at startup; empty: `database.username` |
+| `database.migration.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `migration-password` | `SPRING_FLYWAY_PASSWORD`; required with `database.migration.username` |
+| `ldap.scheme`, `ldap.host`, `ldap.port` | `ldaps`, `""`, `""` (636; 389 for `ldap`) | `SPRING_LDAP_URLS=<scheme>://<host>:<port>`. `ldap` sends sign-in passwords in clear text (warned at startup); `ldaps` with port 389 fails the render |
+| `ldap.url` | `""` | `SPRING_LDAP_URLS`, e.g. `ldaps://dc1.example.com:636`; overrides scheme, host and port |
 | `ldap.bindDn` | `""` | `LDAP_USERNAME` |
 | `ldap.bindPassword` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `ldap-password` | `LDAP_PASSWORD` |
 | `ldap.userBaseDn` | `""` | `APPLICATION_USERBASEDN` |
@@ -310,7 +361,7 @@ delete it.
 | `smtp.host`, `smtp.port`, `smtp.username` | `""`, `587`, `""` | `SPRING_MAIL_*` |
 | `smtp.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `smtp-password` | `SPRING_MAIL_PASSWORD` |
 | `smtp.auth`, `smtp.starttls` | `true`, `true` | SMTP AUTH and STARTTLS |
-| `smtp.sslTrust` | `""` | Trusted mail server certificates; empty keeps `*` |
+| `smtp.sslTrust` | `""` | Empty: the mail server's certificate is checked; a host name (or `*`, any) trusts it without checking |
 | `smtp.from` | `""` | `APPLICATION_NOTIFICATIONSENDEREMAIL` |
 | `smtp.healthCheck` | `true` | `MANAGEMENT_HEALTH_MAIL_ENABLED`; never part of the Kubernetes probes |
 | `tls.enabled` | `false` | ReadyRoom terminates TLS itself (`SSL_ENABLED`) |
@@ -344,7 +395,11 @@ delete it.
 | `networkPolicy.ingressFrom` | `[]` | Peers allowed to port 8181; empty: anyone |
 | `networkPolicy.egress.allowAll` | `false` | Else DNS, plus the database, LDAP, SMTP and audit ports to `cidrs` |
 | `networkPolicy.egress.cidrs`, `.extraPorts` | `[0.0.0.0/0]`, `[]` | |
-| `probes.startup`, `.liveness`, `.readiness` | startup up to 10 min | Actuator `/actuator/health/liveness` and `/readiness` |
+| `metrics.enabled` | `true` | `MANAGEMENT_SERVER_PORT`: actuator on a port of its own (plain HTTP) with `/actuator/prometheus` and the probes, open without sign-in; Service port `metrics` |
+| `metrics.port` | `9090` | |
+| `metrics.allowFrom` | `[]` | NetworkPolicy peers admitted to the metrics port (with `networkPolicy.enabled`) |
+| `metrics.serviceMonitor.enabled`, `.interval`, `.scrapeTimeout`, `.labels` | `false`, `30s`, `""`, `{}` | A Prometheus Operator `ServiceMonitor` |
+| `probes.startup`, `.liveness`, `.readiness` | startup up to 10 min | Actuator `/actuator/health/liveness` and `/readiness`, on the metrics port when `metrics.enabled` |
 | `extraEnv`, `extraEnvFrom` | `[]` | Any other ReadyRoom setting |
 | `extraVolumes`, `extraVolumeMounts` | `[]` | |
 | `tests.enabled` | `true` | The `helm test` pod |
@@ -360,4 +415,4 @@ for f in deploy/helm/readyroom/ci/*.yaml; do
 done
 ```
 
-`files/migrations/` must match `db/migrations/` (CI checks it); copy a new script into both.
+The chart carries no database scripts: ReadyRoom migrates its own schema at startup (see `db/README.md`).

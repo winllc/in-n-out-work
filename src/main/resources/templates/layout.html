@@ -9,7 +9,7 @@
     <meta name="_csrf_header" th:if="${_csrf != null}" th:content="${_csrf.headerName}"/>
     <title layout:title-pattern="ReadyRoom">ReadyRoom</title>
 
-    <script>
+    <script th:attr="nonce=${cspNonce}">
         // Adds the CSRF token to every same-origin fetch() that can change something, so the pages that write
         // through fetch() rather than a form need nothing of their own. Reads, and other origins, go out as they
         // were: the token is never sent anywhere else.
@@ -48,6 +48,8 @@
     <script th:src="@{/libs/tabulator/tabulator.min.js}"></script>
     <script th:src="@{/js/hierarchy.js}"></script>
     <script th:src="@{/js/custom.js}"></script>
+    <!-- Form confirmations and image fallbacks, bound from script: the CSP allows no inline handlers. -->
+    <script th:src="@{/js/behaviours.js}"></script>
 
 </head>
 <!--
@@ -348,7 +350,7 @@
 
 <script th:src="@{/libs/jquery/dist/jquery.min.js}"></script>
 <script th:src="@{/libs/tabler/tabler.min.js}"></script>
-<script>
+<script th:attr="nonce=${cspNonce}">
     // Tabler bundles Bootstrap's JS under window.tabler; the pages call bootstrap.Modal
     // directly, so keep the familiar global pointing at it.
     if (window.tabler && window.tabler.bootstrap && !window.bootstrap) {
@@ -364,7 +366,7 @@
     });
 </script>
 
-<script th:inline="javascript">
+<script th:inline="javascript" th:attr="nonce=${cspNonce}">
 
     const sessionDateTime = /*[[${systemTime}]]*/ null;
 
@@ -479,7 +481,7 @@
   come back 403. Read-only searches and filters are left working, since they are most of what
   there is to show.
 -->
-<script th:if="${demoMode == true}">
+<script th:if="${demoMode == true}" th:attr="nonce=${cspNonce}">
     (function () {
         "use strict";
 

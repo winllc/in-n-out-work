@@ -3,6 +3,8 @@ database:
   embedded:
     enabled: true
 ldap:
+  # An evaluation directory without LDAPS (warned about at startup).
+  scheme: ldap
   host: ldap.example.internal
   bindDn: cn=admin,dc=example,dc=com
   bindPassword: example-ldap-password
@@ -18,5 +20,8 @@ license:
     -----BEGIN ENS LICENSE-----
     example
     -----END ENS LICENSE-----
+backup:
+  enabled: true
+  timeZone: America/New_York
 networkPolicy:
   enabled: true

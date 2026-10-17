@@ -1,0 +1,5 @@
+# Third-party code vendored into the static resources is not ours to fix; its updates come from upstream.
+paths-ignore:
+  - src/main/resources/static/libs
+  - "**/*.min.js"
+  - build

@@ -8,13 +8,17 @@
 #
 # The accounts below are the ones test/seed-mock-data.sh creates, and the roles are what those
 # accounts genuinely hold in the seeded data:
-#   demo    listed under super-user-dns in application.yml, so ADMIN
+#   demo    listed under super-user-dns below, so ADMIN
 #   alice   given user_role MANAGER by the seed script, and the directory manager of everyone else
 #   bob     nothing special, so a plain USER
 #
 # Publishing credentials makes everything those accounts can see readable by anyone who can reach
 # the login page. Only ever point this at seeded demo data. See the Demo mode section of the README.
 application:
+  # The account the demo is presented as, seeded by test/seed-mock-data.sh. Demo mode grants every role
+  # regardless; this is what makes it an administrator when signed in normally too (demo / password).
+  super-user-dns:
+    - CN=Demo Admin,OU=Users,DC=winllc,DC=com
   demo:
     enabled: true
     banner: "DEMO - read only"

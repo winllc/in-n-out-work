@@ -107,9 +107,32 @@ The image holds no keystore or truststore, and ReadyRoom refuses to start with T
 {{- if and $v.tls.enabled (ne (toString $v.tls.clientAuth) "none") (not $v.tls.truststore.secretName) -}}
 {{- fail (printf "tls.truststore.secretName is required when tls.enabled with clientAuth %s: a Secret holding a PKCS#12 truststore with only the CAs that issue your users' client certificates (the image has none, and ReadyRoom does not fall back to Java's default CAs). Or set tls.clientAuth to none to turn certificate sign-in off" (toString $v.tls.clientAuth)) -}}
 {{- end -}}
+{{- if and $v.database.migration.username (not (or $v.database.migration.password $v.database.migration.existingSecret)) -}}
+{{- fail "database.migration.password or database.migration.existingSecret is required with database.migration.username: the account Flyway migrates the schema as" -}}
+{{- end -}}
+{{- if eq (toString $v.x509.source) "header" -}}
+{{- if not (or $v.x509.proxySecret.value $v.x509.proxySecret.existingSecret) -}}
+{{- fail "x509.source header needs x509.proxySecret.value or x509.proxySecret.existingSecret: the secret (32 characters or more) your ingress sends in X-ENS-Proxy-Secret, without which ReadyRoom would take a certificate header from anyone" -}}
+{{- end -}}
+{{- if and $v.x509.proxySecret.value (lt (len $v.x509.proxySecret.value) 32) -}}
+{{- fail "x509.proxySecret.value must be at least 32 characters" -}}
+{{- end -}}
+{{- if not (or $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret (and $v.tls.enabled $v.tls.truststore.secretName)) -}}
+{{- fail "x509.source header needs x509.trustedCa.value or x509.trustedCa.existingSecret: the PEM certificates of the CAs that issue your users' certificates, which forwarded certificates are checked against" -}}
+{{- end -}}
+{{- end -}}
+{{- if and (eq (toString $v.ldap.scheme) "ldaps") (eq (toString $v.ldap.port) "389") (not $v.ldap.url) -}}
+{{- fail "ldap.port is 389 with ldap.scheme ldaps (the default since LDAPS became it): set ldap.port to your directory's LDAPS port (636), or ldap.scheme: ldap to keep connecting in clear text" -}}
+{{- end -}}
 {{- if and $v.windowsAuth.enabled (not $v.windowsAuth.keytab.secretName) -}}
 {{- fail "windowsAuth.keytab.secretName is required when windowsAuth.enabled: a Secret holding the service principal's keytab" -}}
 {{- end -}}
+{{- end -}}
+
+{{/* The directory port: ldap.port, or the scheme's own (636 for ldaps, 389 for ldap). */}}
+{{- define "readyroom.ldapPort" -}}
+{{- $l := .Values.ldap -}}
+{{- if $l.port -}}{{ $l.port }}{{- else if eq (toString $l.scheme) "ldap" -}}389{{- else -}}636{{- end -}}
 {{- end -}}
 
 {{/* The database host: the embedded StatefulSet's Service, or database.host (required). */}}
@@ -184,10 +207,32 @@ key: db-password
 {{- default (printf "%s-license" (include "readyroom.fullname" .)) .Values.persistence.license.existingClaim -}}
 {{- end -}}
 
+{{/*
+"true" when an ingress or route terminates TLS in front of ReadyRoom (edge or re-encrypt): ReadyRoom then reads
+X-Forwarded-Proto (SERVER_FORWARD_HEADERS_STRATEGY=framework) and marks the session cookie Secure itself
+(ENS_COOKIE_SECURE), since the connection it sees may be plain HTTP. Not for ssl-passthrough.
+*/}}
+{{- define "readyroom.edgeTls" -}}
+{{- $ing := .Values.ingress -}}
+{{- $passthrough := eq (toString (index ($ing.annotations | default dict) "nginx.ingress.kubernetes.io/ssl-passthrough")) "true" -}}
+{{- if or (and $ing.enabled (gt (len $ing.tls) 0) (not $passthrough)) (and .Values.route.enabled (has .Values.route.tls.termination (list "edge" "reencrypt"))) -}}
+true
+{{- end -}}
+{{- end -}}
+
 {{- define "readyroom.scheme" -}}
 {{- ternary "HTTPS" "HTTP" .Values.tls.enabled -}}
 {{- end -}}
 
 {{- define "readyroom.portName" -}}
 {{- ternary "https" "http" .Values.tls.enabled -}}
+{{- end -}}
+
+{{/* Where the probes go: the metrics port (plain HTTP) when metrics.enabled, else ReadyRoom's own port. */}}
+{{- define "readyroom.probePort" -}}
+{{- if .Values.metrics.enabled -}}metrics{{- else -}}{{ include "readyroom.portName" . }}{{- end -}}
+{{- end -}}
+
+{{- define "readyroom.probeScheme" -}}
+{{- if .Values.metrics.enabled -}}HTTP{{- else -}}{{ include "readyroom.scheme" . }}{{- end -}}
 {{- end -}}

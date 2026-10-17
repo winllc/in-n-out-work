@@ -23,7 +23,7 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
     List<CheckInOutRecord> findByDnOrderByTimestampDesc(String dn);
 
     // DN lookups compare lower(dn) so they can use the lower(dn) indexes from
-    // db/migrations/001_indexes_and_unique_user_dn.sql. Spring Data's derived ...IgnoreCase methods
+    // db/migration/V1__baseline.sql. Spring Data's derived ...IgnoreCase methods
     // compare upper(dn), which those indexes cannot serve.
     @Query("select r from CheckInOutRecord r where lower(r.dn) = lower(:dn)"
             + " and r.timestamp >= :from and r.timestamp <= :to order by r.timestamp desc")
@@ -100,6 +100,29 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
     List<CheckInOutRecord> findLatestRecordsByDn(@Param("action") CheckInOutEnum action,
                                                  @Param("from") ZonedDateTime from,
                                                  @Param("to") ZonedDateTime to);
+
+    /**
+     * How many people's latest record in the window is one of {@code actions}: with CHECK_IN and UNLOCK, who is
+     * in (the metrics gauge ens_readyroom_people_in).
+     */
+    @Query("""
+    SELECT COUNT(DISTINCT lower(r.dn))
+    FROM CheckInOutRecord r
+    WHERE r.dn IS NOT NULL
+      AND r.action IN :actions
+      AND r.timestamp >= :from
+      AND r.timestamp <= :to
+      AND r.timestamp = (
+          SELECT MAX(r2.timestamp)
+          FROM CheckInOutRecord r2
+          WHERE r2.dn = r.dn
+            AND r2.timestamp >= :from
+            AND r2.timestamp <= :to
+      )
+""")
+    long countLatestByDnWithActionIn(@Param("actions") Collection<CheckInOutEnum> actions,
+                                     @Param("from") ZonedDateTime from,
+                                     @Param("to") ZonedDateTime to);
 
     /** DNs, as stored, with at least one record of {@code action} in the window. */
     @Query("select distinct r.dn from CheckInOutRecord r where r.dn is not null and r.action = :action"

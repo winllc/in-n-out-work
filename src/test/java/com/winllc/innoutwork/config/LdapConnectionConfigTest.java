@@ -85,4 +85,12 @@ class LdapConnectionConfigTest {
             }
         }
     }
+
+    @Test
+    void plainLdapIsWarnedAboutAndLdapsIsNot() {
+        assertTrue(LdapConnectionConfig.cleartextWarning(new String[]{"ldap://dc1.example.com:389"}).isPresent());
+        assertTrue(LdapConnectionConfig.cleartextWarning(new String[]{"ldaps://dc1:636", "LDAP://dc2:389"}).isPresent());
+        assertTrue(LdapConnectionConfig.cleartextWarning(new String[]{"ldaps://dc1.example.com:636"}).isEmpty());
+        assertTrue(LdapConnectionConfig.cleartextWarning(new String[0]).isEmpty());
+    }
 }

@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.audit;
 
+import com.winllc.innoutwork.metrics.EnsMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -146,6 +147,7 @@ public class AuditForwarder {
     }
 
     private void failed(AuditOutputState state, Exception e) {
+        EnsMetrics.auditForwardFailure(output.name());
         Instant now = clock.instant();
         String error = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
         if (error.length() > 1000) {

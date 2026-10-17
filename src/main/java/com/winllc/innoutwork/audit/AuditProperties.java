@@ -1,13 +1,18 @@
 package com.winllc.innoutwork.audit;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * {@code ens.audit.*}: the audit trail's outputs and retention. application.yml binds each one to its
  * {@code ENS_AUDIT_*} environment variable (see the README's Audit logging section).
  */
 @Data
+@Validated
 @ConfigurationProperties(prefix = "ens.audit")
 public class AuditProperties {
 
@@ -21,13 +26,16 @@ public class AuditProperties {
     private String file = "";
 
     /** ENS_AUDIT_FILE_KEEP: rotated files kept. */
+    @Min(1)
     private int fileKeep = 30;
 
     /** ENS_AUDIT_RETENTION_DAYS: 0 keeps events forever. */
+    @Min(0)
     private int retentionDays = 0;
 
     private Splunk splunk = new Splunk();
 
+    @Valid
     private Syslog syslog = new Syslog();
 
     /** How often the forwarders look for new events when nothing wakes them, in milliseconds. */
@@ -61,6 +69,7 @@ public class AuditProperties {
         /** ENS_AUDIT_SYSLOG_PORT; 514 for udp and tcp, 6514 for tls when unset. */
         private Integer port;
         /** udp, tcp or tls. */
+        @Pattern(regexp = "(?i)udp|tcp|tls", message = "ENS_AUDIT_SYSLOG_PROTOCOL must be udp, tcp or tls")
         private String protocol = "tcp";
         private String facility = "local0";
 

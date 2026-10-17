@@ -30,7 +30,7 @@ import java.util.concurrent.TimeoutException;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Writes that used to race, run for real against PostgreSQL with the migration applied: concurrent first
+ * Writes that used to race, run for real against PostgreSQL with the migrated schema: concurrent first
  * sign-ins creating a user record, and concurrent unlocks deciding who checked in.
  */
 @Import({CheckInOutService.class, ConcurrentWritesTest.NoPeopleLimit.class})
@@ -45,9 +45,8 @@ class ConcurrentWritesTest extends PostgresTestSupport {
     @Autowired private PlatformTransactionManager transactions;
 
     @BeforeEach
-    void freshDatabase() throws Exception {
+    void freshDatabase() {
         jdbc.execute("TRUNCATE user_records, permission_records, check_in_out_records RESTART IDENTITY CASCADE");
-        runMigration();
     }
 
     private static CheckInOutRecord unlock(String dn) {

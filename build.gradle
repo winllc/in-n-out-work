@@ -16,6 +16,11 @@ repositories {
     mavenCentral()
 }
 
+// Security fixes ahead of the Spring Boot release that brings them (the image scan, Trivy, fails on known
+// HIGH/CRITICAL issues with a fix). Drop each once Boot's own version is at least this.
+ext['tomcat.version'] = '11.0.25'        // CVE-2026-65182, CVE-2026-65905, CVE-2026-68525
+ext['jackson-bom.version'] = '3.1.7'     // CVE-2026-89407, CVE-2026-89425, CVE-2026-68497, CVE-2026-91776, CVE-2026-91777
+
 dependencies {
     // --- Lombok (compile-time annotation processor) ---
     compileOnly 'org.projectlombok:lombok'
@@ -23,6 +28,8 @@ dependencies {
     // --- Core Web + REST ---
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    // @Validated configuration properties: a setting with an impossible value stops startup with its name.
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
 
     // --- Security ---
     implementation 'org.springframework.boot:spring-boot-starter-security'
@@ -37,9 +44,14 @@ dependencies {
     // --- Database (PostgreSQL + JPA) ---
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     runtimeOnly 'org.postgresql:postgresql'
+    // Schema migrations (src/main/resources/db/migration, see db/README.md), run at startup.
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
 
     // --- Actuator for monitoring ---
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // /actuator/prometheus, on the management port only (config.ManagementPortExposure).
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
@@ -64,9 +76,13 @@ dependencies {
     // Repository queries run against an in-memory database, since JPQL mistakes only surface at startup.
     testImplementation 'org.springframework.boot:spring-boot-data-jpa-test'
     testRuntimeOnly 'com.h2database:h2'
-    // The database migration scripts run against real PostgreSQL in Docker (skipped when Docker is unavailable).
+    // The Flyway migrations and the PostgreSQL-only behaviour run against real PostgreSQL in Docker (skipped when
+    // Docker is unavailable).
     testImplementation 'org.testcontainers:testcontainers-postgresql'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
+    // Certificates, CRLs and OCSP responses made in the tests, so X.509 sign-in is tested with real ones (tests only;
+    // the application itself uses the JDK's providers).
+    testImplementation 'org.bouncycastle:bcpkix-jdk18on:1.86'
     // An in-process Kerberos server, so Windows sign-in is tested with real tickets and a real keytab.
     testImplementation 'org.apache.kerby:kerb-simplekdc:2.1.2'
     testImplementation platform('org.junit:junit-bom:6.1.0-M1')

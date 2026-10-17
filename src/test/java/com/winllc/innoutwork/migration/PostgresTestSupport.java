@@ -19,8 +19,8 @@ import java.nio.file.Path;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Base for tests that need real PostgreSQL: one container shared by every such test class, a schema
- * Hibernate creates from the entities, and the migration script run through psql as an operator would.
+ * Base for tests that need real PostgreSQL: one container shared by every such test class, with the schema
+ * built as in production - Flyway runs src/main/resources/db/migration and Hibernate only validates it.
  * Skipped when Docker is not available.
  * <p>
  * Tests run without a test transaction, so their writes commit and other sessions (psql, a second
@@ -28,7 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 @Testcontainers(disabledWithoutDocker = true)
 @DataJpaTest(properties = {
-        "spring.jpa.hibernate.ddl-auto=create",
+        "spring.flyway.enabled=true",
+        "spring.jpa.hibernate.ddl-auto=validate",
         "spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect"
 })
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -37,7 +38,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 public abstract class PostgresTestSupport {
 
-    public static final Path MIGRATION = Path.of("db/migrations/001_indexes_and_unique_user_dn.sql");
+    /** The psql script that indexed databases before Flyway; kept for the record and for the upgrade tests. */
+    public static final Path LEGACY_001 = Path.of("db/legacy/001_indexes_and_unique_user_dn.sql");
+    public static final Path LEGACY_002 = Path.of("db/legacy/002_audit_log.sql");
 
     protected static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:16-alpine");
 
@@ -59,17 +62,34 @@ public abstract class PostgresTestSupport {
     public static class JpaConfig {
     }
 
-    /** Runs the migration script with psql inside the container, against {@code database}. */
-    protected static ExecResult runMigration(String database) throws Exception {
-        POSTGRES.copyFileToContainer(MountableFile.forHostPath(MIGRATION), "/tmp/001.sql");
-        return POSTGRES.execInContainer("psql", "-U", POSTGRES.getUsername(), "-d", database,
-                "-v", "ON_ERROR_STOP=1", "-f", "/tmp/001.sql");
+    /** JDBC URL of another database in the shared container. */
+    protected static String jdbcUrl(String database) {
+        return "jdbc:postgresql://%s:%d/%s".formatted(POSTGRES.getHost(), POSTGRES.getMappedPort(5432), database);
     }
 
-    /** Runs the migration script against the test database and fails the test if psql does. */
-    protected static ExecResult runMigration() throws Exception {
-        ExecResult result = runMigration(POSTGRES.getDatabaseName());
+    /** Runs a SQL file with psql inside the container, against {@code database}, as an operator would. */
+    protected static ExecResult psqlFile(String database, Path script) throws Exception {
+        return psqlFile(database, script, false);
+    }
+
+    /** As above; {@code oneTransaction} runs the whole file in one transaction, as Flyway runs a migration. */
+    protected static ExecResult psqlFile(String database, Path script, boolean oneTransaction) throws Exception {
+        String inContainer = "/tmp/" + script.getFileName();
+        POSTGRES.copyFileToContainer(MountableFile.forHostPath(script), inContainer);
+        return POSTGRES.execInContainer("psql", "-U", POSTGRES.getUsername(), "-d", database,
+                "-v", "ON_ERROR_STOP=1", oneTransaction ? "--single-transaction" : "--echo-errors", "-f", inContainer);
+    }
+
+    /** Runs SQL with psql against {@code database} and fails the test if psql does. */
+    protected static ExecResult psql(String database, String sql) throws Exception {
+        ExecResult result = POSTGRES.execInContainer("psql", "-U", POSTGRES.getUsername(), "-d", database,
+                "-v", "ON_ERROR_STOP=1", "-c", sql);
         assertEquals(0, result.getExitCode(), () -> "psql failed:\n" + result.getStdout() + result.getStderr());
         return result;
+    }
+
+    /** Runs the legacy index script, as releases before Flyway asked operators to, against {@code database}. */
+    protected static ExecResult runLegacyMigration(String database) throws Exception {
+        return psqlFile(database, LEGACY_001);
     }
 }

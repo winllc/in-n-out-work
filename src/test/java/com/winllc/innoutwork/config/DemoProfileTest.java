@@ -28,7 +28,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DemoProfileTest {
 
     private static final Path SEED_SCRIPT = Path.of("test", "seed-mock-data.sh");
-    private static final Path PACKAGED_CONFIG = Path.of("src", "main", "resources", "application.yml");
+    private static final Path DEMO_CONFIG = Path.of("src", "main", "resources", "application-demo.yml");
 
     private static ConfigurableEnvironment environment(String... profiles) {
         ConfigurableEnvironment env = new StandardEnvironment();
@@ -99,7 +99,7 @@ class DemoProfileTest {
     /** Administrator has to come from super-user-dns, and Manager from the row the seed writes. */
     @Test
     void theAdvertisedRolesAreOnesTheDataActuallyGrants() throws IOException {
-        String config = Files.readString(PACKAGED_CONFIG);
+        String config = Files.readString(DEMO_CONFIG);
         String seed = Files.readString(SEED_SCRIPT);
 
         assertTrue(config.contains("CN=Demo Admin,OU=Users,DC=winllc,DC=com"),

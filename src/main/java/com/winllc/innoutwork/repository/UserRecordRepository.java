@@ -19,7 +19,7 @@ import java.util.Optional;
 public interface UserRecordRepository extends JpaRepository<UserRecord, Long>, PagingAndSortingRepository<UserRecord, Long> {
 
     // DN lookups compare lower(dn) so they can use the lower(dn) indexes from
-    // db/migrations/001_indexes_and_unique_user_dn.sql. Spring Data's derived ...IgnoreCase methods
+    // db/migration/V1__baseline.sql. Spring Data's derived ...IgnoreCase methods
     // compare upper(dn), which those indexes cannot serve.
     @Query("select u from UserRecord u where lower(u.dn) = lower(:dn)")
     Optional<UserRecord> findByDnIgnoreCase(@Param("dn") String dn);

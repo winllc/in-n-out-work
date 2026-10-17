@@ -8,7 +8,7 @@
     <script th:src="@{/libs/html2pdf/html2pdf.bundle.min.js}"></script>
 
 
-    <script th:inline="javascript">
+    <script th:inline="javascript" th:attr="nonce=${cspNonce}">
         // What the report covers, for the audit record of the download.
         const reportExport = {
             groupDn: /*[[${form != null ? form.groupDn : ''}]]*/ '',
@@ -41,6 +41,13 @@
             // New Promise-based usage:
             html2pdf().set(opt).from(element).save();
         }
+
+        document.addEventListener('DOMContentLoaded', function () {
+            const button = document.getElementById('download-pdf');
+            if (button) {
+                button.addEventListener('click', generatePDF);
+            }
+        });
     </script>
 
 </head>
@@ -49,7 +56,7 @@
 <span layout:fragment="page-title">Group Report</span>
 
 <div layout:fragment="page-actions">
-    <button class="btn btn-primary" onclick="generatePDF()">
+    <button class="btn btn-primary" id="download-pdf">
         <i class="ti ti-download me-1"></i>Download PDF
     </button>
 </div>

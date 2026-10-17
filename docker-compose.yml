@@ -132,6 +132,9 @@ services:
       ENS_AUDIT_SYSLOG_PORT: ${ENS_AUDIT_SYSLOG_PORT:-}
       ENS_AUDIT_SYSLOG_PROTOCOL: ${ENS_AUDIT_SYSLOG_PROTOCOL:-tcp}
       ENS_AUDIT_SYSLOG_FACILITY: ${ENS_AUDIT_SYSLOG_FACILITY:-local0}
+      # Administrators of the seeded data (test/seed-mock-data.sh); the packaged config names none.
+      APPLICATION_SUPERUSERDNS_0: CN=user3,OU=Users,DC=winllc,DC=com
+      APPLICATION_SUPERUSERDNS_1: CN=Demo Admin,OU=Users,DC=winllc,DC=com
       # The app now defaults to the compose service names, so the mounted config is not needed to
       # reach postgres and openldap. Uncomment to layer test/application.yml over the packaged
       # config again - it also carries the seeded fixture's attribute mappings and cron intervals.

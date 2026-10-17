@@ -66,8 +66,9 @@ if grep -q '^[^#]*CHANGE_ME' .env; then
     grep -n '^[^#]*CHANGE_ME' .env | sed 's/^/    line /'
     say ""
     say "  APPLICATION_BASE_URL   the address users reach ReadyRoom at"
-    say "  LDAP_*, APPLICATION_*  your directory: host, service account, where users and groups are,"
-    say "                         and at least one administrator DN"
+    say "  SPRING_LDAP_URLS, LDAP_*, APPLICATION_*"
+    say "                         your directory: its ldaps:// URL, service account, where users and"
+    say "                         groups are, and at least one administrator DN"
     say "  SPRING_MAIL_*          your SMTP server (or set MANAGEMENT_HEALTH_MAIL_ENABLED=false)"
     say ""
     say "Optionally put the ENS Solutions license at $(pwd)/license/license.lic; it can also be"

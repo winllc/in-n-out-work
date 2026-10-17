@@ -19,8 +19,8 @@ import static com.winllc.innoutwork.constant.DateTimeConstants.DATE_TIME_FORMAT;
 @Builder
 @AllArgsConstructor
 @Entity
-// Every logoff without a sign-in looks its check-in up by session id, under a lock. The same index, by name, as
-// db/migrations/001: whichever of Hibernate and the script gets there first creates it, and the other leaves it.
+// Every logoff without a sign-in looks its check-in up by session id, under a lock. The schema, with this index,
+// comes from Flyway (db/migration/V1__baseline.sql); declared here too, under the same name, for the H2 test slices.
 @Table(name = "check_in_out_records",
         indexes = @Index(name = "ix_check_in_out_session_id", columnList = "sessionId"))
 public class CheckInOutRecord implements Comparable<CheckInOutRecord> {

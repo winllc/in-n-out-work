@@ -3,12 +3,19 @@ package com.winllc.innoutwork.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.config.BeanPostProcessor;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.context.event.EventListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.env.Environment;
 import org.springframework.ldap.core.support.LdapContextSource;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * How the application connects to the directory.
@@ -45,6 +52,34 @@ public class LdapConnectionConfig {
                 System.setProperty(key, value);
             }
         });
+    }
+
+    private final Environment environment;
+
+    public LdapConnectionConfig(Environment environment) {
+        this.environment = environment;
+    }
+
+    /**
+     * Warns, once the application is up, when the directory is reached over plain {@code ldap://}: the sign-in form
+     * binds with the user's password, which then crosses the network in clear text. ReadyRoom does not negotiate
+     * StartTLS, so the fix is an {@code ldaps://} URL (SPRING_LDAP_URLS).
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void warnAboutCleartextDirectory() {
+        String[] urls = Binder.get(environment).bind("spring.ldap.urls", String[].class).orElse(new String[0]);
+        cleartextWarning(urls).ifPresent(log::warn);
+    }
+
+    static Optional<String> cleartextWarning(String[] urls) {
+        List<String> cleartext = Arrays.stream(urls).map(String::strip)
+                .filter(url -> url.toLowerCase(Locale.ROOT).startsWith("ldap://")).toList();
+        if (cleartext.isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of("Password sign-in sends users' passwords to the directory in clear text: " + cleartext
+                + " is ldap:// without StartTLS. Use ldaps:// (SPRING_LDAP_URLS=ldaps://host:636; the Helm chart's"
+                + " ldap.scheme) so passwords and directory data are encrypted.");
     }
 
     /** Turns pooling on for the Boot-configured context source before it initialises. */

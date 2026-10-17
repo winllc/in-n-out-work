@@ -13,6 +13,33 @@ data:
   ENS_LICENSE_FILE: /var/lib/ens/readyroom/license.lic
   # The Kubernetes probes use /actuator/health/liveness and /readiness.
   MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  {{- if include "readyroom.edgeTls" . }}
+  # TLS ends at the ingress or route: take the scheme and client address from its X-Forwarded-* headers
+  # (secure requests, HSTS, redirects) and always mark the session cookie Secure.
+  SERVER_FORWARD_HEADERS_STRATEGY: framework
+  ENS_COOKIE_SECURE: "true"
+  {{- end }}
+  {{- with $v.csp.reportOnly }}
+  ENS_CSP_REPORT_ONLY: "true"
+  {{- end }}
+
+  # Notice-and-consent banner and session lifetimes
+  ENS_CONSENT_BANNER_ENABLED: {{ $v.consentBanner.enabled | quote }}
+  {{- with $v.consentBanner.title }}
+  ENS_CONSENT_BANNER_TITLE: {{ . | quote }}
+  {{- end }}
+  {{- with $v.consentBanner.text }}
+  ENS_CONSENT_BANNER_TEXT: {{ . | quote }}
+  {{- end }}
+  {{- if $v.consentBanner.existingConfigMap }}
+  ENS_CONSENT_BANNER_FILE: /etc/in-n-out/consent/banner.txt
+  {{- end }}
+  ENS_SESSION_IDLE_TIMEOUT: {{ $v.session.idleTimeout | quote }}
+  {{- with $v.session.adminIdleTimeout }}
+  ENS_SESSION_ADMIN_IDLE_TIMEOUT: {{ . | quote }}
+  {{- end }}
+  ENS_SESSION_ABSOLUTE_TIMEOUT: {{ $v.session.absoluteTimeout | quote }}
+  ENS_SESSION_MAX_PER_USER: {{ $v.session.maxPerUser | quote }}
   {{- with include "readyroom.publicUrl" . }}
   APPLICATION_BASE_URL: {{ . | quote }}
   {{- end }}
@@ -22,14 +49,17 @@ data:
   DB_PORT: {{ $v.database.port | quote }}
   DB_NAME: {{ $v.database.name | quote }}
   DB_USERNAME: {{ $v.database.username | quote }}
+  {{- with $v.database.migration.username }}
+  # Flyway migrates the schema at startup as this account (it owns the schema); DB_USERNAME then only
+  # reads and writes rows.
+  SPRING_FLYWAY_USER: {{ . | quote }}
+  {{- end }}
 
   # Directory
-  {{- with $v.ldap.host }}
-  LDAP_HOST: {{ . | quote }}
-  {{- end }}
-  LDAP_PORT: {{ $v.ldap.port | quote }}
-  {{- with $v.ldap.url }}
-  SPRING_LDAP_URLS: {{ . | quote }}
+  {{- if $v.ldap.url }}
+  SPRING_LDAP_URLS: {{ $v.ldap.url | quote }}
+  {{- else if $v.ldap.host }}
+  SPRING_LDAP_URLS: {{ printf "%s://%s:%s" $v.ldap.scheme $v.ldap.host (include "readyroom.ldapPort" .) | quote }}
   {{- end }}
   {{- with $v.ldap.bindDn }}
   LDAP_USERNAME: {{ . | quote }}
@@ -98,6 +128,34 @@ data:
   {{- end }}
   {{- end }}
 
+  # Client certificates (X.509)
+  ENS_X509_SOURCE: {{ $v.x509.source | quote }}
+  {{- if eq $v.x509.source "header" }}
+  {{- with $v.x509.header }}
+  ENS_X509_HEADER: {{ . | quote }}
+  {{- end }}
+  ENS_X509_TRUSTED_PROXIES: {{ $v.x509.trustedProxies | quote }}
+  ENS_X509_PROXY_SECRET_FILE: /etc/in-n-out/x509/proxy-secret
+  {{- end }}
+  {{- if or $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret }}
+  ENS_X509_TRUSTED_CA_FILE: /etc/in-n-out/x509/ca.pem
+  {{- end }}
+  {{- with $v.x509.userFilter }}
+  ENS_X509_USER_FILTER: {{ . | quote }}
+  {{- end }}
+  {{- with $v.x509.allowedIssuers }}
+  ENS_X509_ALLOWED_ISSUERS: {{ . | quote }}
+  {{- end }}
+  ENS_X509_REVOCATION: {{ $v.x509.revocation.mode | quote }}
+  {{- with $v.x509.revocation.ocspResponderUrl }}
+  ENS_X509_OCSP_RESPONDER_URL: {{ . | quote }}
+  {{- end }}
+  {{- if $v.x509.revocation.crlConfigMap }}
+  ENS_X509_CRL_DIR: /etc/in-n-out/crl
+  {{- end }}
+  ENS_X509_REVOCATION_FAIL: {{ $v.x509.revocation.fail | quote }}
+  ENS_X509_REVOCATION_CACHE: {{ $v.x509.revocation.cache | quote }}
+
   # Windows (Kerberos) sign-in
   APPLICATION_WINDOWSAUTH_ENABLED: {{ $v.windowsAuth.enabled | quote }}
   {{- if $v.windowsAuth.enabled }}
@@ -147,6 +205,13 @@ data:
   APPLICATION_UPDATEPROFILEURL: {{ . | quote }}
   {{- end }}
   LOGGING_LEVEL_COM_WINLLC_INNOUTWORK: {{ $v.logLevel | quote }}
+  {{- if eq $v.logFormat "json" }}
+  LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+  {{- end }}
+  {{- if $v.metrics.enabled }}
+  # Actuator (probes and /actuator/prometheus) on its own plain-HTTP port, open without sign-in.
+  MANAGEMENT_SERVER_PORT: {{ $v.metrics.port | quote }}
+  {{- end }}
 {{- if and $v.windowsAuth.enabled $v.windowsAuth.krb5Conf (not $v.windowsAuth.krb5ConfExistingConfigMap) }}
 ---
 apiVersion: v1

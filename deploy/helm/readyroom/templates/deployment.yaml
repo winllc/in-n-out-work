@@ -92,6 +92,11 @@ spec:
             - name: {{ include "readyroom.portName" . }}
               containerPort: 8181
               protocol: TCP
+            {{- if $v.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ $v.metrics.port }}
+              protocol: TCP
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "readyroom.fullname" . }}
@@ -103,6 +108,9 @@ spec:
               valueFrom:
                 secretKeyRef:
                   {{- include "readyroom.dbPasswordRef" . | nindent 18 }}
+            {{- if $v.database.migration.username }}
+            {{- with include "readyroom.secretEnv" (dict "root" . "env" "SPRING_FLYWAY_PASSWORD" "value" $v.database.migration.password "existingSecret" $v.database.migration.existingSecret "existingSecretKey" $v.database.migration.existingSecretKey "key" "migration-password") }}{{ . | nindent 12 }}{{ end }}
+            {{- end }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "LDAP_PASSWORD" "value" $v.ldap.bindPassword "existingSecret" $v.ldap.existingSecret "existingSecretKey" $v.ldap.existingSecretKey "key" "ldap-password") }}{{ . | nindent 12 }}{{ end }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "SPRING_MAIL_PASSWORD" "value" $v.smtp.password "existingSecret" $v.smtp.existingSecret "existingSecretKey" $v.smtp.existingSecretKey "key" "smtp-password") }}{{ . | nindent 12 }}{{ end }}
             {{- if $v.audit.splunk.url }}
@@ -120,20 +128,20 @@ spec:
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: {{ include "readyroom.portName" . }}
-              scheme: {{ include "readyroom.scheme" . }}
+              port: {{ include "readyroom.probePort" . }}
+              scheme: {{ include "readyroom.probeScheme" . }}
             {{- toYaml $v.probes.startup | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: {{ include "readyroom.portName" . }}
-              scheme: {{ include "readyroom.scheme" . }}
+              port: {{ include "readyroom.probePort" . }}
+              scheme: {{ include "readyroom.probeScheme" . }}
             {{- toYaml $v.probes.liveness | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: {{ include "readyroom.portName" . }}
-              scheme: {{ include "readyroom.scheme" . }}
+              port: {{ include "readyroom.probePort" . }}
+              scheme: {{ include "readyroom.probeScheme" . }}
             {{- toYaml $v.probes.readiness | nindent 12 }}
           securityContext:
             {{- include "readyroom.containerSecurityContext" . | nindent 12 }}
@@ -171,6 +179,21 @@ spec:
             {{- if $v.audit.file.enabled }}
             - name: audit
               mountPath: {{ dir $v.audit.file.path }}
+            {{- end }}
+            {{- if or (eq $v.x509.source "header") $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret }}
+            - name: x509
+              mountPath: /etc/in-n-out/x509
+              readOnly: true
+            {{- end }}
+            {{- if $v.x509.revocation.crlConfigMap }}
+            - name: crl
+              mountPath: /etc/in-n-out/crl
+              readOnly: true
+            {{- end }}
+            {{- if $v.consentBanner.existingConfigMap }}
+            - name: consent
+              mountPath: /etc/in-n-out/consent
+              readOnly: true
             {{- end }}
             {{- with $v.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
@@ -239,6 +262,40 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        {{- end }}
+        {{- if or (eq $v.x509.source "header") $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret }}
+        # The proxy secret and the CAs of user certificates, as files.
+        - name: x509
+          projected:
+            defaultMode: 0440
+            sources:
+              {{- if eq $v.x509.source "header" }}
+              - secret:
+                  name: {{ $v.x509.proxySecret.existingSecret | default (include "readyroom.fullname" .) }}
+                  items:
+                    - key: {{ ternary $v.x509.proxySecret.existingSecretKey "x509-proxy-secret" (not (empty $v.x509.proxySecret.existingSecret)) }}
+                      path: proxy-secret
+              {{- end }}
+              {{- if or $v.x509.trustedCa.value $v.x509.trustedCa.existingSecret }}
+              - secret:
+                  name: {{ $v.x509.trustedCa.existingSecret | default (include "readyroom.fullname" .) }}
+                  items:
+                    - key: {{ ternary $v.x509.trustedCa.existingSecretKey "x509-ca.pem" (not (empty $v.x509.trustedCa.existingSecret)) }}
+                      path: ca.pem
+              {{- end }}
+        {{- end }}
+        {{- if $v.x509.revocation.crlConfigMap }}
+        - name: crl
+          configMap:
+            name: {{ $v.x509.revocation.crlConfigMap }}
+        {{- end }}
+        {{- if $v.consentBanner.existingConfigMap }}
+        - name: consent
+          configMap:
+            name: {{ $v.consentBanner.existingConfigMap }}
+            items:
+              - key: {{ $v.consentBanner.existingConfigMapKey }}
+                path: banner.txt
         {{- end }}
         {{- with $v.extraVolumes }}
         {{- toYaml . | nindent 8 }}

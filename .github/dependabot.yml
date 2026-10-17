@@ -1,0 +1,33 @@
+# Weekly dependency updates, minor and patch versions grouped into one pull request per ecosystem (major
+# versions come one by one). Docker base images are pinned by digest; Dependabot proposes new digests and
+# tags. GitHub Actions are pinned by commit SHA with the version in a comment, which Dependabot keeps up to
+# date. The version overrides in build.gradle (ext['tomcat.version'] and the like) are security fixes ahead
+# of Spring Boot: drop them when Dependabot brings a Boot release that includes them.
+version: 2
+updates:
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      gradle-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories:
+      - /
+      - /test
+      - /product-site
+    schedule:
+      interval: weekly
+    groups:
+      docker-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]

@@ -36,6 +36,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 /**
@@ -75,8 +76,10 @@ class NotificationServiceAbsentTest {
         SpringTemplateEngine templateEngine = new SpringTemplateEngine();
         templateEngine.setTemplateResolver(resolver);
 
+        ApplicationProperties properties = new ApplicationProperties();
+        properties.setNotificationSenderEmail("readyroom@winllc.com");
         notificationService = new NotificationService(mailSender, notificationRepository, userService,
-                new ApplicationProperties(), userCache, templateEngine, events);
+                properties, userCache, templateEngine, events);
     }
 
     private void bobReportsToAlice() {
@@ -213,5 +216,18 @@ class NotificationServiceAbsentTest {
                 () -> notificationService.recordResponse(1L, BOB, UserStatusEnum.ABSENT_EXCUSED));
 
         verify(notificationRepository, org.mockito.Mockito.never()).saveAll(any());
+    }
+
+    /** No mail server configured (SPRING_MAIL_HOST unset): the alert is still recorded, nothing is sent. */
+    @Test
+    void withoutAMailServerNothingIsSent() {
+        NotificationService withoutMail = new NotificationService((JavaMailSender) null, notificationRepository,
+                userService, new ApplicationProperties(), userCache, null, events);
+        NotificationRecord record = new NotificationRecord();
+        record.setId(1L);
+
+        withoutMail.sendNotification(record, "alice@winllc.com");
+
+        verifyNoInteractions(mailSender);
     }
 }

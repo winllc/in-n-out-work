@@ -13,8 +13,8 @@ import java.util.function.Supplier;
 /**
  * Creates user records without ever creating two for one DN.
  * <p>
- * The database allows one row per DN, ignoring case (ux_user_records_dn_lower, added by
- * db/migrations/001_indexes_and_unique_user_dn.sql). Two requests for a user with no record yet, such as
+ * The database allows one row per DN, ignoring case (ux_user_records_dn_lower, in
+ * db/migration/V1__baseline.sql). Two requests for a user with no record yet, such as
  * a workstation's sign-in and unlock arriving together, can both find nothing and both try to insert;
  * the second insert is rejected, and here it falls back to the row the first one created.
  * <p>

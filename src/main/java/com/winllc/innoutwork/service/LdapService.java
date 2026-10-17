@@ -406,6 +406,31 @@ public class LdapService {
         return users.stream().findFirst();
     }
 
+    /**
+     * The one user entry (matching the configured user filter) that {@code filter} also matches; empty when there
+     * is none or more than one. The filter is used as given, so its values must already be escaped.
+     */
+    public Optional<LdapUser> lookupUniqueUserByFilter(String filter) {
+        AndFilter combined = new AndFilter();
+        if (StringUtils.isNotBlank(properties.getUserLdapFilter())) {
+            combined.and(new HardcodedFilter(properties.getUserLdapFilter()));
+        }
+        combined.and(new HardcodedFilter(filter));
+
+        LdapQuery query = LdapQueryBuilder.query()
+                .base(properties.getUserBaseDn())
+                .countLimit(2)
+                .attributes(userAttributes())
+                .filter(combined);
+
+        List<LdapUser> users = ldapTemplate.search(query, new LdapUserContextMapper(properties));
+        if (users.size() > 1) {
+            log.warn("More than one directory user matches {}; not choosing between them", filter);
+            return Optional.empty();
+        }
+        return users.stream().findFirst();
+    }
+
     public Optional<LdapUser> lookupUser(String attribute, String value) {
         LdapQuery query = LdapQueryBuilder.query()
                 .base(properties.getUserBaseDn())

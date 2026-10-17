@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${banner.title} + ' · ReadyRoom'">Notice and Consent &middot; ReadyRoom</title>
+    <link rel="stylesheet" th:href="@{/libs/tabler/tabler.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/app.css}"/>
+</head>
+<!--
+  The notice-and-consent banner (ENS_CONSENT_BANNER_*). Nothing signs in until this browser session has
+  pressed "I agree"; the server enforces that (ConsentFilter), this page only asks.
+-->
+<body class="d-flex flex-column">
+<div class="page page-center">
+    <div class="container container-narrow py-4">
+        <div class="card card-md">
+            <div class="card-body">
+                <h2 class="h2 mb-3" id="consent-title" th:text="${banner.title}">Notice and Consent</h2>
+                <div id="consent-text">
+                    <p th:each="paragraph : ${banner.paragraphs}" th:text="${paragraph}">Text</p>
+                </div>
+                <form th:action="@{/consent}" method="post" class="mt-4">
+                    <button type="submit" class="btn btn-primary w-100" id="consent-agree">I agree</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

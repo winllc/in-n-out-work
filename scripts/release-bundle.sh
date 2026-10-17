@@ -77,7 +77,7 @@ short_name() {
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/release-bundle.XXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT
 B="$STAGING/$NAME"
-mkdir -p "$B/license" "$B/images" "$B/windows-client/tasks" "$B/migrations"
+mkdir -p "$B/license" "$B/images" "$B/windows-client/tasks"
 
 escape_sed() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
 app_image_sed="$(escape_sed "$APP_IMAGE")"
@@ -86,8 +86,8 @@ version_sed="$(escape_sed "$VERSION")"
 sed "s|__READYROOM_IMAGE__|$app_image_sed|g" "$SRC/docker-compose.yml" > "$B/docker-compose.yml"
 sed "s|__VERSION__|$version_sed|g" "$SRC/README.md" > "$B/README.md"
 cp "$SRC/docker-compose.tls.yml" "$SRC/docker-compose.windows-auth.yml" "$SRC/env.template" "$B/"
-cp "$SRC/install.sh" "$SRC/upgrade.sh" "$B/"
-chmod 0755 "$B/install.sh" "$B/upgrade.sh"
+cp "$SRC/install.sh" "$SRC/upgrade.sh" "$SRC/backup.sh" "$SRC/restore.sh" "$B/"
+chmod 0755 "$B/install.sh" "$B/upgrade.sh" "$B/backup.sh" "$B/restore.sh"
 cp "$SRC/license/README.txt" "$B/license/"
 printf '%s\n' "$VERSION" > "$B/VERSION"
 
@@ -95,7 +95,7 @@ printf '%s\n' "$VERSION" > "$B/VERSION"
 cp "$REPO_ROOT/powershell/Install-InOutWorker.ps1" "$REPO_ROOT/powershell/Update-WorkStatus.ps1" \
    "$REPO_ROOT/powershell/inoutworker.config.sample.json" "$B/windows-client/"
 cp "$REPO_ROOT/powershell/tasks/"*.xml "$B/windows-client/tasks/"
-cp "$REPO_ROOT/db/migrations/"*.sql "$B/migrations/"
+# No database scripts: ReadyRoom migrates its own schema at startup (Flyway; db/README.md).
 
 if grep -q '__[A-Z_]*__' "$B/docker-compose.yml" "$B/README.md"; then
     die "an unreplaced placeholder is left in the staged files."

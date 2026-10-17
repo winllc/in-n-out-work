@@ -3,6 +3,7 @@ package com.winllc.innoutwork.audit;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.winllc.innoutwork.metrics.EnsMetrics;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -52,6 +53,7 @@ public class SecurityAudit {
 
     @EventListener
     public void signedIn(AuthenticationSuccessEvent event) {
+        EnsMetrics.authAttempt(method(event.getAuthentication()), true);
         HttpServletRequest request = AuditRequestInfo.request();
         if (request == null || isClientApi(request) || isPullApi(request)) {
             return;
@@ -71,6 +73,7 @@ public class SecurityAudit {
     public void signInFailed(AbstractAuthenticationFailureEvent event) {
         HttpServletRequest request = AuditRequestInfo.request();
         Authentication attempt = event.getAuthentication();
+        EnsMetrics.authAttempt(method(attempt), false);
         String username = attempt != null ? attempt.getName() : null;
         if (attempt instanceof KerberosServiceRequestToken) {
             username = null; // the ticket, not a name; never recorded
@@ -109,6 +112,7 @@ public class SecurityAudit {
 
     /** The Windows client's API refused for want of any sign-in (no certificate): a failure, collapsed. */
     void clientApiWithoutCredentials(HttpServletRequest request) {
+        EnsMetrics.authAttempt("x509", false);
         AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
                 .failure("no credentials")
                 .actor(AuditEntry.Actor.anonymous(null))
@@ -118,8 +122,35 @@ public class SecurityAudit {
         denials.collapse("auth.login|" + request.getRemoteAddr() + "|no credentials", entry);
     }
 
+    /**
+     * A client certificate refused before it could sign anyone in: revoked, revocation unknown, an issuer not on
+     * ENS_X509_ALLOWED_ISSUERS, a header from an untrusted proxy or with the wrong secret, a chain to no trusted
+     * CA, no directory user. Collapsed per source and reason, like the Windows client's other failures.
+     */
+    public void certificateRefused(HttpServletRequest request, String subject, String issuer, String serial,
+                                   String reason) {
+        EnsMetrics.authAttempt("x509", false);
+        AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
+                .failure(reason)
+                .actor(AuditEntry.Actor.anonymous(subject))
+                .detail("method", "x509")
+                .detail("certificateIssuer", issuer)
+                .detail("certificateSerial", serial);
+        if (subject != null) {
+            entry.target("certificate", subject, com.winllc.innoutwork.data.LdapDn.cnOf(subject));
+        }
+        if (request == null) {
+            audit.recordQuietly(entry);
+            return;
+        }
+        entry.source(AuditRequestInfo.source(request));
+        entry.detail("path", request.getRequestURI());
+        denials.collapse("auth.login|" + request.getRemoteAddr() + "|" + subject + "|" + reason, entry);
+    }
+
     /** A pull-API request with a wrong or revoked token: a failed sign-in, collapsed per source. */
     void apiTokenRefused(HttpServletRequest request) {
+        EnsMetrics.authAttempt("api-token", false);
         AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
                 .failure("invalid or revoked token")
                 .actor(AuditEntry.Actor.anonymous(null))
@@ -131,6 +162,7 @@ public class SecurityAudit {
 
     /** The logoff call identifies the user by the session id cached at logon; an unknown one is a failure. */
     public void unknownClientSession(HttpServletRequest request) {
+        EnsMetrics.authAttempt("session-id", false);
         AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
                 .failure("unknown session")
                 .actor(AuditEntry.Actor.anonymous(null))
@@ -180,6 +212,9 @@ public class SecurityAudit {
         }
         if (e instanceof DisabledException) {
             return "account disabled";
+        }
+        if (e instanceof com.winllc.innoutwork.security.x509.CertificateRefusedException) {
+            return e.getMessage();
         }
         log.debug("Sign-in failed: {}", e.toString());
         return e.getClass().getSimpleName().replaceAll("Exception$", "") + ": " + e.getMessage();

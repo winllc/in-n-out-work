@@ -3,12 +3,17 @@ package com.winllc.innoutwork.config;
 import com.winllc.innoutwork.audit.SecurityAudit;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.security.AppUserDetailsService;
+import com.winllc.innoutwork.security.ConsentBanner;
+import com.winllc.innoutwork.security.ConsentFilter;
+import com.winllc.innoutwork.security.SessionControls;
+import com.winllc.innoutwork.security.x509.X509SignIn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.ldap.core.DirContextAdapter;
 import org.springframework.ldap.core.DirContextOperations;
@@ -28,6 +33,7 @@ import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.AnyRequestMatcher;
+import org.springframework.security.web.util.matcher.RequestMatcher;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.util.Collection;
@@ -50,6 +56,23 @@ public class SecurityConfig {
     /** Actuator's health endpoint and its groups (/liveness, /readiness): the only actuator paths open to anyone. */
     public static final String[] ACTUATOR_HEALTH = {"/actuator/health", "/actuator/health/**"};
 
+    /**
+     * Prometheus metrics: exposed only on a separate management port (ManagementPortExposure), where they are read
+     * without signing in. The application's own port has no such endpoint.
+     */
+    public static final String PROMETHEUS = "/actuator/prometheus";
+
+    /**
+     * Prometheus on the management port, which actuator reports as {@code local.management.port} once it listens.
+     * Nowhere else: on the application's own port the path stays behind the ADMIN rule like the rest of
+     * /actuator.
+     */
+    static RequestMatcher prometheusOnManagementPort(Environment environment) {
+        RequestMatcher path = PathPatternRequestMatcher.withDefaults().matcher(PROMETHEUS);
+        return request -> path.matches(request)
+                && String.valueOf(request.getLocalPort()).equals(environment.getProperty("local.management.port"));
+    }
+
 
     /**
      * The normal chain. Absent while demo mode is on, where {@link DemoSecurityConfig} defines the
@@ -60,9 +83,15 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AppUserDetailsService appUserDetailsService,
                                                    LdapAuthenticationProvider ldapAuthenticationProvider,
-                                                   ObjectProvider<SecurityAudit> securityAudit) throws Exception {
+                                                   ObjectProvider<SecurityAudit> securityAudit,
+                                                   ObjectProvider<ConsentBanner> consentBanner,
+                                                   ObjectProvider<SessionControls> sessionControls,
+                                                   ObjectProvider<X509SignIn> x509SignIn,
+                                                   Environment environment) throws Exception {
         // Preferred: HTTPS with a client certificate (X.509).
-        configureX509(http, appUserDetailsService);
+        configureX509(http, appUserDetailsService, x509SignIn);
+        // The notice-and-consent banner before any sign-in, and the session lifetimes after it.
+        BrowserSessionConfig.apply(http, consentBanner, sessionControls);
         http
                 // Fallback when no client certificate is presented: username/password
                 // validated against LDAP (see ldapAuthenticationProvider below).
@@ -71,9 +100,10 @@ public class SecurityConfig {
                         // Health, for the container healthcheck and the Kubernetes probes, is all application.yml
                         // exposes. Anything an operator exposes besides (metrics, env) needs ADMIN.
                         .requestMatchers(ACTUATOR_HEALTH).permitAll()
+                        .requestMatchers(prometheusOnManagementPort(environment)).permitAll()
                         .requestMatchers("/actuator/**").hasAuthority(UserRoleEnum.ADMIN.name())
                         .requestMatchers("/api/check/out").permitAll()
-                        .requestMatchers("/login", "/error").permitAll()
+                        .requestMatchers("/login", "/error", ConsentFilter.CONSENT_URL).permitAll()
                         .anyRequest().authenticated()
                 )
                 // Branded login page (GET /login served by LoginController); the POST is
@@ -112,9 +142,21 @@ public class SecurityConfig {
     }
 
     /**
-     * Client certificate sign-in. Shared with WindowsAuthSecurityConfig, so certificates are accepted the same
-     * way on the check-in calls when Windows sign-in is turned on.
+     * Client certificate sign-in. Shared with WindowsAuthSecurityConfig and DemoSecurityConfig, so certificates are
+     * accepted the same way everywhere: the issuer allowlist, revocation, the mapping to a directory user and header
+     * mode all come from {@link X509SignIn} (ENS_X509_*). Without it (test slices) the subject DN is the user's DN.
      */
+    public static void configureX509(HttpSecurity http, AppUserDetailsService appUserDetailsService,
+                                     ObjectProvider<X509SignIn> x509SignIn) throws Exception {
+        X509SignIn signIn = x509SignIn.getIfAvailable();
+        if (signIn != null) {
+            signIn.configure(http);
+            return;
+        }
+        configureX509(http, appUserDetailsService);
+    }
+
+    /** Certificate sign-in by subject DN alone: the subject DN is the directory DN. */
     public static void configureX509(HttpSecurity http, AppUserDetailsService appUserDetailsService) throws Exception {
         http.x509(x509 -> x509
                 .subjectPrincipalRegex("(.*)") // full subject DN is used as the username

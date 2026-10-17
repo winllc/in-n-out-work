@@ -61,7 +61,7 @@
         </div>
     </div>
 
-    <script>
+    <script th:attr="nonce=${cspNonce}">
         document.querySelectorAll("time.audit-time").forEach(function (el) {
             const when = new Date(el.getAttribute("datetime"));
             if (!isNaN(when)) {

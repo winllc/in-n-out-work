@@ -48,7 +48,7 @@ password) and lists the lines to edit. Edit `.env`, replacing every `CHANGE_ME`:
 | Setting | What |
 |---|---|
 | `APPLICATION_BASE_URL` | The address users reach ReadyRoom at (used in e-mail links) |
-| `LDAP_HOST`, `LDAP_PORT`, `LDAP_USERNAME`, `LDAP_PASSWORD` | Your directory and the service account (`SPRING_LDAP_URLS=ldaps://...` for LDAPS) |
+| `SPRING_LDAP_URLS`, `LDAP_USERNAME`, `LDAP_PASSWORD` | Your directory (`ldaps://host:636`) and the service account |
 | `APPLICATION_USERBASEDN`, `APPLICATION_GROUPS_0_GROUPSBASEDN` | Where users and group trees are |
 | `APPLICATION_SUPERUSERDNS_0` | At least one administrator, by full DN |
 | `SPRING_MAIL_*`, `APPLICATION_NOTIFICATIONSENDEREMAIL` | Your SMTP server and the From address |
@@ -130,24 +130,37 @@ cd readyroom-<new-version>
 
 It copies `.env`, `license/`, `tls/` and `kerberos/`, loads the new images and recreates the
 containers. The database and license volumes are kept; if the license volume holds no license yet,
-`license/license.lic` is copied in, and otherwise `upgrade.sh` says where to upload one. Back the
-database up first:
+`license/license.lic` is copied in, and otherwise `upgrade.sh` says where to upload one. Back up first,
+from the current release's directory: `./backup.sh` (see [Backups](#backups)).
 
-```bash
-docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > readyroom-backup.sql
-```
-
-Release notes may name a script in `migrations/` to run after upgrading, for example:
-
-```bash
-docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1' \
-    < migrations/001_indexes_and_unique_user_dn.sql
-```
+There are no database scripts to run by hand: ReadyRoom migrates its schema itself when it starts
+(Flyway), before it serves anything, and `docker compose ps` shows `app` as `healthy` once that is done.
+The first start of a release with Flyway on an existing database records the schema as it was and brings
+it up to date, including the indexes and the audit trail's append-only trigger that the `migrations/`
+scripts of earlier releases added; on a database where those scripts never ran it builds the indexes,
+which on a large check-in table makes that one start take a few minutes. Check it with
+`docker compose logs app | grep -i flyway`.
 
 Re-run `Install-InOutWorker.ps1` from the new `windows-client/` on every workstation (without
 arguments it keeps the existing configuration). Besides installing the new script and tasks, it
 corrects the permissions an older client left on `%ProgramData%\InOutWorker` (see the Windows client
 documentation).
+
+## Backups
+
+`./backup.sh` backs up, while ReadyRoom keeps running, the database (`pg_dump`, custom format) and the
+license volume (the license and this installation's id, which licenses are bound to) into `backups/`, or
+the directory given, and removes backups older than `BACKUP_RETENTION_DAYS` days (default 14; `0` keeps
+them all). Schedule it, and copy the files off this host:
+
+```bash
+17 2 * * * cd /opt/readyroom-__VERSION__ && ./backup.sh >> backups/backup.log 2>&1
+```
+
+`./restore.sh backups/readyroom-db-<stamp>.dump [backups/readyroom-license-<stamp>.tar.gz]` stops
+ReadyRoom, replaces the database (and the license volume) with the backup's, and starts it again; anything
+recorded since the backup is lost. Restore into the same or a newer release: on start, ReadyRoom migrates an
+older backup's schema forward.
 
 ## Everyday commands
 
@@ -163,10 +176,10 @@ docker compose down               # stop (the database and license volumes are k
 | | |
 |---|---|
 | `install.sh`, `upgrade.sh` | Install and upgrade |
+| `backup.sh`, `restore.sh` | Back up and restore the database and the license volume |
 | `docker-compose.yml` | The deployment: ReadyRoom and PostgreSQL 16 |
 | `docker-compose.tls.yml`, `docker-compose.windows-auth.yml` | Optional TLS keystore and Windows sign-in mounts |
 | `env.template` | Every setting, commented; copied to `.env` |
 | `license/` | Where `license.lic` can go for `install.sh` to copy in |
 | `images/` | The container images (`docker load`) |
 | `windows-client/` | The Windows client and its installer |
-| `migrations/` | Database scripts named in release notes |

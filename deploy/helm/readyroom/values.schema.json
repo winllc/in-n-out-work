@@ -134,6 +134,62 @@
         "error"
       ]
     },
+    "logFormat": {
+      "type": "string",
+      "enum": [
+        "json",
+        "text"
+      ]
+    },
+    "csp": {
+      "type": "object",
+      "properties": {
+        "reportOnly": {
+          "type": "boolean"
+        }
+      }
+    },
+    "consentBanner": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "existingConfigMap": {
+          "type": "string"
+        },
+        "existingConfigMapKey": {
+          "type": "string"
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "properties": {
+        "idleTimeout": {
+          "type": "string",
+          "pattern": "^([0-9]+(ms|s|m|h|d))?$"
+        },
+        "adminIdleTimeout": {
+          "type": "string",
+          "pattern": "^([0-9]+(ms|s|m|h|d))?$"
+        },
+        "absoluteTimeout": {
+          "type": "string",
+          "pattern": "^([0-9]+(ms|s|m|h|d))?$"
+        },
+        "maxPerUser": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "superUserDns": {
       "type": "array",
       "items": {
@@ -218,24 +274,65 @@
               "type": "object"
             }
           }
+        },
+        "migration": {
+          "type": "object",
+          "properties": {
+            "username": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
         }
       }
     },
-    "migrations": {
+    "backup": {
       "type": "object",
       "properties": {
         "enabled": {
           "type": "boolean"
         },
-        "waitSeconds": {
+        "schedule": {
+          "type": "string"
+        },
+        "timeZone": {
+          "type": "string"
+        },
+        "retentionDays": {
           "type": "integer",
-          "minimum": 0
+          "minimum": 1
         },
-        "backoffLimit": {
-          "type": "integer"
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60
         },
-        "ttlSecondsAfterFinished": {
-          "type": "integer"
+        "persistence": {
+          "type": "object",
+          "properties": {
+            "size": {
+              "type": "string"
+            },
+            "storageClass": {
+              "type": "string"
+            },
+            "accessModes": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "existingClaim": {
+              "type": "string"
+            }
+          }
         },
         "resources": {
           "type": "object"
@@ -245,13 +342,21 @@
     "ldap": {
       "type": "object",
       "properties": {
+        "scheme": {
+          "type": "string",
+          "enum": [
+            "ldaps",
+            "ldap"
+          ]
+        },
         "host": {
           "type": "string"
         },
         "port": {
-          "type": "integer",
-          "minimum": 1,
-          "maximum": 65535
+          "type": [
+            "integer",
+            "string"
+          ]
         },
         "url": {
           "type": "string"
@@ -418,6 +523,89 @@
             },
             "existingSecretKey": {
               "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "x509": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": [
+            "servlet",
+            "header"
+          ]
+        },
+        "header": {
+          "type": "string"
+        },
+        "trustedProxies": {
+          "type": "string"
+        },
+        "proxySecret": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
+        },
+        "trustedCa": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string"
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
+        },
+        "userFilter": {
+          "type": "string"
+        },
+        "allowedIssuers": {
+          "type": "string"
+        },
+        "revocation": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "ocsp",
+                "crl",
+                "ocsp-then-crl"
+              ]
+            },
+            "ocspResponderUrl": {
+              "type": "string"
+            },
+            "crlConfigMap": {
+              "type": "string"
+            },
+            "fail": {
+              "type": "string",
+              "enum": [
+                "closed",
+                "open"
+              ]
+            },
+            "cache": {
+              "type": "string",
+              "pattern": "^[0-9]+(ms|s|m|h|d)$"
             }
           }
         }
@@ -765,6 +953,42 @@
               "items": {
                 "type": "integer"
               }
+            }
+          }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "allowFrom": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "serviceMonitor": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "interval": {
+              "type": "string"
+            },
+            "scrapeTimeout": {
+              "type": "string"
+            },
+            "labels": {
+              "type": "object"
             }
           }
         }
