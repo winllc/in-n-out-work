@@ -2,7 +2,7 @@
 # Used by docker-compose.yml and docker-compose.demo.yml. Build context is the repo root.
 
 # ---- build stage -------------------------------------------------------------
-FROM eclipse-temurin:21-jdk AS build
+FROM eclipse-temurin:21-jdk@sha256:23cc5734ff46e776f51ce66eb9ee08444fd47caabec0a95b7eb6e94be2d3696d AS build
 WORKDIR /workspace
 
 # Copy the Gradle wrapper + build scripts first for better layer caching.
@@ -20,7 +20,7 @@ RUN sed -i 's/\r$//' gradlew && chmod +x gradlew \
  && cp "$(find build/libs -name '*.jar' ! -name '*-plain.jar' | head -n1)" app.jar
 
 # ---- runtime stage -----------------------------------------------------------
-FROM registry.access.redhat.com/ubi9/openjdk-21-runtime
+FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:latest@sha256:856ee6542b8fdf09a065fd5439309fc3f3c821fb8efac48aa6191c93635dd907
 
 # krb5-workstation: Kerberos configuration and the klist/kinit tools for checking the keytab used by Windows
 # sign-in (application.windows-auth). The JVM validates tickets itself. /etc/in-n-out is where the keytab is

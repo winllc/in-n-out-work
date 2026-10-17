@@ -16,6 +16,11 @@ repositories {
     mavenCentral()
 }
 
+// Security fixes ahead of the Spring Boot release that brings them (the image scan, Trivy, fails on known
+// HIGH/CRITICAL issues with a fix). Drop each once Boot's own version is at least this.
+ext['tomcat.version'] = '11.0.25'        // CVE-2026-65182, CVE-2026-65905, CVE-2026-68525
+ext['jackson-bom.version'] = '3.1.7'     // CVE-2026-89407, CVE-2026-89425, CVE-2026-68497, CVE-2026-91776, CVE-2026-91777
+
 dependencies {
     // --- Lombok (compile-time annotation processor) ---
     compileOnly 'org.projectlombok:lombok'

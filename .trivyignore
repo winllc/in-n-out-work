@@ -1,0 +1,7 @@
+# Accepted vulnerabilities for the image scan (Trivy, in CI's image job): one ID per line, each with a
+# comment giving the reason it does not apply or cannot be fixed yet, and a date to review it by. Keep this
+# short: fix what can be fixed (bump the dependency or the base image digest) instead.
+#
+# Example:
+#   # Not reachable: <why>. Review by 2026-12-31.
+#   CVE-0000-00000

@@ -13,7 +13,7 @@
 # "/seed/seed-mock-data.sh: Is a directory" and exit 126, which says nothing about the real problem.
 # It creates the directory on the host as well, so the mistake outlives the run. Baking the script
 # in means the path either exists in the image or the build fails.
-ARG BASE_IMAGE=postgres:16
+ARG BASE_IMAGE=postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
 FROM ${BASE_IMAGE}
 
 COPY test/seed-mock-data.sh /seed/seed-mock-data.sh

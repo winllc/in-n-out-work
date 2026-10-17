@@ -1155,8 +1155,9 @@ OpenShift) holds the license and the licensing state; keep it on a persistent, w
 Start it without a license, sign in as an administrator and upload one at `/app/admin/license`, or
 copy one in: `docker cp license.lic readyroom:/var/lib/ens/readyroom/license.lic` (it must be
 readable by user 185). Never bake a license into an image.
-The base images can be swapped for a mirror with `--build-arg BUILD_IMAGE=...` and
-`--build-arg RUNTIME_IMAGE=...`.
+The base images are pinned by digest (the tag kept for reading; Dependabot proposes new digests) and can
+be swapped for a mirror with `--build-arg BUILD_IMAGE=...` and `--build-arg RUNTIME_IMAGE=...`. The
+runtime stage applies the operating system's security updates (`microdnf update`) at build time.
 
 The health check reports what actuator reports, which includes the mail server: if the SMTP host in
 `spring.mail` cannot be reached the container shows as unhealthy. Point it at a reachable server, or
@@ -1221,6 +1222,34 @@ with the ENS Solutions release public key imported (`gpg --import ens-release-ke
 gpg --verify SHA256SUMS.asc SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing
 ```
+
+**Verifying the image and the chart.** On a release tag CI signs the published image and Helm chart with
+cosign, keyless (Sigstore, the workflow's GitHub OIDC identity), by digest, and attaches the image's SPDX
+SBOM as a signed attestation:
+
+```bash
+cosign verify ghcr.io/winllc/in-n-out-work@<digest> \
+  --certificate-identity-regexp 'https://github.com/winllc/in-n-out-work/.github/workflows/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-attestation --type spdxjson ghcr.io/winllc/in-n-out-work@<digest> \
+  --certificate-identity-regexp 'https://github.com/winllc/in-n-out-work/.github/workflows/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify ghcr.io/winllc/charts/readyroom@<digest> \
+  --certificate-identity-regexp 'https://github.com/winllc/in-n-out-work/.github/workflows/.*' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+(`docker buildx imagetools inspect ghcr.io/winllc/in-n-out-work:1.2.3` shows a tag's digest.)
+
+**Supply chain.** Every GitHub Action is pinned to a commit SHA and every base image to a digest;
+Dependabot (`.github/dependabot.yml`) proposes weekly updates for Gradle, the Dockerfiles and the actions,
+minor and patch versions grouped. CodeQL (`.github/workflows/codeql.yml`) analyses the Java and JavaScript on
+every push, pull request and weekly. The `image` job scans the built image with Trivy (pinned by version
+and checksum) and fails on any HIGH or CRITICAL vulnerability that has a fix; accepted risks go in
+`.trivyignore`, each with its reason and a review date. Security fixes ahead of Spring Boot are pinned in
+`build.gradle` (`ext['tomcat.version']`, `ext['jackson-bom.version']`) until a Boot release includes them.
+ReadyRoom is proprietary to ENS Solutions (`LICENSE`, `LicenseRef-ENS-Commercial` in the image labels and the
+chart's annotations).
 
 ---
 
