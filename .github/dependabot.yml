@@ -23,6 +23,13 @@ updates:
     groups:
       docker-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # The JDK that builds the jar stays on the Java release the application targets and runs on (21, the
+      # runtime image's): a newer JDK compiles against a newer class library, and a non-LTS one soon stops
+      # getting updates. Digest updates of 21-jdk still come through. A move to a newer Java changes it by hand
+      # together with the runtime image (ubi9/openjdk-21-runtime), build.gradle and setup-java in CI.
+      - dependency-name: eclipse-temurin
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: /

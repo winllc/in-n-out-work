@@ -10,10 +10,14 @@
 # signs in and uploads the ENS license there. See Licensing in the README. test/Dockerfile is the same
 # build for the compose stacks.
 
-# The base images, overridable for a registry mirror (--build-arg BUILD_IMAGE=mirror.example/...). Pinned by
-# digest, the tag kept for reading; Dependabot proposes new digests.
-ARG BUILD_IMAGE=eclipse-temurin:21-jdk@sha256:23cc5734ff46e776f51ce66eb9ee08444fd47caabec0a95b7eb6e94be2d3696d
-ARG RUNTIME_IMAGE=registry.access.redhat.com/ubi9/openjdk-21-runtime:latest@sha256:856ee6542b8fdf09a065fd5439309fc3f3c821fb8efac48aa6191c93635dd907
+# The base images, overridable for a registry mirror (--build-arg BUILD_IMAGE=mirror.example/...). By default
+# they are the two stages below, pinned by digest with the tag kept for reading. They are plain FROM lines
+# because Dependabot, which proposes new digests, does not read an image out of an ARG; BuildKit skips them
+# when a build argument replaces them.
+ARG BUILD_IMAGE=jdk
+ARG RUNTIME_IMAGE=runtime
+FROM eclipse-temurin:21-jdk@sha256:23cc5734ff46e776f51ce66eb9ee08444fd47caabec0a95b7eb6e94be2d3696d AS jdk
+FROM registry.access.redhat.com/ubi9/openjdk-21-runtime:latest@sha256:856ee6542b8fdf09a065fd5439309fc3f3c821fb8efac48aa6191c93635dd907 AS runtime
 
 # ---- build stage -------------------------------------------------------------
 FROM ${BUILD_IMAGE} AS build
