@@ -431,15 +431,15 @@ function Save-SessionFile {
             $sessionId = $Response.sessionId
         }
 
+        # Only what the logout run needs; not the server's whole record.
         $payload = [ordered]@{
             sessionId     = $sessionId
             windowsUserId = $WindowsUserId
             userSid       = $Sid
             savedAtUtc    = (Get-Date).ToUniversalTime().ToString('o')
-            record        = $Response
         }
 
-        $payload | ConvertTo-Json -Depth 10 |
+        $payload | ConvertTo-Json |
             Out-File -LiteralPath $path -Encoding utf8 -Force
 
         # Readable by this user, SYSTEM and administrators only: the sessionId
@@ -464,8 +464,10 @@ function Save-SessionFile {
             Write-Log "Could not restrict ACL on ${path}: $($_.Exception.Message)" 'WARN'
         }
 
+        # Never log the sessionId itself: it is all it takes to check this
+        # user out.
         if ($sessionId) {
-            Write-Log "Session cached at $path (sessionId $sessionId)."
+            Write-Log "Session cached at $path."
         } else {
             Write-Log "Session cached at $path but the response carried no sessionId." 'WARN'
         }
@@ -579,7 +581,8 @@ function Send-StatusPost {
         $requestArgs.MaximumRedirection = 0
     }
 
-    Write-Log "POST $Url body=$json"
+    # Not the body: at logout it carries the sessionId.
+    Write-Log "POST $Url"
     try {
         $response = Invoke-RestMethod @requestArgs
     } catch [System.InvalidOperationException] {
