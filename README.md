@@ -99,7 +99,7 @@ powershell.exe -ExecutionPolicy Bypass -File "C:\Program Files\InOutWorker\Updat
 | `login` | `POST /api/check/in` | certificate or Windows | the user |
 | `lock` | `POST /api/check/lock` | certificate or Windows | the user |
 | `unlock` | `POST /api/check/unlock` | certificate or Windows | the user |
-| `logout` | `POST /api/check/out` | none | SYSTEM |
+| `logout` | `POST /api/check/out` | none | SYSTEM at logoff; the user on a remote disconnect |
 
 `Authentication` in the config file (or `-Authentication`) chooses how login,
 lock and unlock sign in:
@@ -118,8 +118,8 @@ lock and unlock sign in:
 > pass the client certificate on). Windows sign-in likewise: the ticket goes
 > over the same connection.
 
-Install the script and register all four scheduled tasks from an **elevated**
-prompt:
+Install the script and register the scheduled tasks (login, lock, unlock,
+logout and disconnect) from an **elevated** prompt:
 
 ```bash
 cd powershell; .\Install-InOutWorker.ps1 -BaseUrl "https://your-server:8181/api/check"
@@ -128,7 +128,29 @@ cd powershell; .\Install-InOutWorker.ps1 -BaseUrl "https://your-server:8181/api/
 Add `-Authentication Windows` or `-Authentication Auto` to write that setting too.
 
 Use `-WhatIf` on either script to see what would happen without changing
-anything. The client logs to `%ProgramData%\InOutWorker\logs\`.
+anything. The SYSTEM logoff task logs to `%ProgramData%\InOutWorker\logs\`;
+the tasks that run as the user log to `%LOCALAPPDATA%\InOutWorker\logs\` in
+their profile.
+
+**Files SYSTEM touches.** The logoff task runs as SYSTEM, so nothing it writes,
+deletes or reads may sit where an ordinary user can redirect it. The installer
+makes the install folder and `%ProgramData%\InOutWorker` writable by SYSTEM and
+Administrators only. Each user's login caches the server's `sessionId` in
+`%ProgramData%\InOutWorker\sessions\<SID>.json`, readable only by that user,
+SYSTEM and Administrators; in `sessions\` a user can add a file but not list,
+change or delete anyone else's. The logoff task learns the user's SID from
+event 4647, reads that file only after checking no part of its path is a
+junction or link and that the user owns it, and never deletes it: the next
+login overwrites it. A remote disconnect is reported by a task that runs as the
+user. Configuration is read only from the install folder.
+
+**Upgrading.** Re-run `Install-InOutWorker.ps1` on every workstation. Earlier
+versions granted `Users` *Modify* on `%ProgramData%\InOutWorker`, which let a
+user turn the SYSTEM task's file writes into writes anywhere on the machine;
+the installer removes that grant, deletes the old shared `session.json`, sets
+aside old `logs\` and `sessions\` folders as `*.old-<timestamp>`, and no longer
+reads `%ProgramData%\InOutWorker\inoutworker.config.json` (it warns if one is
+there; pass its settings to the installer instead).
 
 Configuration comes from `inoutworker.config.json` next to the script (see
 [`inoutworker.config.sample.json`](powershell/inoutworker.config.sample.json)),
@@ -189,7 +211,7 @@ no usable license. API calls are never redirected.
 
 **The Windows client** (`powershell/Update-WorkStatus.ps1`) makes one POST per logon, lock, unlock or
 logoff and does not retry. A refusal makes it log the HTTP status and the server's `error` and
-`message` to `%ProgramData%\InOutWorker\logs\` and exit with code 3; the next event simply tries
+`message` to its log (see [Windows client](#windows-client)) and exit with code 3; the next event simply tries
 again, so nothing loops. Because the API answers with JSON rather than a redirect, a refused event
 can never be mistaken for success.
 
