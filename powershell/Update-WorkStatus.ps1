@@ -4,8 +4,9 @@
   In-N-Out-Work server.
 
 .DESCRIPTION
-  Replaces login.ps1, logout.ps1 and updatestatus.ps1 with a single entry point
-  invoked from Task Scheduler with an -Action argument.
+  Replaced the earlier login.ps1, logout.ps1 and updatestatus.ps1 (since
+  removed) with a single entry point invoked from Task Scheduler with an
+  -Action argument.
 
   Transport model (mirrors SecurityConfig on the server):
 
