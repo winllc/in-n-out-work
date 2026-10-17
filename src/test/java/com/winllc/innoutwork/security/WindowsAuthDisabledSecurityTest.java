@@ -28,7 +28,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.x509;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** With Windows sign-in off (the default) the check-in calls behave exactly as before it existed. */
@@ -82,9 +81,9 @@ class WindowsAuthDisabledSecurityTest {
     }
 
     @Test
-    void withoutACertificateTheRequestIsSentToSignInAsBefore() throws Exception {
+    void withoutACertificateTheRequestIsUnauthorizedWithoutANegotiateChallenge() throws Exception {
         mockMvc.perform(post("/api/check/in").contentType(MediaType.APPLICATION_JSON).content(body("bob")))
-                .andExpect(redirectedUrl("/login"))
+                .andExpect(status().isUnauthorized())
                 .andExpect(header().doesNotExist("WWW-Authenticate"));
     }
 
@@ -93,6 +92,7 @@ class WindowsAuthDisabledSecurityTest {
         mockMvc.perform(post("/api/check/in")
                         .header("Authorization", "Negotiate " + Base64.getEncoder().encodeToString(new byte[]{1, 2, 3}))
                         .contentType(MediaType.APPLICATION_JSON).content(body("bob")))
-                .andExpect(redirectedUrl("/login"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist("WWW-Authenticate"));
     }
 }

@@ -29,6 +29,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.ldap.core.support.BaseLdapPathContextSource;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.core.userdetails.User;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -181,6 +182,22 @@ class CheckInOutRestServiceTest {
                 .andExpect(jsonPath("$.action").value("CHECK_IN")));
 
         assertEquals(stored(CheckInOutEnum.CHECK_IN).getFirst().getSessionId(), answer.get("sessionId").asString());
+    }
+
+    /**
+     * A certificate whose subject is not in the directory signs nobody in, and the client is told so with a 401: a
+     * redirect to the login page would end in a 200 that the client, following it, takes for success.
+     */
+    @ParameterizedTest
+    @ValueSource(strings = {"in", "lock", "unlock"})
+    void aCallThatIsNotSignedInIsAnsweredUnauthorizedNotRedirected(String action) throws Exception {
+        String stranger = "CN=Stranger,OU=Users,DC=winllc,DC=com";
+        when(appUsers.loadUserByUsername(stranger)).thenThrow(new UsernameNotFoundException(stranger));
+
+        report(action, as(stranger), null).andExpect(status().isUnauthorized());
+        report(action, anonymous(), null).andExpect(status().isUnauthorized());
+
+        assertTrue(records.findAll().isEmpty(), "nothing is recorded for a call nobody signed in to");
     }
 
     @ParameterizedTest

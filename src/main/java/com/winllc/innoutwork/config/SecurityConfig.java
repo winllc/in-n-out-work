@@ -9,6 +9,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.ldap.core.DirContextAdapter;
 import org.springframework.ldap.core.DirContextOperations;
 import org.springframework.ldap.core.support.BaseLdapPathContextSource;
@@ -24,6 +25,9 @@ import org.springframework.security.ldap.userdetails.UserDetailsContextMapper;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import org.springframework.security.web.access.AccessDeniedHandlerImpl;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.util.matcher.AnyRequestMatcher;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.util.Collection;
@@ -81,9 +85,18 @@ public class SecurityConfig {
                 .logout(logout -> logout
                         .logoutSuccessUrl("/login?logout")
                         .permitAll())
-                // The default 403, recorded in the audit trail as access.denied.
-                .exceptionHandling(e -> e.accessDeniedHandler(
-                        auditing(securityAudit, "permission_denied", new AccessDeniedHandlerImpl())))
+                // The default 403, recorded in the audit trail as access.denied. An API call that is not signed in
+                // gets a 401 rather than the login page: a script (the Windows client, a page's fetch) following
+                // the redirect would take the page's 200 for success, as the client did when a certificate's
+                // subject was not in the directory.
+                // Everything else still goes to the login page: registered second, for any request, so that it is
+                // what a request matching neither gets (the first registration would otherwise be that default).
+                .exceptionHandling(e -> e
+                        .accessDeniedHandler(auditing(securityAudit, "permission_denied", new AccessDeniedHandlerImpl()))
+                        .defaultAuthenticationEntryPointFor(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED),
+                                PathPatternRequestMatcher.withDefaults().matcher("/api/**"))
+                        .defaultAuthenticationEntryPointFor(new LoginUrlAuthenticationEntryPoint("/login"),
+                                AnyRequestMatcher.INSTANCE))
                 // Every post from a browser carries the token: forms built with th:action get it from Thymeleaf,
                 // scripts from the meta tags in layout.html. A missing or wrong one is a 403 (access.denied).
                 .csrf(csrf -> csrf.ignoringRequestMatchers(CLIENT_API));
