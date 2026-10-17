@@ -412,16 +412,29 @@ values that most often need changing per deployment:
 | `user-base-dn` | Base DN for user searches |
 | `user-ldap-filter` | Filter identifying user entries; defaults to `(objectclass=inetOrgPerson)`. Used alone to enumerate and count users, and combined into an AND for search, reports and the org chart, so it applies everywhere users are looked up. Parentheses are added if omitted. |
 | `groups[].groups-base-dn` | One entry per top-level group tree shown in the UI |
-| `super-user-dns` | DNs always treated as `ADMIN` |
+| `super-user-dns` | DNs always treated as `ADMIN` (`APPLICATION_SUPERUSERDNS_0`, `_1`, ...). None are packaged; startup warns when there are none |
 | `user-ldap-*-attribute` | Maps LDAP attributes to organization, location, branch, employee type, manager, duty sub-organization |
 | `duty-sub-org-groups-base-dn` | Enables the org chart; blank disables it |
 | `ldap.max-pages` | Most pages one paged search reads before returning what it has (default 1000). Bounds a directory that keeps returning a paging cookie, which would otherwise hold the request open indefinitely. |
-| `checkOutAfterMinutes` | Idle time before `MarkInactiveCron` auto-checks-out a session |
+| `checkOutAfterMinutes` | Minutes a session may stay locked before `MarkInactiveCron` checks it out (default 240; the packaged configuration used to say 2) |
+| `notification-sender-email` | The From address of absence alerts; required once `SPRING_MAIL_HOST` is set (startup stops without it) |
 | `application-base-url` | Used in notification emails |
 
 Two background jobs run on intervals set by `inactive-cron` and
 `send-absent-notification-cron`: one auto-checks-out idle users, the other emails
 absence notifications.
+
+These settings are validated at startup: an impossible value (`checkOutAfterMinutes` 0, an
+`application-base-url` that is not http(s), a sender that is not an e-mail address, a negative limit, an
+empty `user-base-dn`, an unknown `ENS_AUDIT_SYSLOG_PROTOCOL`) stops ReadyRoom with the setting's name rather
+than taking effect.
+
+**Mail.** No mail server is packaged: set `SPRING_MAIL_HOST`, `SPRING_MAIL_PORT`, `SPRING_MAIL_USERNAME`,
+`SPRING_MAIL_PASSWORD` and `APPLICATION_NOTIFICATIONSENDEREMAIL`; without a host absence alerts are recorded
+but not e-mailed (warned at startup). STARTTLS is required when enabled, the server's certificate is checked
+against the JVM's trust store, and connecting, reading and writing each time out after 30 seconds. Trusting
+a mail server's certificate without checking it is an explicit opt-in:
+`SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST=<mail host>` (or `*`, any; not FIPS- or STIG-appropriate).
 
 ### Org chart parsing
 

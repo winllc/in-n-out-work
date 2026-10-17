@@ -1,14 +1,25 @@
 package com.winllc.innoutwork.config;
 
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * {@code application.*}. Validated at startup: an impossible value (a negative interval, a base URL that is not
+ * http(s), a sender that is not an e-mail address) stops startup with the setting's name instead of taking effect.
+ */
 @Data
+@Validated
 @ConfigurationProperties(prefix = "application")
 public class ApplicationProperties {
 
@@ -22,6 +33,7 @@ public class ApplicationProperties {
 
     private String organizationName = "TOP";
     private String timeZone = "ETC";
+    @NotBlank(message = "application.user-base-dn (APPLICATION_USERBASEDN) must name where users are in the directory")
     private String userBaseDn;
     private String userLdapFilter = DEFAULT_USER_LDAP_FILTER;
     private String userLdapOrganizationAttribute = "organization";
@@ -41,20 +53,32 @@ public class ApplicationProperties {
     private List<TopLevelGroupProperties> groups = new ArrayList<>();
     private Map<String, String> attributeUpdateRequestUrlMappings = new HashMap<>();
     private String updateProfileUrl = "https://google.com";
+    /** Minutes a session stays locked before MarkInactiveCron checks it out. */
+    @Min(1)
     private int checkOutAfterMinutes = 240;
+    @Min(0)
     private int extraTimeBeforeAbsentNotificationMinutes = 60;
     private String calendarStatusEventColor = "blue";
     private String calendarAbsentStatusEventColor = "purple";
     private String calendarActivityEventColor = "green";
     private String calendarGlobalEventColor = "orange";
-    private String notificationSenderEmail = "noreply@test.com";
+    /**
+     * The From address of absence alert e-mails. No default: required (MailConfig checks it) once a mail server
+     * is configured.
+     */
+    @Email
+    private String notificationSenderEmail = "";
+    @Pattern(regexp = "^https?://\\S+$",
+            message = "application.application-base-url (APPLICATION_BASE_URL) must be an http(s) URL")
     private String applicationBaseUrl = "https://localhost";
     private boolean groupsInitiallyExpanded = false;
     private String dutySubOrgGroupsBaseDn = "";
     private String dutySubOrgFilter = "";
+    @Valid
     private Ldap ldap = new Ldap();
     private Demo demo = new Demo();
     private WindowsAuth windowsAuth = new WindowsAuth();
+    @Valid
     private Logoff logoff = new Logoff();
 
     /**
@@ -68,12 +92,14 @@ public class ApplicationProperties {
          * How long after a logon its session id can still identify the logoff; older ones are refused. A week, so a
          * workstation left logged on over a weekend or a long shift still records its logoff.
          */
+        @Min(1)
         private int sessionMaxAgeHours = 168;
         /**
          * Refused logoffs without a sign-in (unknown, used or expired session id) from one client address per minute.
          * Past it, refused ones get 429 and are no longer audited one by one. Accepted logoffs never count, so many
          * workstations behind one address are not held back. 0 turns it off.
          */
+        @Min(0)
         private int refusedPerMinute = 30;
     }
 
@@ -161,11 +187,13 @@ public class ApplicationProperties {
          * Keeps each page under the server's size limit (Active Directory 1000, OpenLDAP 500) so results are
          * not silently cut off. 0 turns paging off, for a directory without the paged results control.
          */
+        @Min(0)
         private int pageSize = 500;
         /**
          * How long a user's group memberships are kept before the directory is asked again. Permission
          * checks read them on every request; 0 turns the cache off.
          */
+        @Min(0)
         private int groupMembershipCacheSeconds = 300;
         /**
          * Most pages a single paged search will read before it gives up and returns what it has.
@@ -173,6 +201,7 @@ public class ApplicationProperties {
          * paged results control - would otherwise loop forever and hold the request open with it.
          * At the default page size that is half a million entries, far past any real result set.
          */
+        @Min(1)
         private int maxPages = 1000;
     }
 

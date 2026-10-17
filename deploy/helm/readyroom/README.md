@@ -319,7 +319,7 @@ delete it.
 | `smtp.host`, `smtp.port`, `smtp.username` | `""`, `587`, `""` | `SPRING_MAIL_*` |
 | `smtp.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `smtp-password` | `SPRING_MAIL_PASSWORD` |
 | `smtp.auth`, `smtp.starttls` | `true`, `true` | SMTP AUTH and STARTTLS |
-| `smtp.sslTrust` | `""` | Trusted mail server certificates; empty keeps `*` |
+| `smtp.sslTrust` | `""` | Empty: the mail server's certificate is checked; a host name (or `*`, any) trusts it without checking |
 | `smtp.from` | `""` | `APPLICATION_NOTIFICATIONSENDEREMAIL` |
 | `smtp.healthCheck` | `true` | `MANAGEMENT_HEALTH_MAIL_ENABLED`; never part of the Kubernetes probes |
 | `tls.enabled` | `false` | ReadyRoom terminates TLS itself (`SSL_ENABLED`) |

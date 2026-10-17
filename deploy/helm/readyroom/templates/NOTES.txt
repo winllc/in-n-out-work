@@ -21,6 +21,11 @@ schema at every start, so an upgrade migrates when its new pod starts):
    LoadBalancer Service; see the chart README.
 {{- end }}
 
+{{- if not .Values.superUserDns }}
+   WARNING: superUserDns is empty. Unless someone already holds the ADMIN role, nobody can administer
+   ReadyRoom or reach the license screen: add your administrators' DNs.
+{{- end }}
+
 2. License
    Sign in as an administrator (superUserDns) and open the license screen:
      {{ if $url }}{{ $url }}{{ else }}<ReadyRoom URL>{{ end }}/app/admin/license

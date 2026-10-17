@@ -233,8 +233,8 @@ orgChart:
 # ---------------------------------------------------------------------------------------------------
 
 smtp:
-  # Your SMTP server (SPRING_MAIL_HOST, SPRING_MAIL_PORT). Set it: the packaged default is a
-  # development host.
+  # Your SMTP server (SPRING_MAIL_HOST, SPRING_MAIL_PORT). Empty: no absence alert e-mails (they are
+  # still recorded). With a host, from is required.
   host: ""
   port: 587
   username: ""
@@ -242,11 +242,13 @@ smtp:
   password: ""
   existingSecret: ""
   existingSecretKey: smtp-password
-  # SMTP AUTH and STARTTLS; set both false for a relay that takes neither.
+  # SMTP AUTH and STARTTLS (required when on: nothing is sent in clear text); set both false for a
+  # relay that takes neither.
   auth: true
   starttls: true
-  # Certificates trusted from the mail server: "*" (the packaged default) trusts any, or name your
-  # mail host to trust only certificates valid for it. Empty keeps the default.
+  # Empty: the mail server's certificate is checked against the JVM's trust store. An explicit opt-in
+  # otherwise: your mail host's name to trust its certificate as is, or "*" to trust any (not FIPS- or
+  # STIG-appropriate).
   sslTrust: ""
   # From address of notification e-mails (APPLICATION_NOTIFICATIONSENDEREMAIL).
   from: ""

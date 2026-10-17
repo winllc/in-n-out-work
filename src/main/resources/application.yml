@@ -108,18 +108,26 @@ spring:
     #password: secret1234
     date-format: yyyy-MM-dd HH:mm a z
   mail:
-    host: mailcow.winllc-dev.com
+    # No mail server is packaged: set SPRING_MAIL_HOST (and SPRING_MAIL_PORT, _USERNAME, _PASSWORD) and
+    # APPLICATION_NOTIFICATIONSENDEREMAIL. Without a host, absence alerts are recorded but not e-mailed.
     port: 587
-    username: user1@winllc-dev.com
-    password: password
     properties:
         mail:
             smtp:
-              ssl:
-                trust: "*"
               auth: true
+              # STARTTLS, and refuse to send (credentials included) when the server does not offer it. For a
+              # relay that takes neither TLS nor AUTH, set SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH and
+              # ..._STARTTLS_ENABLE to false.
               starttls:
                 enable: true
+                required: true
+              # The mail server's certificate is checked against the JVM's trust store. To trust a server whose
+              # certificate the JVM cannot verify, name it explicitly (an opt-in, not FIPS-appropriate with *):
+              # SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST=smtp.example.com
+              # A server that stops answering fails the send after 30 seconds instead of holding the job.
+              connectiontimeout: 30000
+              timeout: 30000
+              writetimeout: 30000
 
   # thymeleaf:
  #   prefix: classpath:/templates/
@@ -253,26 +261,24 @@ application:
   user-ldap-employee-type-attribute: employeeType
   user-ldap-organization-attribute: o
   user-ldap-location-attribute: l
-  super-user-dns:
-    - CN=user3,OU=Users,DC=winllc,DC=com
-    # The account the demo profile presents, seeded by test/seed-mock-data.sh. Listed here rather
-    # than only in test/application.yml because the container runs on the packaged config - the
-    # mounted additional-location is commented out in docker-compose.yml - so an entry only there
-    # would not reach it. Demo mode grants every role regardless; this is what makes the account
-    # an administrator when signed in normally (demo / password).
-    - CN=Demo Admin,OU=Users,DC=winllc,DC=com
+  # Administrators by full DN (APPLICATION_SUPERUSERDNS_0, _1, ...). None are packaged: name at least one, or
+  # nobody can administer ReadyRoom or reach the license screen (startup warns). The development and demo
+  # stacks name their seeded accounts in docker-compose.yml and application-demo.yml.
+  super-user-dns: []
   groups:
     - groups-base-dn: ou=Groups,dc=winllc,dc=com
     - groups-base-dn: ou=Companies,dc=winllc,dc=com
   update-profile-url: https://google.com
-  checkOutAfterMinutes: 2
+  # Minutes a session may stay locked before it is checked out automatically (MarkInactiveCron).
+  checkOutAfterMinutes: 240
   inactive-cron:
     fixed-rate: 60000
     initial-delay: 60000
   send-absent-notification-cron:
     fixed-rate: 300000
     initial-delay: 1
-  notification-sender-email: user1@winllc-dev.com
+  # The From address of absence alerts (APPLICATION_NOTIFICATIONSENDEREMAIL); required with a mail server.
+  notification-sender-email: ""
   user-ldap-manager-id-attribute: title
   manager-ldap-id-attribute: street
   application-base-url: ${APPLICATION_BASE_URL:http://localhost:8181}
