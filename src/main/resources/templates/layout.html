@@ -52,8 +52,11 @@
               likewise supply light, transparent artwork - ideally vector.
             -->
             <div class="navbar-brand">
-                <a th:href="@{/app}">
-                    <img style="height: 7rem;" th:src="${@environment.getProperty('application.logofile', '/images/logos/readyroom_logo_inverse_1.svg')}"
+                <!-- Thymeleaf 3.1.5 forbids bean references in th:src (restricted mode),
+                     so the configured logo is looked up in th:with first. -->
+                <a th:href="@{/app}"
+                   th:with="logo=${@environment.getProperty('application.logofile', '/images/logos/readyroom_logo_inverse_1.svg')}">
+                    <img style="height: 7rem;" th:src="${logo}"
                          alt="ReadyRoom" class="navbar-brand-image"/>
                 </a>
             </div>
