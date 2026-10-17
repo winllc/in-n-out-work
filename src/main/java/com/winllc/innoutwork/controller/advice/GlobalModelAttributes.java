@@ -4,6 +4,7 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.enssolutions.license.LicenseManager;
 import com.winllc.innoutwork.license.LicenseInfo;
 import com.winllc.innoutwork.service.CheckInOutService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -46,9 +47,13 @@ public class GlobalModelAttributes {
     }
 
     @ModelAttribute
-    public void addGlobalAttributes(Model model, HttpSession session, Authentication authentication) {
+    public void addGlobalAttributes(Model model, HttpServletRequest request, Authentication authentication) {
 
-        ZonedDateTime selectedDateTime = CheckInOutService.getDateTimeFromSession(session);
+        // Never creates a session: token-authenticated API calls (the audit pull API) must stay sessionless.
+        HttpSession session = request.getSession(false);
+        ZonedDateTime selectedDateTime = session != null
+                ? CheckInOutService.getDateTimeFromSession(session)
+                : ZonedDateTime.now(ZoneId.systemDefault());
 
         model.addAttribute("systemTime", DATE_FORMATTER.format(selectedDateTime));
         model.addAttribute("profileUpdateUrl", defaultUserProfileUpdateUrl);

@@ -51,11 +51,11 @@ spec:
             - -c
             - |
               set -eu
-              tables="'user_records','permission_records','check_in_out_records','user_event_records','notification_records','group_records','global_calendar_records'"
+              tables="'user_records','permission_records','check_in_out_records','user_event_records','notification_records','group_records','global_calendar_records','audit_events','audit_chain_head','audit_output_state','audit_api_tokens'"
               query="SELECT count(*) FROM unnest(ARRAY[$tables]) t WHERE to_regclass('public.' || t) IS NOT NULL"
               deadline=$(( $(date +%s) + WAIT_SECONDS ))
               echo "Waiting for ReadyRoom to create its tables in $PGDATABASE on $PGHOST ..."
-              until [ "$(psql -tAc "$query" 2>/dev/null || true)" = 7 ]; do
+              until [ "$(psql -tAc "$query" 2>/dev/null || true)" = 11 ]; do
                 if [ "$(date +%s)" -ge "$deadline" ]; then
                   echo "ReadyRoom has not created its tables after ${WAIT_SECONDS}s; is it running? (kubectl logs deploy/{{ include "readyroom.fullname" . }})"
                   exit 1

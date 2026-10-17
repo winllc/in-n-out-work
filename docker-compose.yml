@@ -117,6 +117,21 @@ services:
       # entry is commented out ("services.app.environment must be a mapping"), which is what the
       # examples below would leave behind on their own.
       JAVA_OPTS: ""
+      # Audit logging (README: Audit logging): passed through from the shell or a .env file beside this one.
+      ENS_AUDIT_STDOUT: ${ENS_AUDIT_STDOUT:-true}
+      ENS_AUDIT_FILE: ${ENS_AUDIT_FILE:-}
+      ENS_AUDIT_FILE_KEEP: ${ENS_AUDIT_FILE_KEEP:-30}
+      ENS_AUDIT_RETENTION_DAYS: ${ENS_AUDIT_RETENTION_DAYS:-0}
+      ENS_AUDIT_SPLUNK_URL: ${ENS_AUDIT_SPLUNK_URL:-}
+      ENS_AUDIT_SPLUNK_TOKEN: ${ENS_AUDIT_SPLUNK_TOKEN:-}
+      ENS_AUDIT_SPLUNK_TOKEN_FILE: ${ENS_AUDIT_SPLUNK_TOKEN_FILE:-}
+      ENS_AUDIT_SPLUNK_INDEX: ${ENS_AUDIT_SPLUNK_INDEX:-}
+      ENS_AUDIT_SPLUNK_SOURCETYPE: ${ENS_AUDIT_SPLUNK_SOURCETYPE:-ens:audit}
+      ENS_AUDIT_SPLUNK_INSECURE: ${ENS_AUDIT_SPLUNK_INSECURE:-false}
+      ENS_AUDIT_SYSLOG_HOST: ${ENS_AUDIT_SYSLOG_HOST:-}
+      ENS_AUDIT_SYSLOG_PORT: ${ENS_AUDIT_SYSLOG_PORT:-}
+      ENS_AUDIT_SYSLOG_PROTOCOL: ${ENS_AUDIT_SYSLOG_PROTOCOL:-tcp}
+      ENS_AUDIT_SYSLOG_FACILITY: ${ENS_AUDIT_SYSLOG_FACILITY:-local0}
       # The app now defaults to the compose service names, so the mounted config is not needed to
       # reach postgres and openldap. Uncomment to layer test/application.yml over the packaged
       # config again - it also carries the seeded fixture's attribute mappings and cron intervals.
@@ -135,6 +150,8 @@ services:
       # license.lic in ./license for license-init to copy in, or upload it on the license screen.
       # Without one only sign-in and the license screen work. See Licensing in the README.
       - ens-license:/var/lib/ens/readyroom
+      # The audit log file, when ENS_AUDIT_FILE=/var/log/ens/readyroom/audit.jsonl.
+      - ens-audit:/var/log/ens
       # - ./kerberos/krb5.conf:/etc/krb5.conf:ro
       # - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro
     ports:
@@ -152,3 +169,4 @@ volumes:
   openldap_data:
   openldap_config:
   ens-license:
+  ens-audit:

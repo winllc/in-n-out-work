@@ -1,8 +1,10 @@
 package com.winllc.innoutwork.config;
 
+import com.winllc.innoutwork.audit.SecurityAudit;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,6 +21,8 @@ import org.springframework.security.ldap.authentication.LdapAuthenticationProvid
 import org.springframework.security.ldap.search.FilterBasedLdapUserSearch;
 import org.springframework.security.ldap.userdetails.UserDetailsContextMapper;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.AccessDeniedHandler;
+import org.springframework.security.web.access.AccessDeniedHandlerImpl;
 import org.springframework.security.web.servlet.util.matcher.PathPatternRequestMatcher;
 
 import java.util.Collection;
@@ -39,7 +43,8 @@ public class SecurityConfig {
     @ConditionalOnProperty(name = "application.demo.enabled", havingValue = "false", matchIfMissing = true)
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    AppUserDetailsService appUserDetailsService,
-                                                   LdapAuthenticationProvider ldapAuthenticationProvider) throws Exception {
+                                                   LdapAuthenticationProvider ldapAuthenticationProvider,
+                                                   ObjectProvider<SecurityAudit> securityAudit) throws Exception {
         // Preferred: HTTPS with a client certificate (X.509).
         configureX509(http, appUserDetailsService);
         http
@@ -61,9 +66,19 @@ public class SecurityConfig {
                 .logout(logout -> logout
                         .logoutSuccessUrl("/login?logout")
                         .permitAll())
+                // The default 403, recorded in the audit trail as access.denied.
+                .exceptionHandling(e -> e.accessDeniedHandler(
+                        auditing(securityAudit, "permission_denied", new AccessDeniedHandlerImpl())))
                 .csrf(csrf -> csrf.disable());
 
         return http.build();
+    }
+
+    /** {@code handler}, recording each refusal in the audit trail first when there is one. */
+    public static AccessDeniedHandler auditing(ObjectProvider<SecurityAudit> securityAudit, String reason,
+                                               AccessDeniedHandler handler) {
+        SecurityAudit audit = securityAudit.getIfAvailable();
+        return audit == null ? handler : audit.accessDeniedHandler(reason, handler);
     }
 
     /**

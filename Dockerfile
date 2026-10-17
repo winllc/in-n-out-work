@@ -62,6 +62,14 @@ RUN mkdir -p /var/lib/ens/readyroom \
  && chmod -R 0770 /var/lib/ens
 VOLUME /var/lib/ens
 
+# The audit log file, when ENS_AUDIT_FILE is set (e.g. /var/log/ens/readyroom/audit.jsonl; see Audit logging
+# in the README). Writable by the runtime user, group 0 with rwx for OpenShift's arbitrary UIDs. Mount the
+# ens-audit volume here to keep it across upgrades.
+RUN mkdir -p /var/log/ens/readyroom \
+ && chown -R 185:0 /var/log/ens \
+ && chmod -R 0770 /var/log/ens
+VOLUME /var/log/ens
+
 # Windows sign-in, when enabled, reads mounted files (never bake these into the image):
 #   /etc/krb5.conf                your realm and domain controllers
 #   /etc/in-n-out/http.keytab     the key for the app's HTTP/<host> service principal

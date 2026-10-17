@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.service;
 
+import com.winllc.innoutwork.audit.AuditEntry;
+import com.winllc.innoutwork.audit.AuditLog;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.model.PermissionRecord;
@@ -8,6 +10,7 @@ import com.winllc.innoutwork.repository.PermissionRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -21,6 +24,7 @@ public class PermissionService {
     private final PermissionRecordRepository permissionRecordRepository;
     private final LdapService ldapService;
     private final TrackedPeopleLimit peopleLimit;
+    private AuditLog audit = AuditLog.NOOP;
 
     public PermissionService(UserRecordRepository userRecordRepository,
                              PermissionRecordRepository permissionRecordRepository, LdapService ldapService,
@@ -29,6 +33,12 @@ public class PermissionService {
         this.permissionRecordRepository = permissionRecordRepository;
         this.ldapService = ldapService;
         this.peopleLimit = peopleLimit;
+    }
+
+    /** Grants and revocations are recorded with the change, in one transaction: never one without the other. */
+    @Autowired(required = false)
+    public void setAuditLog(AuditLog audit) {
+        this.audit = audit;
     }
 
     public List<LdapDn> getUserGroupPermissions(LdapDn userDn){
@@ -57,10 +67,13 @@ public class PermissionService {
 
         // Saved directly rather than added to the user's lazy permissions list and cascaded: that needs the
         // list loaded inside a transaction, and saving the whole user could overwrite a concurrent change.
-        permissionRecordRepository.save(PermissionRecord.builder()
-                .user(userRecord)
-                .groupDn(groupDn.dn())
-                .build());
+        audit.inTransaction(() -> {
+            permissionRecordRepository.save(PermissionRecord.builder()
+                    .user(userRecord)
+                    .groupDn(groupDn.dn())
+                    .build());
+            audit.record(permissionEvent("account.permission-granted", groupDn, userDn));
+        });
 
         // Access changes are audit-worthy, so they stay at info.
         log.info("Granted group permission {} to {}", groupDn.dn(), userDn.dn());
@@ -69,7 +82,10 @@ public class PermissionService {
     public void removeGroupFromUser(LdapDn groupDn, LdapDn userDn) {
         Optional<PermissionRecord> recordOptional = permissionRecordRepository.findFirstByGroupDnIgnoreCaseAndUser_DnIgnoreCase(groupDn.dn(), userDn.dn());
         if(recordOptional.isPresent()){
-            permissionRecordRepository.delete(recordOptional.get());
+            audit.inTransaction(() -> {
+                permissionRecordRepository.delete(recordOptional.get());
+                audit.record(permissionEvent("account.permission-revoked", groupDn, userDn));
+            });
 
             log.info("Revoked group permission {} from {}", groupDn.dn(), userDn.dn());
         } else {
@@ -78,6 +94,12 @@ public class PermissionService {
             log.debug("No group permission {} held by {}; nothing to revoke", groupDn.dn(), userDn.dn());
         }
 
+    }
+
+    private static AuditEntry permissionEvent(String action, LdapDn groupDn, LdapDn userDn) {
+        return AuditEntry.of(AuditEntry.Category.ACCOUNT, action)
+                .target("user", userDn.dn(), userDn.getCn())
+                .detail("group", groupDn.dn());
     }
 
     private UserRecord getOrCreateUserRecord(LdapDn userDn){

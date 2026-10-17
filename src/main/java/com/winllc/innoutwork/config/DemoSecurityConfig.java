@@ -1,9 +1,11 @@
 package com.winllc.innoutwork.config;
 
+import com.winllc.innoutwork.audit.SecurityAudit;
 import com.winllc.innoutwork.security.AppUserDetailsService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -52,7 +54,8 @@ public class DemoSecurityConfig {
     public SecurityFilterChain demoFilterChain(HttpSecurity http,
                                                AppUserDetailsService appUserDetailsService,
                                                LdapAuthenticationProvider ldapAuthenticationProvider,
-                                               ApplicationProperties properties) throws Exception {
+                                               ApplicationProperties properties,
+                                               ObjectProvider<SecurityAudit> securityAudit) throws Exception {
         log.warn("DEMO MODE IS ON: the application is read-only, and the credentials for {} account(s) "
                         + "are published on the login page. Everything those accounts can see is readable "
                         + "by anyone who can reach this URL.",
@@ -81,11 +84,12 @@ public class DemoSecurityConfig {
                         // credentials, it does not remove the sign-in.
                         .anyRequest().authenticated()
                 )
-                .exceptionHandling(exceptions -> exceptions.accessDeniedHandler((request, response, denied) -> {
+                .exceptionHandling(exceptions -> exceptions.accessDeniedHandler(SecurityConfig.auditing(securityAudit,
+                        "demo_read_only", (request, response, denied) -> {
                     log.debug("Refused {} {} in demo mode", request.getMethod(), request.getRequestURI());
                     response.sendError(HttpServletResponse.SC_FORBIDDEN,
                             "This is a read-only demo; nothing here can be changed.");
-                }))
+                })))
                 .formLogin(form -> form
                         .loginPage(LOGIN_URL)
                         .failureUrl(LOGIN_URL + "?error")
