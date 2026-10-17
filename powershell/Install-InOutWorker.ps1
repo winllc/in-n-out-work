@@ -18,8 +18,9 @@
          InOutWorker\           SYSTEM, Administrators; Users may only list it
          InOutWorker\logs\      SYSTEM, Administrators
          InOutWorker\sessions\  SYSTEM, Administrators; Users may only add a
-                                file (their own <SID>.json), not list, change
-                                or delete one
+                                file (their own <SID>.json) and read and
+                                rewrite that file, not list, change or delete
+                                anyone else's
 
        Inheritance from %ProgramData% is cut on all three. Earlier versions
        granted Users Modify on the whole folder; on an upgrade that grant is
@@ -69,10 +70,12 @@ $SessionDir = Join-Path $DataDir 'sessions'
 $SystemSid = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18'
 $AdminsSid = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'
 $UsersSid  = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-545'
+$OwnerSid  = New-Object System.Security.Principal.SecurityIdentifier 'S-1-3-0'
 
 # ACE inheritance: the folder, its subfolders and files - or the folder alone.
 $Inherited  = [System.Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
 $FolderOnly = [System.Security.AccessControl.InheritanceFlags]::None
+$FilesOnly  = [System.Security.AccessControl.InheritanceFlags]::ObjectInherit
 
 # Only SYSTEM and Administrators are ever granted anything that is inherited,
 # so whatever these folders hold, an ordinary user gets no access from them.
@@ -82,7 +85,12 @@ $AdminGrants = @(
 )
 $InstallGrants = $AdminGrants + @(,@($UsersSid, 'ReadAndExecute', $Inherited))
 $DataGrants    = $AdminGrants + @(,@($UsersSid, 'ReadAndExecute', $FolderOnly))
-$SessionGrants = $AdminGrants + @(,@($UsersSid, 'CreateFiles, Traverse, ReadAttributes, ReadPermissions, Synchronize', $FolderOnly))
+# In sessions\ a user may create a file and then read and rewrite that one file (CREATOR OWNER),
+# nothing more. Update-WorkStatus.ps1 also gives each file an explicit DACL of its own.
+$SessionGrants = $AdminGrants + @(
+    @($UsersSid, 'CreateFiles, Traverse, ReadAttributes, ReadPermissions, Synchronize', $FolderOnly),
+    @($OwnerSid, 'Read, Write', $FilesOnly, [System.Security.AccessControl.PropagationFlags]::InheritOnly)
+)
 
 function Get-ItemAttributes {
     # The item's own attributes - a link's, not its target's - or $null when
@@ -128,7 +136,8 @@ function Test-InstallerFolder {
 
 function Set-FolderAcl {
     # Replaces the folder's owner and DACL outright: Administrators own it,
-    # nothing is inherited from the parent, and only $Grants apply.
+    # nothing is inherited from the parent, and only $Grants apply. Each grant
+    # is @(SID, rights, inheritance[, propagation]).
     param([string]$Path, [object[]]$Grants)
 
     # A folder an ordinary user created is theirs, and its owner can always
@@ -139,9 +148,11 @@ function Set-FolderAcl {
     $acl.SetOwner($AdminsSid)
     $acl.SetAccessRuleProtection($true, $false)
     foreach ($grant in $Grants) {
+        $propagation = [System.Security.AccessControl.PropagationFlags]::None
+        if ($grant.Count -gt 3) { $propagation = $grant[3] }
         $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
                     $grant[0], [System.Security.AccessControl.FileSystemRights]$grant[1], $grant[2],
-                    [System.Security.AccessControl.PropagationFlags]::None, 'Allow')))
+                    $propagation, 'Allow')))
     }
     Set-Acl -LiteralPath $Path -AclObject $acl
 }

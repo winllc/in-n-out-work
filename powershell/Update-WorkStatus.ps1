@@ -455,11 +455,10 @@ function Save-SessionFile {
             }
             # Writes the DACL alone. Set-Acl would also try the audit section,
             # which a user may not set, once the file's DACL is protected.
-            $file = Get-Item -LiteralPath $path -Force
             if ($PSVersionTable.PSEdition -eq 'Core') {
-                [System.IO.FileSystemAclExtensions]::SetAccessControl($file, $acl)
+                [System.IO.FileSystemAclExtensions]::SetAccessControl((New-Object System.IO.FileInfo $path), $acl)
             } else {
-                $file.SetAccessControl($acl)
+                [System.IO.File]::SetAccessControl($path, $acl)
             }
         } catch {
             Write-Log "Could not restrict ACL on ${path}: $($_.Exception.Message)" 'WARN'
