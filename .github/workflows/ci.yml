@@ -77,9 +77,10 @@ jobs:
         run: |
           for values in "$CHART"/ci/*.yaml; do
             echo "::group::helm template $values"
-            # The OpenShift Route has no upstream schema; only the OpenShift example renders one.
+            # The OpenShift Route and the Prometheus Operator's ServiceMonitor have no upstream schema; only
+            # those two examples render them.
             extra=()
-            case "$values" in *openshift*) extra=(-ignore-missing-schemas) ;; esac
+            case "$values" in *openshift*|*servicemonitor*) extra=(-ignore-missing-schemas) ;; esac
             helm template readyroom "$CHART" -f "$values" \
               | kubeconform -strict -summary -kubernetes-version 1.29.0 "${extra[@]}"
             echo "::endgroup::"

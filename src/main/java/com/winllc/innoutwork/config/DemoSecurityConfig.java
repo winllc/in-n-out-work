@@ -12,6 +12,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
@@ -59,7 +60,8 @@ public class DemoSecurityConfig {
                                                ApplicationProperties properties,
                                                ObjectProvider<SecurityAudit> securityAudit,
                                                ObjectProvider<ConsentBanner> consentBanner,
-                                               ObjectProvider<SessionControls> sessionControls) throws Exception {
+                                               ObjectProvider<SessionControls> sessionControls,
+                                               Environment environment) throws Exception {
         log.warn("DEMO MODE IS ON: the application is read-only, and the credentials for {} account(s) "
                         + "are published on the login page. Everything those accounts can see is readable "
                         + "by anyone who can reach this URL.",
@@ -83,7 +85,7 @@ public class DemoSecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/**").denyAll()
                         .requestMatchers(HttpMethod.DELETE, "/**").denyAll()
                         .requestMatchers(LOGIN_URL, "/error", ConsentFilter.CONSENT_URL).permitAll()
-                        .requestMatchers(SecurityConfig.ACTUATOR_HEALTH).permitAll()
+                        .requestMatchers(SecurityConfig.openActuatorPaths(environment)).permitAll()
                         .requestMatchers("/actuator/**").denyAll()
                         // Everything else still needs a signed-in visitor: demo mode publishes the
                         // credentials, it does not remove the sign-in.

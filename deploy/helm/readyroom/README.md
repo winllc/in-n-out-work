@@ -291,6 +291,7 @@ delete it.
 | `checkOutAfterMinutes` | `240` | `APPLICATION_CHECKOUTAFTERMINUTES` |
 | `updateProfileUrl` | `""` | `APPLICATION_UPDATEPROFILEURL` |
 | `logLevel` | `info` | `LOGGING_LEVEL_COM_WINLLC_INNOUTWORK` |
+| `logFormat` | `json` | `json`: ECS JSON log lines (`LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`); `text`: plain lines |
 | `csp.reportOnly` | `false` | `ENS_CSP_REPORT_ONLY`: report the Content-Security-Policy instead of enforcing it |
 | `consentBanner.enabled` | `false` | `ENS_CONSENT_BANNER_ENABLED`: the DoD notice-and-consent banner before any sign-in |
 | `consentBanner.title`, `.text` | `""` | `ENS_CONSENT_BANNER_TITLE`, `_TEXT`; empty: the standard DoD title and text |
@@ -352,7 +353,11 @@ delete it.
 | `networkPolicy.ingressFrom` | `[]` | Peers allowed to port 8181; empty: anyone |
 | `networkPolicy.egress.allowAll` | `false` | Else DNS, plus the database, LDAP, SMTP and audit ports to `cidrs` |
 | `networkPolicy.egress.cidrs`, `.extraPorts` | `[0.0.0.0/0]`, `[]` | |
-| `probes.startup`, `.liveness`, `.readiness` | startup up to 10 min | Actuator `/actuator/health/liveness` and `/readiness` |
+| `metrics.enabled` | `true` | `MANAGEMENT_SERVER_PORT`: actuator on a port of its own (plain HTTP) with `/actuator/prometheus` and the probes, open without sign-in; Service port `metrics` |
+| `metrics.port` | `9090` | |
+| `metrics.allowFrom` | `[]` | NetworkPolicy peers admitted to the metrics port (with `networkPolicy.enabled`) |
+| `metrics.serviceMonitor.enabled`, `.interval`, `.scrapeTimeout`, `.labels` | `false`, `30s`, `""`, `{}` | A Prometheus Operator `ServiceMonitor` |
+| `probes.startup`, `.liveness`, `.readiness` | startup up to 10 min | Actuator `/actuator/health/liveness` and `/readiness`, on the metrics port when `metrics.enabled` |
 | `extraEnv`, `extraEnvFrom` | `[]` | Any other ReadyRoom setting |
 | `extraVolumes`, `extraVolumeMounts` | `[]` | |
 | `tests.enabled` | `true` | The `helm test` pod |

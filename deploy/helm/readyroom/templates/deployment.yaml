@@ -92,6 +92,11 @@ spec:
             - name: {{ include "readyroom.portName" . }}
               containerPort: 8181
               protocol: TCP
+            {{- if $v.metrics.enabled }}
+            - name: metrics
+              containerPort: {{ $v.metrics.port }}
+              protocol: TCP
+            {{- end }}
           envFrom:
             - configMapRef:
                 name: {{ include "readyroom.fullname" . }}
@@ -123,20 +128,20 @@ spec:
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: {{ include "readyroom.portName" . }}
-              scheme: {{ include "readyroom.scheme" . }}
+              port: {{ include "readyroom.probePort" . }}
+              scheme: {{ include "readyroom.probeScheme" . }}
             {{- toYaml $v.probes.startup | nindent 12 }}
           livenessProbe:
             httpGet:
               path: /actuator/health/liveness
-              port: {{ include "readyroom.portName" . }}
-              scheme: {{ include "readyroom.scheme" . }}
+              port: {{ include "readyroom.probePort" . }}
+              scheme: {{ include "readyroom.probeScheme" . }}
             {{- toYaml $v.probes.liveness | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /actuator/health/readiness
-              port: {{ include "readyroom.portName" . }}
-              scheme: {{ include "readyroom.scheme" . }}
+              port: {{ include "readyroom.probePort" . }}
+              scheme: {{ include "readyroom.probeScheme" . }}
             {{- toYaml $v.probes.readiness | nindent 12 }}
           securityContext:
             {{- include "readyroom.containerSecurityContext" . | nindent 12 }}

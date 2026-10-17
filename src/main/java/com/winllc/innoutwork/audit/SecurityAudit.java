@@ -3,6 +3,7 @@ package com.winllc.innoutwork.audit;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import com.winllc.innoutwork.metrics.EnsMetrics;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.AuthenticationServiceException;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -52,6 +53,7 @@ public class SecurityAudit {
 
     @EventListener
     public void signedIn(AuthenticationSuccessEvent event) {
+        EnsMetrics.authAttempt(method(event.getAuthentication()), true);
         HttpServletRequest request = AuditRequestInfo.request();
         if (request == null || isClientApi(request) || isPullApi(request)) {
             return;
@@ -71,6 +73,7 @@ public class SecurityAudit {
     public void signInFailed(AbstractAuthenticationFailureEvent event) {
         HttpServletRequest request = AuditRequestInfo.request();
         Authentication attempt = event.getAuthentication();
+        EnsMetrics.authAttempt(method(attempt), false);
         String username = attempt != null ? attempt.getName() : null;
         if (attempt instanceof KerberosServiceRequestToken) {
             username = null; // the ticket, not a name; never recorded
@@ -109,6 +112,7 @@ public class SecurityAudit {
 
     /** The Windows client's API refused for want of any sign-in (no certificate): a failure, collapsed. */
     void clientApiWithoutCredentials(HttpServletRequest request) {
+        EnsMetrics.authAttempt("x509", false);
         AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
                 .failure("no credentials")
                 .actor(AuditEntry.Actor.anonymous(null))
@@ -120,6 +124,7 @@ public class SecurityAudit {
 
     /** A pull-API request with a wrong or revoked token: a failed sign-in, collapsed per source. */
     void apiTokenRefused(HttpServletRequest request) {
+        EnsMetrics.authAttempt("api-token", false);
         AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
                 .failure("invalid or revoked token")
                 .actor(AuditEntry.Actor.anonymous(null))
@@ -131,6 +136,7 @@ public class SecurityAudit {
 
     /** The logoff call identifies the user by the session id cached at logon; an unknown one is a failure. */
     public void unknownClientSession(HttpServletRequest request) {
+        EnsMetrics.authAttempt("session-id", false);
         AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
                 .failure("unknown session")
                 .actor(AuditEntry.Actor.anonymous(null))

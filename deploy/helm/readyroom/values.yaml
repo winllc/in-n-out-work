@@ -104,6 +104,9 @@ checkOutAfterMinutes: 240
 updateProfileUrl: ""
 # Application log level (LOGGING_LEVEL_COM_WINLLC_INNOUTWORK): info, or debug when diagnosing.
 logLevel: info
+# json: one JSON object per log line, Elastic Common Schema (LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs), for a log
+# collector. text: the usual readable lines. The audit lines (ENS_AUDIT_STDOUT) are raw JSON either way.
+logFormat: json
 
 # Content-Security-Policy-Report-Only instead of Content-Security-Policy (ENS_CSP_REPORT_ONLY): browsers
 # report what the policy would block but do not block it. An escape hatch for a page the policy breaks.
@@ -442,7 +445,31 @@ networkPolicy:
     extraPorts: []
 
 # ---------------------------------------------------------------------------------------------------
-# Probes (Spring Boot actuator; HTTPS when tls.enabled)
+# Metrics (Prometheus)
+# ---------------------------------------------------------------------------------------------------
+
+metrics:
+  # Actuator on a port of its own (MANAGEMENT_SERVER_PORT, plain HTTP): Prometheus metrics at
+  # /actuator/prometheus and the health probes, both open without sign-in. Added to the Service as port
+  # "metrics", for Prometheus inside the cluster; the ingress and route never publish it. The probes use it.
+  enabled: true
+  port: 9090
+  # NetworkPolicy peers allowed to the metrics port (with networkPolicy.enabled), e.g. Prometheus's namespace:
+  #  - namespaceSelector:
+  #      matchLabels:
+  #        kubernetes.io/metadata.name: monitoring
+  allowFrom: []
+  # A monitoring.coreos.com/v1 ServiceMonitor for the Prometheus Operator.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: ""
+    # Extra labels, e.g. the one your Prometheus selects ServiceMonitors by (release: prometheus).
+    labels: {}
+
+# ---------------------------------------------------------------------------------------------------
+# Probes (Spring Boot actuator; on the metrics port when metrics.enabled, else ReadyRoom's own port, HTTPS
+# when tls.enabled)
 # ---------------------------------------------------------------------------------------------------
 
 probes:

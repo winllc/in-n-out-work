@@ -60,7 +60,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "application.inactive-cron.initial-delay=3600000"
 })
 @AutoConfigureMockMvc
-class AuditApplicationContextTest {
+public class AuditApplicationContextTest {
 
     /**
      * {@link InOutWorkApplication}'s configuration, scanning the main classes only: the test classes share its
@@ -74,11 +74,11 @@ class AuditApplicationContextTest {
     @EnableJpaRepositories(basePackages = {"com.winllc.innoutwork.repository", "com.winllc.innoutwork.audit"})
     @EnableScheduling
     @ConfigurationPropertiesScan("com.winllc.innoutwork.config")
-    static class Application {
+    public static class Application {
     }
 
     /** Excludes test classes and the application class itself (whose own scan is unfiltered). */
-    static class MainClassesOnly implements TypeFilter {
+    public static class MainClassesOnly implements TypeFilter {
         @Override
         public boolean match(MetadataReader reader, MetadataReaderFactory factory) throws IOException {
             String location = reader.getResource().getURL().toString();
@@ -103,7 +103,7 @@ class AuditApplicationContextTest {
     @TestBean(name = "licenseManager")
     LicenseManager licenseManager;
 
-    static LicenseManager licenseManager() {
+    public static LicenseManager licenseManager() {
         try {
             Path dir = Files.createTempDirectory("readyroom-audit-app");
             dir.toFile().deleteOnExit();

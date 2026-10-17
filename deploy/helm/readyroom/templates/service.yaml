@@ -29,6 +29,13 @@ spec:
       {{- if and (has $s.type (list "LoadBalancer" "NodePort")) $s.nodePort }}
       nodePort: {{ $s.nodePort }}
       {{- end }}
+    {{- if .Values.metrics.enabled }}
+    # Prometheus and the probes; for the cluster only (the ingress and route use the port above).
+    - name: metrics
+      port: {{ .Values.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}
   selector:
     {{- include "readyroom.selectorLabels" . | nindent 4 }}
     app.kubernetes.io/component: app

@@ -32,7 +32,8 @@ public class ConsentFilter extends OncePerRequestFilter {
     /** Reachable before acknowledgement, without signing in. */
     private static final List<String> OPEN = List.of(CONSENT_URL, "/error", "/favicon.ico");
     /** Not browser sessions: exempt altogether. */
-    private static final List<String> MACHINE = List.of("/api/check/", "/api/audit/", "/actuator/health");
+    private static final List<String> MACHINE = List.of("/api/check/", "/api/audit/", "/actuator/health",
+            "/actuator/prometheus");
 
     static final String CERTIFICATE_ATTRIBUTE = "jakarta.servlet.request.X509Certificate";
 

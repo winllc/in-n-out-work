@@ -127,7 +127,8 @@ on `/consent`. Before that, pages redirect to the banner, browser API calls get 
 and audited as `auth.consent-acknowledged`; signing out, or the session ending, means agreeing again.
 
 Machine endpoints are not browser sessions and are exempt: the Windows client's API (`/api/check/**`), the
-audit pull API (`/api/audit/events`, bearer tokens) and `/actuator/health`.
+audit pull API (`/api/audit/events`, bearer tokens), `/actuator/health` and, on the management port,
+`/actuator/prometheus`.
 
 | Variable | Default | Purpose |
 |---|---|---|
@@ -746,6 +747,43 @@ For an existing database, whose tables the application's account created and own
 `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO readyroom;` and
 `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO readyroom;`. The Helm chart's values are
 `database.migration.username` and `database.migration.password` (or `.existingSecret`).
+
+## Monitoring and logs
+
+**Health.** `/actuator/health` is open to anyone with the status only; administrators also see each
+component. The Kubernetes probes use its groups:
+
+| Path | Includes |
+|---|---|
+| `/actuator/health/liveness` | ReadyRoom's own state only, so an outage elsewhere never restarts it |
+| `/actuator/health/readiness` | Also the database (`db`), the directory (`ldap`) and whether the audit trail can be written (`auditStore`); the mail server is in neither |
+
+**Metrics.** Prometheus metrics are exposed only on a separate management port. Set
+`MANAGEMENT_SERVER_PORT` (Spring Boot's own setting; unset by default, and then no metrics are exposed at
+all): actuator then moves to that port, plain HTTP, where `/actuator/health` and `/actuator/prometheus`
+are open without signing in. Keep that port for the cluster's monitoring: never publish it through an
+ingress, route or the host. ReadyRoom's own port then has no actuator endpoints, so point health checks at
+the management port (the image's `HEALTHCHECK` does). The Helm chart does all this by default
+(`metrics.enabled`, port 9090, with an optional `ServiceMonitor`).
+
+| Metric | Type | |
+|---|---|---|
+| `ens_license_mode{mode}` | gauge | 1 for the license mode in effect (`full`, `read_only`, `unlicensed`), 0 for the others |
+| `ens_license_days_remaining` | gauge | Days until the license (or its grace period) ends; no value for a perpetual license |
+| `ens_audit_events_total{category,outcome}` | counter | Audit events stored |
+| `ens_audit_forward_failures_total{output}` | counter | Failed deliveries to an audit output (`splunk`, `syslog`) |
+| `ens_auth_attempts_total{method,outcome}` | counter | Sign-ins by method (`ldap`, `x509`, `sso`, `api-token`, `session-id`) and outcome (`success`, `failure`), the Windows client's included |
+| `ens_readyroom_checkins_total{action}` | counter | The Windows client's events recorded (`in`, `lock`, `unlock`, `out`) |
+| `ens_readyroom_people_in` | gauge | People whose latest event today is a check-in or unlock (refreshed at most once a minute) |
+| `ens_readyroom_alerts_sent_total` | counter | Absence alert e-mails sent |
+| `ens_readyroom_logoffs_refused_total{reason}` | counter | Logoffs refused: `unknown_session`, `rate_limited` |
+
+Spring Boot's own JVM, HTTP, database pool and Tomcat metrics are there too, tagged `application="readyroom"`.
+
+**Logs.** `LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs` writes each log line as one JSON object (Elastic Common
+Schema; `logstash` and `gelf` also work) for a log collector; unset, lines are plain text. The Helm chart's
+`logFormat` is `json` by default. The audit lines on stdout (`ENS_AUDIT_STDOUT`) are raw `ens-audit/1`
+JSON either way.
 
 ## Performance and tuning
 

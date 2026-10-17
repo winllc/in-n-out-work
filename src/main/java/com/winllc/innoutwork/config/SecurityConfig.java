@@ -12,6 +12,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
 import org.springframework.ldap.core.DirContextAdapter;
 import org.springframework.ldap.core.DirContextOperations;
@@ -53,6 +54,19 @@ public class SecurityConfig {
     /** Actuator's health endpoint and its groups (/liveness, /readiness): the only actuator paths open to anyone. */
     public static final String[] ACTUATOR_HEALTH = {"/actuator/health", "/actuator/health/**"};
 
+    /**
+     * Prometheus metrics: exposed only on a separate management port (ManagementPortExposure), where they are read
+     * without signing in. The application's own port has no such endpoint.
+     */
+    public static final String PROMETHEUS = "/actuator/prometheus";
+
+    /** The management port's paths open to anyone; just health when there is no separate port. */
+    static String[] openActuatorPaths(Environment environment) {
+        return ManagementPortExposure.separateManagementPort(environment)
+                ? new String[]{"/actuator/health", "/actuator/health/**", PROMETHEUS}
+                : ACTUATOR_HEALTH;
+    }
+
 
     /**
      * The normal chain. Absent while demo mode is on, where {@link DemoSecurityConfig} defines the
@@ -65,7 +79,8 @@ public class SecurityConfig {
                                                    LdapAuthenticationProvider ldapAuthenticationProvider,
                                                    ObjectProvider<SecurityAudit> securityAudit,
                                                    ObjectProvider<ConsentBanner> consentBanner,
-                                                   ObjectProvider<SessionControls> sessionControls) throws Exception {
+                                                   ObjectProvider<SessionControls> sessionControls,
+                                                   Environment environment) throws Exception {
         // Preferred: HTTPS with a client certificate (X.509).
         configureX509(http, appUserDetailsService);
         // The notice-and-consent banner before any sign-in, and the session lifetimes after it.
@@ -77,7 +92,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         // Health, for the container healthcheck and the Kubernetes probes, is all application.yml
                         // exposes. Anything an operator exposes besides (metrics, env) needs ADMIN.
-                        .requestMatchers(ACTUATOR_HEALTH).permitAll()
+                        .requestMatchers(openActuatorPaths(environment)).permitAll()
                         .requestMatchers("/actuator/**").hasAuthority(UserRoleEnum.ADMIN.name())
                         .requestMatchers("/api/check/out").permitAll()
                         .requestMatchers("/login", "/error", ConsentFilter.CONSENT_URL).permitAll()

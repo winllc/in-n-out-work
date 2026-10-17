@@ -37,6 +37,8 @@ server:
         secure: ${ENS_COOKIE_SECURE:${SESSION_COOKIE_SECURE:${SSL_ENABLED:false}}}
 
 logging:
+  # Structured JSON logs: LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs (Elastic Common Schema; logstash and gelf also
+  # work). Unset: the usual text lines. The audit lines (logger ens.audit) are raw JSON either way.
   level:
     root: info
     # Application logging. INFO covers state changes: check-in/out records written,
@@ -174,10 +176,32 @@ management:
   endpoints:
     web:
       exposure:
-        # Health only, which anyone may read (status only, no details): the container healthcheck and the
-        # Kubernetes probes (/actuator/health/liveness, /readiness) use it. env and metrics expose the
+        # Health only, which anyone may read (status only; details for ADMIN): the container healthcheck and
+        # the Kubernetes probes (/actuator/health/liveness, /readiness) use it. env and metrics expose the
         # configuration and the runtime; anything added here needs an ADMIN sign-in (SecurityConfig).
+        # With MANAGEMENT_SERVER_PORT set, actuator moves to that port and also exposes prometheus there
+        # (config.ManagementPortExposure), both open without sign-in: keep that port off any ingress or route.
         include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+      show-components: when-authorized
+      roles: ADMIN
+      group:
+        # Liveness is the application's own state only: a database or directory outage must not restart it.
+        # Readiness adds what ReadyRoom cannot serve without. The mail server is in neither.
+        readiness:
+          include: readinessState, db, ldap, auditStore
+  server:
+    # The management port, when set, is plain HTTP for the probes and Prometheus inside the cluster, even
+    # with SSL_ENABLED on the application's port.
+    ssl:
+      enabled: false
+  metrics:
+    tags:
+      application: readyroom
 application:
   # Read-only demo. Visitors still sign in; what it changes is that nothing can be written and that
   # the accounts listed under demo.accounts are published on the login page for visitors to pick a

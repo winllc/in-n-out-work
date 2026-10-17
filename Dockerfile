@@ -84,9 +84,10 @@ EXPOSE 8181
 ENV JAVA_OPTS="-XX:MaxRAMPercentage=75.0"
 
 # /actuator/health is open to unauthenticated callers (the rest of /actuator is not). Plain HTTP by default;
-# with SSL_ENABLED=true the same port speaks TLS, hence the second try.
+# with SSL_ENABLED=true the same port speaks TLS, hence the second try. With MANAGEMENT_SERVER_PORT set,
+# actuator is on that port instead, always plain HTTP.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
-    CMD curl -fsS -o /dev/null "http://127.0.0.1:${SERVER_PORT:-8181}/actuator/health" \
+    CMD curl -fsS -o /dev/null "http://127.0.0.1:${MANAGEMENT_SERVER_PORT:-${SERVER_PORT:-8181}}/actuator/health" \
      || curl -kfsS -o /dev/null "https://127.0.0.1:${SERVER_PORT:-8181}/actuator/health" \
      || exit 1
 

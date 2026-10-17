@@ -1,0 +1,27 @@
+# Prometheus Operator: a ServiceMonitor for the metrics port, admitted by the NetworkPolicy from the
+# monitoring namespace only; plain-text logs.
+database:
+  host: postgres.example.internal
+  password: example-db-password
+ldap:
+  url: ldaps://ldap.example.internal:636
+  bindDn: CN=readyroom-svc,OU=Service Accounts,DC=example,DC=com
+  bindPassword: example-ldap-password
+  userBaseDn: DC=example,DC=com
+superUserDns:
+  - CN=Jane Admin,OU=Users,DC=example,DC=com
+smtp:
+  host: smtp.example.internal
+logFormat: text
+metrics:
+  port: 9100
+  allowFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+  serviceMonitor:
+    enabled: true
+    labels:
+      release: prometheus
+networkPolicy:
+  enabled: true

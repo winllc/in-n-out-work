@@ -45,6 +45,8 @@ dependencies {
 
     // --- Actuator for monitoring ---
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    // /actuator/prometheus, on the management port only (config.ManagementPortExposure).
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
 
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 

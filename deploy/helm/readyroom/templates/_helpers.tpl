@@ -207,3 +207,12 @@ true
 {{- define "readyroom.portName" -}}
 {{- ternary "https" "http" .Values.tls.enabled -}}
 {{- end -}}
+
+{{/* Where the probes go: the metrics port (plain HTTP) when metrics.enabled, else ReadyRoom's own port. */}}
+{{- define "readyroom.probePort" -}}
+{{- if .Values.metrics.enabled -}}metrics{{- else -}}{{ include "readyroom.portName" . }}{{- end -}}
+{{- end -}}
+
+{{- define "readyroom.probeScheme" -}}
+{{- if .Values.metrics.enabled -}}HTTP{{- else -}}{{ include "readyroom.scheme" . }}{{- end -}}
+{{- end -}}

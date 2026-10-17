@@ -179,6 +179,13 @@ data:
   APPLICATION_UPDATEPROFILEURL: {{ . | quote }}
   {{- end }}
   LOGGING_LEVEL_COM_WINLLC_INNOUTWORK: {{ $v.logLevel | quote }}
+  {{- if eq $v.logFormat "json" }}
+  LOGGING_STRUCTURED_FORMAT_CONSOLE: ecs
+  {{- end }}
+  {{- if $v.metrics.enabled }}
+  # Actuator (probes and /actuator/prometheus) on its own plain-HTTP port, open without sign-in.
+  MANAGEMENT_SERVER_PORT: {{ $v.metrics.port | quote }}
+  {{- end }}
 {{- if and $v.windowsAuth.enabled $v.windowsAuth.krb5Conf (not $v.windowsAuth.krb5ConfExistingConfigMap) }}
 ---
 apiVersion: v1

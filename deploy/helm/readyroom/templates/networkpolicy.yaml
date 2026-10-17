@@ -38,6 +38,14 @@ spec:
       from:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+    {{- if and $v.metrics.enabled $v.metrics.allowFrom }}
+    # Prometheus.
+    - ports:
+        - port: {{ $v.metrics.port }}
+          protocol: TCP
+      from:
+        {{- toYaml $v.metrics.allowFrom | nindent 8 }}
+    {{- end }}
   egress:
     {{- if $np.egress.allowAll }}
     - {}

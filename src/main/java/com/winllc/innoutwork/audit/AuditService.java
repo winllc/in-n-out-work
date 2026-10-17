@@ -6,6 +6,7 @@ import jakarta.annotation.PostConstruct;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.LockModeType;
+import com.winllc.innoutwork.metrics.EnsMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -287,11 +288,12 @@ public class AuditService implements AuditLog {
         head.setLastHash(hash);
         em.flush();
 
-        afterCommit(line);
+        afterCommit(line, event.category(), event.outcome());
     }
 
-    private void afterCommit(String line) {
+    private void afterCommit(String line, String category, String outcome) {
         Runnable emit = () -> {
+            EnsMetrics.auditEvent(category, outcome);
             try {
                 AUDIT_LINES.info(line);
             } catch (RuntimeException e) {

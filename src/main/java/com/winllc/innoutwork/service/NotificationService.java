@@ -2,6 +2,7 @@ package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.audit.AuditEntry;
 import com.winllc.innoutwork.audit.AuditLog;
+import com.winllc.innoutwork.metrics.EnsMetrics;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import com.winllc.innoutwork.config.ApplicationProperties;
@@ -218,6 +219,7 @@ public class NotificationService {
                 helper.setText(htmlBody, true);
 
                 mailSender.send(message);
+                EnsMetrics.alertSent();
                 log.info("Notification {} about {} sent to {}",
                         notification.getId(), notification.getAboutUserDn(), email);
             }catch (Exception e) {
