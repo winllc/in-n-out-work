@@ -168,7 +168,7 @@
         </div>
     </div>
 
-    <script>
+    <script th:attr="nonce=${cspNonce}">
         document.getElementById("copy-installation-id").addEventListener("click", function () {
             const field = document.getElementById("installation-id");
             field.select();

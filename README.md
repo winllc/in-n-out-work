@@ -88,7 +88,34 @@ Every other post, put and delete needs a CSRF token: forms built with `th:action
 carry it, and `layout.html` adds it to the pages' `fetch()` calls from its `_csrf`
 meta tags. The Windows client's `/api/check/**` is exempt. The session cookie is
 `SameSite=Lax` and `HttpOnly`, and `Secure` with `SSL_ENABLED=true` or
-`SESSION_COOKIE_SECURE=true` (for a proxy that terminates TLS).
+`ENS_COOKIE_SECURE=true` (for a proxy that terminates TLS; `SESSION_COOKIE_SECURE`
+is the older name and still works).
+
+### Browser security headers
+
+Every response carries (`web.SecurityHeadersFilter`):
+
+| Header | Value |
+|---|---|
+| `Content-Security-Policy` | `default-src 'self'; script-src 'self' 'nonce-…'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'` |
+| `Strict-Transport-Security` | `max-age=31536000; includeSubDomains`, on HTTPS requests only |
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=(), payment=()` |
+
+Scripts run only from ReadyRoom itself or inline with the request's nonce: templates
+mark each inline `<script>` with `th:attr="nonce=${cspNonce}"`, and inline event
+handlers (`onclick=` and the like) are not used; `static/js/behaviours.js` provides
+`data-confirm` on forms and `data-hide-on-error` on images instead.
+`ContentSecurityPolicyTemplatesTest` fails the build on a template that breaks
+either rule.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_CSP_REPORT_ONLY` | `false` | `true` sends `Content-Security-Policy-Report-Only` instead: browsers report what the policy would block but do not block it. An escape hatch for a page the policy breaks; warned at startup. |
+| `ENS_COOKIE_SECURE` | `false` | Always mark the session cookie `Secure` (it is anyway with `SSL_ENABLED=true`) |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | (none) | `framework` behind a proxy that terminates TLS: ReadyRoom then takes the scheme, host and client address from `X-Forwarded-*`, so it knows a request was HTTPS. Only when every request comes through that proxy. The Helm chart sets it, and `ENS_COOKIE_SECURE=true`, whenever an ingress or route terminates TLS. |
 
 ### Roles
 

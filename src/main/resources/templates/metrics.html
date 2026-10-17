@@ -232,7 +232,7 @@
         </div>
     </div>
 
-    <script th:inline="javascript">
+    <script th:inline="javascript" th:attr="nonce=${cspNonce}">
 
         var dataString = /*[[${totalLoginChartData}]]*/ {};
         var dataData = JSON.parse(dataString);

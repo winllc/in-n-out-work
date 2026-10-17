@@ -25,7 +25,7 @@
     </div>
 </div>
 
-<script>
+<script th:attr="nonce=${cspNonce}">
     const table = new Tabulator("#record-table", {
         ajaxURL: "/api/check/records",
         ajaxParams: { page: 0, size: 10 },

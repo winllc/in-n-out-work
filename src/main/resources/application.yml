@@ -28,9 +28,10 @@ server:
         # sign-in page instead of the notification.
         same-site: lax
         # Secure whenever ReadyRoom serves TLS itself; Tomcat also marks it Secure on any request it sees as
-        # HTTPS. Behind a proxy that terminates TLS, set SESSION_COOKIE_SECURE=true unless ReadyRoom reads the
-        # proxy's X-Forwarded-Proto (server.forward-headers-strategy).
-        secure: ${SESSION_COOKIE_SECURE:${SSL_ENABLED:false}}
+        # HTTPS. Behind a proxy that terminates TLS, set ENS_COOKIE_SECURE=true, or have ReadyRoom read the
+        # proxy's X-Forwarded-Proto (SERVER_FORWARD_HEADERS_STRATEGY=framework). SESSION_COOKIE_SECURE is the
+        # older name for ENS_COOKIE_SECURE and still works.
+        secure: ${ENS_COOKIE_SECURE:${SESSION_COOKIE_SECURE:${SSL_ENABLED:false}}}
 
 logging:
   level:
@@ -127,6 +128,10 @@ spring:
 # The audit trail (ens-audit/1): every option comes from an ENS_AUDIT_* environment variable. See
 # "Audit logging" in the README. The store (the audit_events table) is always on; these are its outputs.
 ens:
+  # Content-Security-Policy-Report-Only instead of Content-Security-Policy: reported on, not enforced. An
+  # escape hatch for a page the policy breaks (web.SecurityHeadersFilter).
+  csp:
+    report-only: ${ENS_CSP_REPORT_ONLY:false}
   audit:
     # Each event as one raw JSON line on stdout, logger ens.audit (Docker logs, Splunk UF).
     stdout: ${ENS_AUDIT_STDOUT:true}

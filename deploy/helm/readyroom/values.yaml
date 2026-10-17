@@ -105,6 +105,11 @@ updateProfileUrl: ""
 # Application log level (LOGGING_LEVEL_COM_WINLLC_INNOUTWORK): info, or debug when diagnosing.
 logLevel: info
 
+# Content-Security-Policy-Report-Only instead of Content-Security-Policy (ENS_CSP_REPORT_ONLY): browsers
+# report what the policy would block but do not block it. An escape hatch for a page the policy breaks.
+csp:
+  reportOnly: false
+
 # Users always treated as administrators, by full DN (APPLICATION_SUPERUSERDNS_n). At least one, or
 # nobody can administer ReadyRoom or reach the license screen.
 superUserDns: []

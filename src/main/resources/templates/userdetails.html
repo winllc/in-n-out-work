@@ -150,7 +150,7 @@
     </div>
 
 
-    <script  th:inline="javascript">
+    <script  th:inline="javascript" th:attr="nonce=${cspNonce}">
 
         const userDn = /*[[${user.dn}]]*/ "test";
 

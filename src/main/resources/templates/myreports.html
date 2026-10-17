@@ -206,7 +206,7 @@
         </div>
     </div>
 
-    <script th:inline="javascript" th:if="${team != null and !team.daily().isEmpty()}">
+    <script th:inline="javascript" th:if="${team != null and !team.daily().isEmpty()}" th:attr="nonce=${cspNonce}">
         (function () {
             const dates = /*[[${team.dailyDates()}]]*/ [];
             const series = {
@@ -260,7 +260,7 @@
         })();
     </script>
 
-    <script th:inline="javascript">
+    <script th:inline="javascript" th:attr="nonce=${cspNonce}">
         // Status colours come from Tabler's badge palette so the table matches the rest of the UI.
         const STATUS_BADGES = {
             IN: "bg-green-lt",

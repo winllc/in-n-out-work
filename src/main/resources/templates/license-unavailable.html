@@ -12,13 +12,14 @@
     <link rel="stylesheet" th:href="@{/libs/tabler/tabler.min.css}"/>
     <link rel="stylesheet" th:href="@{/css/icons/tabler-icons/tabler-icons.css}"/>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/behaviours.js}"></script>
 </head>
 <body class="d-flex flex-column no-classification">
 <div class="page page-center">
     <div class="container container-tight py-4">
         <div class="text-center mb-4">
             <img th:src="@{/images/logos/readyroom_logo_1.svg}" alt="ReadyRoom"
-                 style="max-width:140px;height:auto;" onerror="this.style.display='none'"/>
+                 style="max-width:140px;height:auto;" data-hide-on-error/>
         </div>
         <div class="card card-md">
             <div class="card-body text-center" id="license-unavailable">

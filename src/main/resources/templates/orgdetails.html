@@ -101,7 +101,7 @@
     -->
 
 
-    <script th:inline="javascript">
+    <script th:inline="javascript" th:attr="nonce=${cspNonce}">
         const groupName = /*[[${group}]]*/ "test";
         const orgName = /*[[${orgName}]]*/ "test";
 

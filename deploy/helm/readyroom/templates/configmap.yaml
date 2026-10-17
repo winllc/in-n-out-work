@@ -13,6 +13,15 @@ data:
   ENS_LICENSE_FILE: /var/lib/ens/readyroom/license.lic
   # The Kubernetes probes use /actuator/health/liveness and /readiness.
   MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  {{- if include "readyroom.edgeTls" . }}
+  # TLS ends at the ingress or route: take the scheme and client address from its X-Forwarded-* headers
+  # (secure requests, HSTS, redirects) and always mark the session cookie Secure.
+  SERVER_FORWARD_HEADERS_STRATEGY: framework
+  ENS_COOKIE_SECURE: "true"
+  {{- end }}
+  {{- with $v.csp.reportOnly }}
+  ENS_CSP_REPORT_ONLY: "true"
+  {{- end }}
   {{- with include "readyroom.publicUrl" . }}
   APPLICATION_BASE_URL: {{ . | quote }}
   {{- end }}

@@ -74,7 +74,7 @@
         </div>
     </div>
 
-<script>
+<script th:attr="nonce=${cspNonce}">
     (function () {
         // Shared with the org chart; the extra predicate is this page's favourites switch.
         const favoritesOnly = document.getElementById("favorites-only");

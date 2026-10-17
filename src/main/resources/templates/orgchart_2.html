@@ -55,7 +55,7 @@
         </div>
     </div>
 
-    <script th:inline="javascript" type="module">
+    <script th:inline="javascript" type="module" th:attr="nonce=${cspNonce}">
         async function getServerSideTreeData() {
             try {
                 // 1. Fetch flat data from your API (e.g., Spring Boot or Node.js)

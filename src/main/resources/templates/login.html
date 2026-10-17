@@ -7,13 +7,14 @@
     <link rel="stylesheet" th:href="@{/libs/tabler/tabler.min.css}"/>
     <link rel="stylesheet" th:href="@{/css/icons/tabler-icons/tabler-icons.css}"/>
     <link rel="stylesheet" th:href="@{/css/app.css}"/>
+    <script th:src="@{/js/behaviours.js}"></script>
 </head>
 <body class="d-flex flex-column">
 <div class="page page-center">
     <div class="container container-tight py-4">
         <div class="text-center mb-4">
             <img th:src="@{/images/logos/readyroom_logo_1.svg}" alt="ReadyRoom"
-                 style="max-width:140px;height:auto;" onerror="this.style.display='none'"/>
+                 style="max-width:140px;height:auto;" data-hide-on-error/>
         </div>
         <div class="card card-md">
             <div class="card-body">
@@ -66,7 +67,7 @@
                     <button th:each="account : ${demoAccounts}" type="button"
                             class="list-group-item list-group-item-action px-0 border-0 bg-transparent"
                             th:attr="data-username=${account.username},data-password=${account.password}"
-                            onclick="fillDemoCredentials(this)">
+                            data-demo-account>
                         <div class="d-flex align-items-baseline">
                             <strong class="me-auto" th:text="${account.role}">Role</strong>
                             <code class="ms-2" th:text="${account.username}">user</code>
@@ -86,7 +87,7 @@
     </div>
 </div>
 
-<script th:if="${demoMode == true}">
+<script th:if="${demoMode == true}" th:attr="nonce=${cspNonce}">
     // Fills the form from a clicked row and focuses the button, so signing in stays a deliberate
     // press. Submitting here instead would make a stray click sign someone in as an administrator.
     function fillDemoCredentials(row) {
@@ -94,6 +95,9 @@
         document.getElementById("password").value = row.dataset.password;
         document.querySelector("button[type=submit]").focus();
     }
+    document.querySelectorAll("[data-demo-account]").forEach(function (row) {
+        row.addEventListener("click", function () { fillDemoCredentials(row); });
+    });
 </script>
 </body>
 </html>

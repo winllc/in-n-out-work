@@ -120,7 +120,7 @@
                     </span>
                     <form th:action="@{/app/settings/cache/groups/evictall}" method="post"
                           class="ms-auto"
-                          onsubmit="return confirm('Evict every cached group tree?');">
+                          data-confirm="Evict every cached group tree?">
                         <button type="submit" class="btn btn-outline-danger">
                             <i class="ti ti-trash me-1"></i>Evict All
                         </button>
@@ -182,15 +182,13 @@
                             <td><code th:text="${rule.orgParseRegex}"></code></td>
                             <td>
                                 <div class="btn-list flex-nowrap">
-                                    <button type="button" class="btn btn-sm btn-outline-secondary"
-                                            th:attr="data-id=${rule.id},data-name=${rule.orgName},data-regex=${rule.orgParseRegex}"
-                                            onclick="editOrgParseRule(this)">
+                                    <button type="button" class="btn btn-sm btn-outline-secondary js-edit-org-parse-rule"
+                                            th:attr="data-id=${rule.id},data-name=${rule.orgName},data-regex=${rule.orgParseRegex}">
                                         <i class="ti ti-pencil me-1"></i>Edit
                                     </button>
                                     <form th:action="@{'/app/settings/orgparserules/delete/' + ${rule.id}}"
                                           method="post" class="d-inline"
-                                          onsubmit="return confirm('Delete parse rule for ' + this.dataset.name + '?');"
-                                          th:attr="data-name=${rule.orgName}">
+                                          th:attr="data-confirm=|Delete parse rule for ${rule.orgName}?|">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">
                                             <i class="ti ti-trash me-1"></i>Delete
                                         </button>
@@ -219,7 +217,7 @@
 
     </div>
 
-    <script>
+    <script th:attr="nonce=${cspNonce}">
         // Populate the add/edit form from a table row so the same form updates the record.
         function editOrgParseRule(btn) {
             document.getElementById('id').value = btn.dataset.id;
@@ -227,9 +225,12 @@
             document.getElementById('orgParseRegex').value = btn.dataset.regex;
             document.getElementById('orgName').scrollIntoView({behavior: 'smooth', block: 'center'});
         }
+        document.querySelectorAll('.js-edit-org-parse-rule').forEach(function (btn) {
+            btn.addEventListener('click', function () { editOrgParseRule(btn); });
+        });
     </script>
 
-    <script th:inline="javascript">
+    <script th:inline="javascript" th:attr="nonce=${cspNonce}">
 
         const userDn = /*[[${userDn}]]*/ '';
 

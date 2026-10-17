@@ -291,6 +291,7 @@ delete it.
 | `checkOutAfterMinutes` | `240` | `APPLICATION_CHECKOUTAFTERMINUTES` |
 | `updateProfileUrl` | `""` | `APPLICATION_UPDATEPROFILEURL` |
 | `logLevel` | `info` | `LOGGING_LEVEL_COM_WINLLC_INNOUTWORK` |
+| `csp.reportOnly` | `false` | `ENS_CSP_REPORT_ONLY`: report the Content-Security-Policy instead of enforcing it |
 | `superUserDns` | `[]` | `APPLICATION_SUPERUSERDNS_n`: administrators by DN; at least one |
 | `database.host` | `""` | Required unless embedded |
 | `database.port`, `.name`, `.username` | `5432`, `readyroom`, `readyroom` | |

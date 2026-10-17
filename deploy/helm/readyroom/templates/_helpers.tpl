@@ -187,6 +187,19 @@ key: db-password
 {{- default (printf "%s-license" (include "readyroom.fullname" .)) .Values.persistence.license.existingClaim -}}
 {{- end -}}
 
+{{/*
+"true" when an ingress or route terminates TLS in front of ReadyRoom (edge or re-encrypt): ReadyRoom then reads
+X-Forwarded-Proto (SERVER_FORWARD_HEADERS_STRATEGY=framework) and marks the session cookie Secure itself
+(ENS_COOKIE_SECURE), since the connection it sees may be plain HTTP. Not for ssl-passthrough.
+*/}}
+{{- define "readyroom.edgeTls" -}}
+{{- $ing := .Values.ingress -}}
+{{- $passthrough := eq (toString (index ($ing.annotations | default dict) "nginx.ingress.kubernetes.io/ssl-passthrough")) "true" -}}
+{{- if or (and $ing.enabled (gt (len $ing.tls) 0) (not $passthrough)) (and .Values.route.enabled (has .Values.route.tls.termination (list "edge" "reencrypt"))) -}}
+true
+{{- end -}}
+{{- end -}}
+
 {{- define "readyroom.scheme" -}}
 {{- ternary "HTTPS" "HTTP" .Values.tls.enabled -}}
 {{- end -}}

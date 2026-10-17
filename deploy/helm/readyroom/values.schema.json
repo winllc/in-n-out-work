@@ -134,6 +134,14 @@
         "error"
       ]
     },
+    "csp": {
+      "type": "object",
+      "properties": {
+        "reportOnly": {
+          "type": "boolean"
+        }
+      }
+    },
     "superUserDns": {
       "type": "array",
       "items": {
