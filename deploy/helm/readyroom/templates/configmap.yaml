@@ -44,6 +44,15 @@ data:
   APPLICATION_BASE_URL: {{ . | quote }}
   {{- end }}
 
+  # Status requests, coworker visibility and retention
+  APPLICATION_EVENTS_MAXRANGEDAYS: {{ $v.events.maxRangeDays | quote }}
+  {{- with $v.events.requestStatuses }}
+  APPLICATION_EVENTS_REQUESTSTATUSES: {{ join "," . | quote }}
+  {{- end }}
+  APPLICATION_PRIVACY_COWORKERVISIBILITY: {{ $v.privacy.coworkerVisibility | quote }}
+  APPLICATION_RETENTION_EVENTSDAYS: {{ $v.retention.eventsDays | quote }}
+  APPLICATION_RETENTION_CRON: {{ $v.retention.schedule | quote }}
+
   # Database
   DB_HOST: {{ include "readyroom.dbHost" . | quote }}
   DB_PORT: {{ $v.database.port | quote }}

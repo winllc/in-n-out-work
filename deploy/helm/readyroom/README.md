@@ -334,6 +334,11 @@ delete it.
 | `consentBanner.title`, `.text` | `""` | `ENS_CONSENT_BANNER_TITLE`, `_TEXT`; empty: the standard DoD title and text |
 | `consentBanner.existingConfigMap`, `.existingConfigMapKey` | `""`, `banner.txt` | The text from your ConfigMap (`ENS_CONSENT_BANNER_FILE`); wins over `text` |
 | `session.idleTimeout`, `.adminIdleTimeout`, `.absoluteTimeout`, `.maxPerUser` | `30m`, `""`, `12h`, `0` | `ENS_SESSION_*`; STIG suggests `adminIdleTimeout: 15m`, `maxPerUser: 3` |
+| `events.maxRangeDays` | `366` | `APPLICATION_EVENTS_MAXRANGEDAYS`: the most days one call may set a status or request on |
+| `events.requestStatuses` | `[]` (every status that excuses an absence) | `APPLICATION_EVENTS_REQUESTSTATUSES`: statuses people request and their manager approves |
+| `privacy.coworkerVisibility` | `full` | `APPLICATION_PRIVACY_COWORKERVISIBILITY`: `full`, `status` (in or out only) or `none` |
+| `retention.eventsDays` | `0` | `APPLICATION_RETENTION_EVENTSDAYS`: days to keep check-ins, statuses, requests and alerts (0: forever; else 31 or more), then summarised by month and deleted |
+| `retention.schedule` | `0 17 2 * * *` | `APPLICATION_RETENTION_CRON`: when the purge runs (six-field Spring cron) |
 | `superUserDns` | `[]` | `APPLICATION_SUPERUSERDNS_n`: administrators by DN; at least one |
 | `database.host` | `""` | Required unless embedded |
 | `database.port`, `.name`, `.username` | `5432`, `readyroom`, `readyroom` | |

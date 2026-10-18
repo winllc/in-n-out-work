@@ -190,6 +190,64 @@
         }
       }
     },
+    "events": {
+      "type": "object",
+      "properties": {
+        "maxRangeDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3660
+        },
+        "requestStatuses": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "OUT_OF_OFFICE",
+              "WORK_FROM_HOME",
+              "TDY",
+              "SCHEDULED_LEAVE",
+              "UNSCHEDULED_LEAVE",
+              "ABSENT_EXCUSED",
+              "ABSENT_UNEXCUSED",
+              "ABSENT",
+              "EARLY_LEAVE",
+              "LATE_ARRIVAL"
+            ]
+          }
+        }
+      }
+    },
+    "privacy": {
+      "type": "object",
+      "properties": {
+        "coworkerVisibility": {
+          "type": "string",
+          "enum": [
+            "full",
+            "status",
+            "none"
+          ]
+        }
+      }
+    },
+    "retention": {
+      "type": "object",
+      "properties": {
+        "eventsDays": {
+          "type": "integer",
+          "minimum": 0,
+          "not": {
+            "minimum": 1,
+            "maximum": 30
+          }
+        },
+        "schedule": {
+          "type": "string",
+          "minLength": 11
+        }
+      }
+    },
     "superUserDns": {
       "type": "array",
       "items": {

@@ -134,6 +134,27 @@ session:
   absoluteTimeout: 12h
   maxPerUser: 0
 
+# Calendar statuses (APPLICATION_EVENTS_*). requestStatuses: the statuses people ask for and their manager
+# approves before they count (empty list: the default, every status that excuses an absence:
+# OUT_OF_OFFICE, WORK_FROM_HOME, TDY, SCHEDULED_LEAVE, ABSENT_EXCUSED). maxRangeDays: the most days one call
+# may set a status or request on.
+events:
+  maxRangeDays: 366
+  requestStatuses: []
+
+# What people see of coworkers whose details they may not see (APPLICATION_PRIVACY_COWORKERVISIBILITY):
+# full (presence and the day's status, as before), status (in or out only) or none.
+privacy:
+  coworkerVisibility: full
+
+# How long check-in records, statuses, status requests and absence alerts are kept
+# (APPLICATION_RETENTION_*). 0 keeps them forever (as before); otherwise at least 31. Older ones are
+# summarised by month and deleted on schedule (a six-field Spring cron, server time). Audit events keep
+# their own retention (audit.retentionDays).
+retention:
+  eventsDays: 0
+  schedule: "0 17 2 * * *"
+
 # Users always treated as administrators, by full DN (APPLICATION_SUPERUSERDNS_n). At least one, or
 # nobody can administer ReadyRoom or reach the license screen.
 superUserDns: []
