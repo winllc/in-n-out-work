@@ -1,5 +1,7 @@
 server:
   port: ${SERVER_PORT:8181}
+  # Finish requests in progress before stopping, so a check-in sent as a replica stops is not cut off.
+  shutdown: graceful
   ssl:
     # Off by default so the application starts and is reachable over plain HTTP with no
     # certificate setup.
@@ -24,6 +26,9 @@ server:
       # sessions follow ens.session (ENS_SESSION_IDLE_TIMEOUT, and the administrators' own).
       timeout: ${ENS_SESSION_IDLE_TIMEOUT:30m}
       cookie:
+        # The servlet container's own name, kept now that Spring Session (sessions in the database) sets the cookie,
+        # so proxies, firewalls and monitors that know it need no change.
+        name: JSESSIONID
         http-only: true
         # Lax: the browser leaves the session cookie off another site's posts and scripted requests (the CSRF
         # token refuses those as well), but still sends it when someone follows a link from elsewhere. Strict
@@ -98,9 +103,26 @@ spring:
       "[com.sun.jndi.ldap.read.timeout]": 30000
   task:
     scheduling:
-      # One thread per scheduled job, so a slow run of one does not delay the others.
+      # A thread for each of the jobs that can run long (directory sync, absence alerts, auto check-out, the
+      # retention purges), with room for the short ones (service heartbeat, session clean-up, audit summaries),
+      # so a slow run of one does not delay the others.
       pool:
-        size: 3
+        size: 8
+      # Stopping (a rolling update, a scale-down): a job already running finishes and releases its lock rather than
+      # being interrupted half-way; Kubernetes' grace period (60 seconds in the chart) bounds the wait.
+      shutdown:
+        await-termination: true
+        await-termination-period: 45s
+  # Browser sessions in the database (tables from Flyway V6), shared by every replica; see config.SessionStoreConfig.
+  # The timeout is server.servlet.session.timeout's. Expired sessions are deleted, and idle expiry audited, by
+  # security.SessionExpiry, one replica at a time, instead of Spring Session's own clean-up.
+  session:
+    jdbc:
+      cleanup-cron: "-"
+  lifecycle:
+    # Graceful shutdown: requests already in progress finish before the server stops (the chart waits for the
+    # Service to stop sending new ones first).
+    timeout-per-shutdown-phase: 30s
   jackson:
     time-zone: America/New_York
   #base: dc=winllc,dc=com
@@ -229,6 +251,11 @@ management:
     tags:
       application: readyroom
 application:
+  # Several replicas and outages of the whole service (service.ServiceOutages). After the service was down, people
+  # whose check-in was due after the outage began get this long after it ends to be seen (their next logon or unlock)
+  # before an absence alert goes out: their check-in may have been sent while nothing was running. 0 turns it off.
+  ha:
+    outage-grace: ${APPLICATION_HA_OUTAGEGRACE:30m}
   # Read-only demo. Visitors still sign in; what it changes is that nothing can be written and that
   # the accounts listed under demo.accounts are published on the login page for visitors to pick a
   # role from. Off here, and with no accounts, so nothing is published by default.

@@ -16,6 +16,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -35,8 +37,12 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>
  * Applied by {@link SessionControlFilter} on the first request a session makes signed in, whatever the sign-in
  * was (form, certificate). Idle expiry is the servlet container's own, set per session here; it is noticed
- * when the container destroys the session (this is its listener). Sessions live in this one instance's memory,
- * which is all there is with one replica.
+ * when the container destroys the session (this is its listener).
+ * <p>
+ * Where sessions live in the database (Spring Session JDBC, every replica sharing them), the per-user limit counts
+ * the user's sessions there ({@link #useSessionRepository}), so it holds across replicas, and idle expiry is
+ * noticed and audited by {@link SessionExpiry} as it deletes expired sessions. Without it (tests, a container's own
+ * sessions) both work from this instance's memory as before.
  */
 public class SessionControls implements HttpSessionListener {
 
@@ -52,6 +58,8 @@ public class SessionControls implements HttpSessionListener {
     private final Clock clock;
     /** A user's signed-in sessions, by lower-cased name. */
     private final Map<String, List<HttpSession>> byUser = new ConcurrentHashMap<>();
+    /** The shared session store, when sessions are in the database; null: this instance's memory. */
+    private FindByIndexNameSessionRepository<? extends Session> shared;
 
     public SessionControls(EnsProperties.Session settings, ObjectProvider<AuditLog> audit, Clock clock) {
         this.settings = settings;
@@ -60,6 +68,11 @@ public class SessionControls implements HttpSessionListener {
         log.info("Sessions end after {} idle ({} for administrators), {} after sign-in; {} per user",
                 settings.getIdleTimeout(), settings.effectiveAdminIdleTimeout(), settings.getAbsoluteTimeout(),
                 settings.getMaxPerUser() == 0 ? "no limit" : settings.getMaxPerUser());
+    }
+
+    /** Counts a user's sessions in the shared store instead of this instance's memory. */
+    public void useSessionRepository(FindByIndexNameSessionRepository<? extends Session> repository) {
+        this.shared = repository;
     }
 
     public EnsProperties.Session settings() {
@@ -91,6 +104,10 @@ public class SessionControls implements HttpSessionListener {
 
     /** Remembers the session under its user, ending that user's oldest sessions past the limit. */
     private void register(Authentication auth, HttpSession session) {
+        if (shared != null) {
+            registerShared(auth, session);
+            return;
+        }
         String user = auth.getName().toLowerCase(Locale.ROOT);
         List<HttpSession> over = new ArrayList<>();
         byUser.compute(user, (key, sessions) -> {
@@ -108,6 +125,48 @@ public class SessionControls implements HttpSessionListener {
         for (HttpSession oldest : over) {
             end(oldest, auth, "concurrent", null);
         }
+    }
+
+    /**
+     * The limit against the user's sessions in the shared store, whichever replica they are on: the oldest past it
+     * are deleted, which signs them out everywhere at their next request.
+     */
+    private void registerShared(Authentication auth, HttpSession current) {
+        int max = settings.getMaxPerUser();
+        if (max <= 0) {
+            return;
+        }
+        List<Session> others = new ArrayList<>();
+        for (Session other : shared.findByPrincipalName(auth.getName()).values()) {
+            if (!other.getId().equals(current.getId()) && !other.isExpired()) {
+                others.add(other);
+            }
+        }
+        others.sort(Comparator.comparing(SessionControls::signedInAt));
+        for (int i = 0; i < others.size() + 1 - max; i++) {
+            shared.deleteById(others.get(i).getId());
+            log.info("Ended a session of {}: concurrent", auth.getName());
+            expired(auth, "concurrent", false);
+        }
+    }
+
+    private static Instant signedInAt(Session session) {
+        Object at = session.getAttribute(SIGNED_IN_AT);
+        return at instanceof Instant instant ? instant : session.getCreationTime();
+    }
+
+    /** A signed-in session of {@code user} that the shared store expired for being idle (SessionExpiry). */
+    public void idleExpired(String user) {
+        AuditLog trail = audit.getIfAvailable();
+        if (trail == null) {
+            return;
+        }
+        trail.recordQuietly(AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.session-expired")
+                .actor(new AuditEntry.Actor("user", user, LdapDn.cnOf(user), List.of()))
+                .target("user", user, LdapDn.cnOf(user))
+                .reason("idle")
+                .detail("reason", "idle")
+                .source(null));
     }
 
     private static Instant signedInAt(HttpSession session) {

@@ -14,6 +14,7 @@ import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -93,6 +94,8 @@ public class ApplicationProperties {
     private Privacy privacy = new Privacy();
     @Valid
     private Retention retention = new Retention();
+    @Valid
+    private Ha ha = new Ha();
 
     /**
      * How long check-in and status records are kept (service.RetentionService). Audit events have their own retention
@@ -179,6 +182,20 @@ public class ApplicationProperties {
      * so it usually cannot sign in; it is identified by the session id its logon was answered with instead.
      * See CheckInOutRestService.
      */
+    /**
+     * Running several replicas, and what happens around a time the whole service was down (service.ServiceOutages).
+     */
+    @Data
+    public static class Ha {
+        /**
+         * After an outage of the whole service, during which the Windows client's events were lost: how long people
+         * whose check-in time fell in it or before it have to be seen again (their next logon or unlock checks them
+         * in) before an absence alert is sent. 0 sends alerts as if there had been no outage.
+         */
+        @NotNull
+        private Duration outageGrace = Duration.ofMinutes(30);
+    }
+
     @Data
     public static class Logoff {
         /**

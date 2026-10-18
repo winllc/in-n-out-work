@@ -14,6 +14,17 @@ java {
 
 repositories {
     mavenCentral()
+    // OpenSAML 5, for the SAML service provider, is published only to the Shibboleth Consortium's repository.
+    // Only its own groups are fetched from there; everything else still comes from Maven Central.
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://build.shibboleth.net/maven/releases/' }
+        }
+        filter {
+            includeGroup 'org.opensaml'
+            includeGroupByRegex 'net\\.shibboleth.*'
+        }
+    }
 }
 
 // Security fixes ahead of the Spring Boot release that brings them (the image scan, Trivy, fails on known
@@ -37,6 +48,16 @@ dependencies {
     implementation 'org.springframework.security:spring-security-ldap'
     // Windows (Kerberos) sign-in for the check-in calls; off unless application.windows-auth.enabled.
     implementation 'org.springframework.security:spring-security-kerberos-core'
+    // Single sign-on (ens.sso): an OpenID Connect client and a SAML 2.0 service provider, both off unless
+    // configured. The libraries only, not Boot's starters, so nothing is configured from spring.security.*.
+    implementation 'org.springframework.security:spring-security-oauth2-client'
+    implementation 'org.springframework.security:spring-security-oauth2-jose'
+    implementation 'org.springframework.security:spring-security-saml2-service-provider'
+
+    // --- High availability: sessions in the database, and scheduled jobs that run on one replica at a time ---
+    implementation 'org.springframework.boot:spring-boot-starter-session-jdbc'
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:7.10.1'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1'
 
     // --- LDAP Client ---
     implementation 'org.springframework.boot:spring-boot-starter-data-ldap'

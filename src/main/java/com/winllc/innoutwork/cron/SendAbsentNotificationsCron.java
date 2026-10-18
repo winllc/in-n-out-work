@@ -17,7 +17,10 @@ import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.NotificationRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.model.ServiceOutage;
 import com.winllc.innoutwork.service.NotificationService;
+import com.winllc.innoutwork.service.ServiceOutages;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -66,10 +69,17 @@ public class SendAbsentNotificationsCron {
     private final Clock clock;
 
     private AuditLog audit = AuditLog.NOOP;
+    /** Times the whole service was down; absent in tests that do not need them. */
+    private ServiceOutages outages;
 
     @Autowired(required = false)
     public void setAuditLog(AuditLog audit) {
         this.audit = audit;
+    }
+
+    @Autowired(required = false)
+    public void setServiceOutages(ServiceOutages outages) {
+        this.outages = outages;
     }
 
     @Autowired
@@ -105,8 +115,15 @@ public class SendAbsentNotificationsCron {
 
     // Not @Async: with it the scheduler returned at once, so the fixed delay never waited for a run to
     // finish and a slow run could overlap the next. spring.task.scheduling.pool.size gives each job a thread.
+    // One replica at a time (ShedLock, see config.SchedulerLockConfig): two would both find the same people not yet
+    // alerted and alert them twice. The lock is kept at least 90% of the interval, so with several replicas the job
+    // still runs about once an interval, and held while a run lasts however long; a replica that dies holding it
+    // frees it within an interval.
     @Scheduled(fixedDelayString = "#{@sendAbsentNotificationCronProperties.fixedRate}",
             initialDelayString = "#{@sendAbsentNotificationCronProperties.initialDelay}")
+    @SchedulerLock(name = "SendAbsentNotificationsCron",
+            lockAtLeastFor = "#{@jobLocks.atLeastFor(@sendAbsentNotificationCronProperties.fixedRate)}",
+            lockAtMostFor = "#{@jobLocks.atMostFor(@sendAbsentNotificationCronProperties.fixedRate)}")
     public void sendNotifications() {
         if (!licensedJobs.mayRun(LicensedFeature.ABSENCE_ALERTS, "SendAbsentNotificationsCron")) {
             return;
@@ -149,6 +166,7 @@ public class SendAbsentNotificationsCron {
             }
         }
         Set<String> alreadyAlerted = lowercase(notificationRepository.findDistinctAboutUserDnsBetween(dayStart, dayEnd));
+        List<ServiceOutage> outagesToday = outagesSince(dayStart);
 
         int checkedUsers = 0;
         int sent = 0;
@@ -163,7 +181,7 @@ public class SendAbsentNotificationsCron {
                     continue;
                 }
                 List<UserEventRecord> todaysEvents = statuses.getOrDefault(dn, List.of());
-                if (isAbsent(user, todaysEvents, now)) {
+                if (isAbsent(user, todaysEvents, now, outagesToday)) {
                     createAndSendNotification(user, todaysEvents);
                     alreadyAlerted.add(dn);
                     sent++;
@@ -185,8 +203,9 @@ public class SendAbsentNotificationsCron {
      * Not checked in (the caller has ruled that out), past the expected time plus the grace period, and
      * not covered by an excusable status for today.
      */
-    private boolean isAbsent(UserRecord user, List<UserEventRecord> todaysEvents, ZonedDateTime now) {
-        if (!isPastCheckinWindow(user, todaysEvents, now)) {
+    private boolean isAbsent(UserRecord user, List<UserEventRecord> todaysEvents, ZonedDateTime now,
+                             List<ServiceOutage> outagesToday) {
+        if (!isPastCheckinWindow(user, todaysEvents, now, outagesToday)) {
             return false;
         }
         boolean excused = todaysEvents.stream()
@@ -204,14 +223,38 @@ public class SendAbsentNotificationsCron {
         return ExpectedLogin.of(user, todaysEvents).map(ExpectedLogin::time).orElse(null);
     }
 
-    private boolean isPastCheckinWindow(UserRecord user, List<UserEventRecord> records, ZonedDateTime now) {
+    private boolean isPastCheckinWindow(UserRecord user, List<UserEventRecord> records, ZonedDateTime now,
+                                        List<ServiceOutage> outagesToday) {
         LocalTime expectedLoginTime = expectedLoginTime(user, records);
         if (expectedLoginTime == null) {
             return false;
         }
         ZonedDateTime absentIfAfter = expectedLoginTime.atDate(now.toLocalDate()).atZone(clock.getZone())
                 .plusMinutes(properties.getExtraTimeBeforeAbsentNotificationMinutes());
-        return now.isAfter(absentIfAfter);
+        if (outagesToday.isEmpty()) {
+            return now.isAfter(absentIfAfter);
+        }
+        // The service was down today: a check-in sent then was lost, so wait for the person to be seen again.
+        return now.toInstant().isAfter(ServiceOutages.absentAfter(absentIfAfter.toInstant(), outagesToday,
+                outages.grace()));
+    }
+
+    /**
+     * Outages that matter today: those that ended within the grace period before {@code dayStart} or later. The
+     * heartbeat is recorded first, so an outage that ended just now, as this instance started, is among them.
+     */
+    private List<ServiceOutage> outagesSince(ZonedDateTime dayStart) {
+        if (outages == null) {
+            return List.of();
+        }
+        try {
+            outages.recordBeat();
+            return outages.endedAfter(dayStart.toInstant().minus(outages.grace()));
+        } catch (RuntimeException e) {
+            log.warn("Could not read the service's outages; absence alerts are checked as if there were none: {}",
+                    e.toString());
+            return List.of();
+        }
     }
 
     private static Set<String> lowercase(List<String> dns) {

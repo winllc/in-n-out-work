@@ -8,7 +8,10 @@ import com.winllc.innoutwork.constant.CheckInOutEnum;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.LicensedJobs;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.model.ServiceOutage;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
+import com.winllc.innoutwork.service.ServiceOutages;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -16,6 +19,7 @@ import org.springframework.stereotype.Component;
 
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.List;
 
 @Component
 public class MarkInactiveCron {
@@ -28,10 +32,17 @@ public class MarkInactiveCron {
     private final LicensedJobs licensedJobs;
 
     private AuditLog audit = AuditLog.NOOP;
+    /** Times the whole service was down; absent in tests that do not need them. */
+    private ServiceOutages outages;
 
     @Autowired(required = false)
     public void setAuditLog(AuditLog audit) {
         this.audit = audit;
+    }
+
+    @Autowired(required = false)
+    public void setServiceOutages(ServiceOutages outages) {
+        this.outages = outages;
     }
 
     public MarkInactiveCron(CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
@@ -43,8 +54,13 @@ public class MarkInactiveCron {
 
     // Not @Async: with it the scheduler returned at once, so the fixed delay never waited for a run to
     // finish and a slow run could overlap the next. spring.task.scheduling.pool.size gives each job a thread.
+    // One replica at a time (ShedLock, see config.SchedulerLockConfig): two would each write the same forced
+    // check-out.
     @Scheduled(fixedDelayString = "#{@inactiveCronProperties.fixedRate}",
             initialDelayString = "#{@inactiveCronProperties.initialDelay}")
+    @SchedulerLock(name = "MarkInactiveCron",
+            lockAtLeastFor = "#{@jobLocks.atLeastFor(@inactiveCronProperties.fixedRate)}",
+            lockAtMostFor = "#{@jobLocks.atMostFor(@inactiveCronProperties.fixedRate)}")
     public void run(){
         if (!licensedJobs.mayRun(LicensedFeature.ATTENDANCE, "MarkInactiveCron")) {
             return;
@@ -75,9 +91,17 @@ public class MarkInactiveCron {
         log.debug("MarkInactiveCron: {} user(s) last seen locked today; checking out after {} minutes",
                 lockedRecords.size(), properties.getCheckOutAfterMinutes());
 
+        // An unlock sent while the whole service was down was lost: count such a session as idle from the outage's
+        // end, not from its lock.
+        List<ServiceOutage> outagesToday = outagesSince(startOfDay);
+
         int checkedOut = 0;
         for (CheckInOutRecord record : lockedRecords) {
-            ZonedDateTime timestampPlus = record.getZonedDateTimestamp().plusMinutes(properties.getCheckOutAfterMinutes());
+            ZonedDateTime idleSince = record.getZonedDateTimestamp();
+            if (!outagesToday.isEmpty()) {
+                idleSince = ServiceOutages.idleSince(idleSince.toInstant(), outagesToday).atZone(idleSince.getZone());
+            }
+            ZonedDateTime timestampPlus = idleSince.plusMinutes(properties.getCheckOutAfterMinutes());
 
             if(timestampPlus.isBefore(now)){
                 CheckInOutRecord checkInOutRecord = new CheckInOutRecord();
@@ -108,5 +132,18 @@ public class MarkInactiveCron {
                     System.currentTimeMillis() - start);
         }
         return checkedOut;
+    }
+
+    private List<ServiceOutage> outagesSince(ZonedDateTime startOfDay) {
+        if (outages == null) {
+            return List.of();
+        }
+        try {
+            outages.recordBeat();
+            return outages.endedAfter(startOfDay.toInstant());
+        } catch (RuntimeException e) {
+            log.warn("Could not read the service's outages; checking out as if there were none: {}", e.toString());
+            return List.of();
+        }
     }
 }

@@ -8,6 +8,7 @@ import com.winllc.innoutwork.data.DirectorySyncResult;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.LicensedJobs;
 import com.winllc.innoutwork.service.UserService;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -49,8 +50,13 @@ public class RefreshUserRecordsCron {
 
     // Not @Async: with it the scheduler returned at once, so the fixed delay never waited for a run to
     // finish and a slow run could overlap the next. spring.task.scheduling.pool.size gives each job a thread.
+    // One replica at a time (ShedLock, see config.SchedulerLockConfig): the sync is the heaviest directory reader,
+    // and once an interval is enough however many replicas there are.
     @Scheduled(fixedDelayString = "#{@refreshUserRecordsCronProperties.fixedRate}",
             initialDelayString = "#{@refreshUserRecordsCronProperties.initialDelay}")
+    @SchedulerLock(name = "RefreshUserRecordsCron",
+            lockAtLeastFor = "#{@jobLocks.atLeastFor(@refreshUserRecordsCronProperties.fixedRate)}",
+            lockAtMostFor = "#{@jobLocks.atMostFor(@refreshUserRecordsCronProperties.fixedRate)}")
     public void run() {
         if (!properties.isEnabled()) {
             log.debug("RefreshUserRecordsCron is disabled; skipping run");
