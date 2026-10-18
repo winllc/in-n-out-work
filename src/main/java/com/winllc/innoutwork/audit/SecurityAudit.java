@@ -173,6 +173,24 @@ public class SecurityAudit {
     }
 
     /**
+     * A logoff presenting a usable session id from another address than the logon it was issued to: someone with a
+     * copy of the id, or a workstation whose address changed. The id is not used up. Recorded against its owner,
+     * with the logon's address, and collapsed per source and owner.
+     */
+    public void clientSessionFromOtherAddress(HttpServletRequest request, String dn, String checkInAddress) {
+        EnsMetrics.authAttempt("session-id", false);
+        AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
+                .failure("session from another address")
+                .actor(AuditEntry.Actor.anonymous(null))
+                .target("user", dn, com.winllc.innoutwork.data.LdapDn.cnOf(dn))
+                .source(AuditRequestInfo.source(request))
+                .detail("method", "session-id")
+                .detail("path", request.getRequestURI())
+                .detail("logonAddress", checkInAddress);
+        denials.collapse("auth.login|" + request.getRemoteAddr() + "|" + dn + "|session from another address", entry);
+    }
+
+    /**
      * A source past the limit on refused logoff session ids. Recorded once per source and minute, when it goes over;
      * its refusals after that are not recorded one by one.
      */

@@ -26,9 +26,9 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import javax.security.auth.x500.X500Principal;
 import java.security.cert.X509Certificate;
-import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -84,7 +84,8 @@ class CsrfProtectionTest {
         });
         when(userService.updateRole(any(), any())).thenReturn(new UserRecord());
         when(checkIns.saveCheckInOutRecord(any())).thenAnswer(inv -> inv.<CheckInOutRecord>getArgument(0));
-        when(checkIns.saveSessionCheckOut(any(), any(), any())).thenReturn(Optional.empty());
+        when(checkIns.saveSessionCheckOut(any(), any(), any(), any(), anyBoolean()))
+                .thenReturn(new CheckInOutService.SessionCheckOut.UnknownSession());
     }
 
     /** The role change a forged form used to make: role=ADMIN for whoever the attacker names. */

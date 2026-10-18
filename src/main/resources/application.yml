@@ -315,3 +315,10 @@ application:
     # is always accepted and never counted, so workstations behind one NAT address or proxy are not held
     # back. 0 turns the limit off.
     refused-per-minute: 30
+    # Accept the session id only from the client address its logon came from (the address ReadyRoom sees: behind
+    # a reverse proxy, the one its X-Forwarded-For reports with SERVER_FORWARD_HEADERS_STRATEGY set). A logoff
+    # presenting it from another address is refused and audited, so an id copied off a workstation cannot log
+    # its user off from elsewhere. Workstations behind one NAT address share it, so there the binding is to
+    # that network. Turn it off (APPLICATION_LOGOFF_BIND_TO_ADDRESS=false) only where addresses change between
+    # logon and logoff (roaming laptops, VPN reconnects) and those logoffs would otherwise be lost.
+    bind-to-address: true

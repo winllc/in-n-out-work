@@ -162,6 +162,10 @@ public class PersonalDataService {
             m.put("location", r.getLocation());
             m.put("branch", r.getBranch());
             m.put("dutySubOrganization", r.getDutySubOrganization());
+            // The check-in's client address (it binds the logoff); absent on other records and older check-ins.
+            if (r.getClientAddress() != null && !CheckInOutRecord.ANY_ADDRESS.equals(r.getClientAddress())) {
+                m.put("clientAddress", r.getClientAddress());
+            }
             checkInList.add(m);
         }
         out.put("checkIns", checkInList);

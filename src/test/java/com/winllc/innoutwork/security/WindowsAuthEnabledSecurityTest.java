@@ -33,6 +33,7 @@ import java.util.Optional;
 import static com.winllc.innoutwork.security.WindowsAuthTestSupport.*;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -220,8 +221,8 @@ class WindowsAuthEnabledSecurityTest {
     /** The logoff cannot sign in; it is identified by its logon's session id instead. */
     @Test
     void checkOutStaysOpenWithoutSignIn() throws Exception {
-        when(checkIns.saveSessionCheckOut(any(), eq("logon-session"), any()))
-                .thenAnswer(inv -> Optional.of(inv.<CheckInOutRecord>getArgument(0)));
+        when(checkIns.saveSessionCheckOut(any(), eq("logon-session"), any(), any(), anyBoolean()))
+                .thenAnswer(inv -> new CheckInOutService.SessionCheckOut.Saved(inv.<CheckInOutRecord>getArgument(0)));
 
         mockMvc.perform(post("/api/check/out").contentType(MediaType.APPLICATION_JSON).content(body("bob", "logon-session")))
                 .andExpect(status().isOk());

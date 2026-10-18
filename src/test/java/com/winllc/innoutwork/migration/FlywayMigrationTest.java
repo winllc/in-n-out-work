@@ -332,6 +332,35 @@ class FlywayMigrationTest extends PostgresTestSupport {
                 + " WHERE table_name = 'user_records' AND column_name = 'alternate_managers'", Integer.class));
     }
 
+    /**
+     * V5: logoffs are bound to the check-in's client address. Check-ins from before carry none; the recent ones,
+     * whose session ids agents may still hold, are marked valid from any address so those logoffs keep working
+     * until the ids expire. Older ones, other actions and records without a session id are left without.
+     */
+    @Test
+    void recentCheckInsFromBeforeTheBindingStayUsableFromAnyAddress() throws Exception {
+        String db = createDatabase("logoff_binding");
+        migrateTo(db, "4");
+        JdbcTemplate before = jdbc(db);
+        String insert = "INSERT INTO check_in_out_records (dn, \"timestamp\", session_id, action) VALUES (?, now() - ?::interval, ?, ?)";
+        before.update(insert, "cn=Alice,ou=Users,dc=winllc,dc=com", "2 days", "recent-check-in", "CHECK_IN");
+        before.update(insert, "cn=Alice,ou=Users,dc=winllc,dc=com", "1 day", "recent-lock", "LOCK");
+        before.update(insert, "cn=Bob,ou=Users,dc=winllc,dc=com", "200 days", "old-check-in", "CHECK_IN");
+        before.update(insert, "cn=Carol,ou=Users,dc=winllc,dc=com", "1 day", null, "CHECK_IN");
+
+        assertTrue(migrate(db).success);
+
+        JdbcTemplate after = jdbc(db);
+        String address = "SELECT client_address FROM check_in_out_records WHERE session_id = ?";
+        assertEquals("*", after.queryForObject(address, String.class, "recent-check-in"));
+        assertNull(after.queryForObject(address, String.class, "recent-lock"));
+        assertNull(after.queryForObject(address, String.class, "old-check-in"));
+        assertNull(after.queryForObject("SELECT client_address FROM check_in_out_records WHERE dn = ?", String.class,
+                "cn=Carol,ou=Users,dc=winllc,dc=com"));
+        assertEquals(64, after.queryForObject("SELECT character_maximum_length FROM information_schema.columns"
+                + " WHERE table_name = 'check_in_out_records' AND column_name = 'client_address'", Integer.class));
+    }
+
     // --- a separate migration account -----------------------------------------------------------------------
 
     /**
