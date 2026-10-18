@@ -105,6 +105,11 @@ public class CheckInOutService {
             }
         }
 
+        // Only a check-in's address is needed (it binds its session id's logoff); no other record keeps one.
+        if (record.getAction() != CheckInOutEnum.CHECK_IN) {
+            record.setClientAddress(null);
+        }
+
         // Saved before the average is recalculated, which reads check-ins back from the repository:
         // the average should include this check-in, and a user's first one should set it.
         CheckInOutRecord saved = checkinInOutRecordRepository.save(record);
@@ -204,26 +209,55 @@ public class CheckInOutService {
         return LocalTime.ofSecondOfDay(Math.floorMod(Math.floorDiv(sum, seconds.length), SECONDS_PER_DAY));
     }
 
+    /** What became of a logoff that could not sign in; see {@link #saveSessionCheckOut}. */
+    public sealed interface SessionCheckOut {
+        /** Recorded as the session's owner. */
+        record Saved(CheckInOutRecord record) implements SessionCheckOut {
+        }
+
+        /** The id is no check-in's, already used or expired. Nothing stored. */
+        record UnknownSession() implements SessionCheckOut {
+        }
+
+        /**
+         * The id is usable but was issued to a logon from another address. Nothing stored, and the id stays usable
+         * from its own address.
+         */
+        record OtherAddress(String dn, String checkInAddress) implements SessionCheckOut {
+        }
+    }
+
     /**
      * Records a logoff that could not sign in, as the user whose logon was answered with {@code sessionId}.
      * <p>
      * The Windows client's logoff runs after the user's profile has gone, so it has no certificate to sign in
      * with; it sends back the session id the logon's response carried. That id identifies the logoff only while
-     * it is a check-in's, no logoff has used it yet, and the check-in is younger than {@code maxAge}. The check-in
-     * stays locked until this transaction ends, so of two logoffs sent with the same id only the first counts.
+     * it is a check-in's, no logoff has used it yet, and the check-in is younger than {@code maxAge}; and, with
+     * {@code bindToAddress}, only when the logoff comes from the address the check-in did (or the check-in is from
+     * before addresses were recorded, {@link CheckInOutRecord#ANY_ADDRESS}). The check-in stays locked until this
+     * transaction ends, so of two logoffs sent with the same id only the first counts.
      *
-     * @param checkOut the CHECK_OUT to store, without a DN: it is given the check-in's
-     * @return the stored CHECK_OUT, or empty when the session id identifies nobody, in which case nothing is stored
+     * @param checkOut      the CHECK_OUT to store, without a DN: it is given the check-in's
+     * @param clientAddress the logoff's client address, from {@link com.winllc.innoutwork.security.ClientAddress}
      */
     @Transactional
-    public Optional<CheckInOutRecord> saveSessionCheckOut(CheckInOutRecord checkOut, String sessionId, Duration maxAge) {
+    public SessionCheckOut saveSessionCheckOut(CheckInOutRecord checkOut, String sessionId, String clientAddress,
+                                               Duration maxAge, boolean bindToAddress) {
         Optional<CheckInOutRecord> session = usableSession(sessionId, maxAge);
         if (session.isEmpty()) {
-            return Optional.empty();
+            return new SessionCheckOut.UnknownSession();
         }
-        checkOut.setDn(LdapDn.normalize(session.get().getDn()));
+        CheckInOutRecord checkIn = session.get();
+        String issuedTo = checkIn.getClientAddress();
+        if (bindToAddress && !CheckInOutRecord.ANY_ADDRESS.equals(issuedTo)
+                && (issuedTo == null || !issuedTo.equals(clientAddress))) {
+            log.debug("Logoff session of {} presented from another address than its logon's", checkIn.getDn());
+            return new SessionCheckOut.OtherAddress(LdapDn.normalize(checkIn.getDn()), issuedTo);
+        }
+        checkOut.setDn(LdapDn.normalize(checkIn.getDn()));
         checkOut.setSessionId(sessionId);
-        return Optional.of(saveCheckInOutRecord(checkOut));
+        checkOut.setClientAddress(null);
+        return new SessionCheckOut.Saved(saveCheckInOutRecord(checkOut));
     }
 
     /**

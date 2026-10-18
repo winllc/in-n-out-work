@@ -12,8 +12,10 @@ import com.winllc.innoutwork.data.CheckInOut;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.metrics.EnsMetrics;
 import com.winllc.innoutwork.model.CheckInOutRecord;
+import com.winllc.innoutwork.security.ClientAddress;
 import com.winllc.innoutwork.security.ClientRateLimiter;
 import com.winllc.innoutwork.service.CheckInOutService;
+import com.winllc.innoutwork.util.LogSafe;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import org.slf4j.Logger;
@@ -39,15 +41,15 @@ import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Optional;
 
 /**
  * The Windows client's status events, and an administrator's view of the day's records.
  * <p>
  * Who an event belongs to comes from the sign-in, never from the request body. The exception is the logoff, which
  * runs after the user's profile has gone and usually cannot sign in: it is identified by the session id the
- * logon's response carried (see CheckInOutService#saveSessionCheckOut), which works once and for a limited time.
- * Refused ones are rate-limited per client address; accepted ones never are.
+ * logon's response carried (see CheckInOutService#saveSessionCheckOut), which works once, for a limited time, and
+ * only from the client address the logon came from. Refused ones are audited and rate-limited per client address;
+ * accepted ones never are.
  */
 @RequiresFeature(LicensedFeature.ATTENDANCE)
 @RestController
@@ -61,6 +63,8 @@ public class CheckInOutRestService {
     private final Duration sessionMaxAge;
     /** Refused logoffs without a sign-in, per client address. */
     private final ClientRateLimiter refusedLogoffs;
+    /** Whether a logoff's session id is accepted only from its logon's client address. */
+    private final boolean bindToAddress;
 
     /** Records the logoff call's unknown session ids as failed sign-ins; absent in test slices. */
     private SecurityAudit securityAudit;
@@ -69,6 +73,10 @@ public class CheckInOutRestService {
         this.checkInOutService = checkInOutService;
         this.sessionMaxAge = Duration.ofHours(properties.getLogoff().getSessionMaxAgeHours());
         this.refusedLogoffs = new ClientRateLimiter(properties.getLogoff().getRefusedPerMinute());
+        this.bindToAddress = properties.getLogoff().isBindToAddress();
+        if (!bindToAddress) {
+            log.warn("application.logoff.bind-to-address is off: a logoff's session id is accepted from any address");
+        }
     }
 
     @Autowired(required = false)
@@ -111,6 +119,10 @@ public class CheckInOutRestService {
                 .action(event)
                 .timestamp(ZonedDateTime.now(ZoneId.systemDefault()))
                 .build();
+        if (event == CheckInOutEnum.CHECK_IN || event == CheckInOutEnum.UNLOCK) {
+            // A check-in (an unlock may become one) binds its session id's logoff to this address.
+            record.setClientAddress(ClientAddress.of(request));
+        }
 
         if(signedIn && auth.getPrincipal() instanceof AppUserDetails details){
             record.setOrganization(details.getOrganization());
@@ -136,24 +148,37 @@ public class CheckInOutRestService {
             return ResponseEntity.ok(CheckInOutResponse.of(saved));
         }
 
-        // The logoff that cannot sign in: identified only by the session id cached at logon. A usable one is
-        // accepted whatever else the address has sent: behind a proxy or NAT every workstation shares the address,
-        // and the client does not retry, so a refusal would lose the check-out.
-        Optional<CheckInOutRecord> saved = checkInOutService.saveSessionCheckOut(record, checkInOut.getSessionId(), sessionMaxAge);
-        if (saved.isPresent()) {
+        // The logoff that cannot sign in: identified only by the session id cached at logon, from the logon's
+        // address. A usable one is accepted whatever else the address has sent: behind a proxy or NAT every
+        // workstation shares the address, and the client does not retry, so a refusal would lose the check-out.
+        CheckInOutService.SessionCheckOut result = checkInOutService.saveSessionCheckOut(
+                record, checkInOut.getSessionId(), ClientAddress.of(request), sessionMaxAge, bindToAddress);
+        if (result instanceof CheckInOutService.SessionCheckOut.Saved(CheckInOutRecord saved)) {
             EnsMetrics.checkIn(action);
-            return ResponseEntity.ok(CheckInOutResponse.of(saved.get()));
+            return ResponseEntity.ok(CheckInOutResponse.of(saved));
         }
 
         // Refused. Only these count towards the address's limit; past it they are no longer audited one by one.
+        // Both refusals get the same answer: the caller learns nothing about whose the id is or where it is valid.
         ClientRateLimiter.Outcome outcome = refusedLogoffs.count(request.getRemoteAddr());
         if (outcome == ClientRateLimiter.Outcome.WITHIN) {
-            EnsMetrics.logoffRefused("unknown_session");
-            if (securityAudit != null) {
-                securityAudit.unknownClientSession(request);
+            if (result instanceof CheckInOutService.SessionCheckOut.OtherAddress(String dn, String checkInAddress)) {
+                // Who and the logon's address are in the audit entry, not the log.
+                log.warn("Refused a logoff from {}: its session id was issued to a logon from another address",
+                        LogSafe.of(request.getRemoteAddr()));
+                EnsMetrics.logoffRefused("other_address");
+                if (securityAudit != null) {
+                    securityAudit.clientSessionFromOtherAddress(request, dn, checkInAddress);
+                }
+            } else {
+                EnsMetrics.logoffRefused("unknown_session");
+                if (securityAudit != null) {
+                    securityAudit.unknownClientSession(request);
+                }
             }
             return refused(HttpStatus.UNAUTHORIZED, "unknown_session",
-                    "The session id is unknown, already used or expired; sign in to report the logoff.");
+                    "The session id is unknown, already used, expired or issued to another address; "
+                            + "sign in to report the logoff.");
         }
         if (outcome == ClientRateLimiter.Outcome.FIRST_OVER) {
             log.warn("{} sent more than {} logoffs with an unusable session id this minute; refusing them with 429 "

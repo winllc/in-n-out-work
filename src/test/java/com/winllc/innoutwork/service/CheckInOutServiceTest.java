@@ -546,6 +546,65 @@ class CheckInOutServiceTest {
         assertTrue(stored.isEmpty());
     }
 
+    // --- the logoff that cannot sign in: bound to the logon's address ----------------------------
+
+    /** A check-in from {@code address} an hour ago, its session id {@code sessionId}, answered by the repository. */
+    private void checkedIn(String sessionId, String address) {
+        CheckInOutRecord checkIn = record(BOB, CheckInOutEnum.CHECK_IN, ZonedDateTime.now().minusHours(1));
+        checkIn.setSessionId(sessionId);
+        checkIn.setClientAddress(address);
+        stored.add(checkIn);
+        when(recordRepository.findBySessionIdAndAction(anyString(), any())).thenAnswer(inv -> stored.stream()
+                .filter(r -> inv.getArgument(0).equals(r.getSessionId()) && r.getAction() == inv.getArgument(1))
+                .toList());
+        when(recordRepository.existsBySessionIdAndAction(anyString(), any())).thenAnswer(inv -> stored.stream()
+                .anyMatch(r -> inv.getArgument(0).equals(r.getSessionId()) && r.getAction() == inv.getArgument(1)));
+    }
+
+    private CheckInOutService.SessionCheckOut logoff(String sessionId, String from, boolean bind) {
+        CheckInOutRecord checkOut = record(null, CheckInOutEnum.CHECK_OUT, ZonedDateTime.now());
+        return service.saveSessionCheckOut(checkOut, sessionId, from, Duration.ofHours(168), bind);
+    }
+
+    @Test
+    void aSessionLogoffFromTheLogonsAddressIsStoredWithoutAnAddress() {
+        checkedIn("s-1", "10.0.0.1");
+
+        var result = logoff("s-1", "10.0.0.1", true);
+
+        CheckInOutRecord saved = assertInstanceOf(CheckInOutService.SessionCheckOut.Saved.class, result).record();
+        assertEquals(BOB, saved.getDn());
+        assertNull(saved.getClientAddress(), "only check-ins keep an address");
+    }
+
+    @Test
+    void aSessionLogoffFromAnotherAddressNamesTheOwnerAndStoresNothing() {
+        checkedIn("s-2", "10.0.0.1");
+
+        var result = logoff("s-2", "10.0.0.2", true);
+
+        assertEquals(new CheckInOutService.SessionCheckOut.OtherAddress(BOB, "10.0.0.1"), result);
+        assertEquals(1, stored.size(), "only the check-in");
+    }
+
+    /** application.logoff.bind-to-address=false: the session id alone identifies the logoff, as before. */
+    @Test
+    void withoutTheBindingAnyAddressIsAccepted() {
+        checkedIn("s-3", "10.0.0.1");
+
+        assertInstanceOf(CheckInOutService.SessionCheckOut.Saved.class, logoff("s-3", "10.0.0.2", false));
+        assertInstanceOf(CheckInOutService.SessionCheckOut.UnknownSession.class, logoff("s-3", "10.0.0.1", false),
+                "still once only");
+    }
+
+    @Test
+    void lockAndUnlockRecordsKeepNoAddress() {
+        CheckInOutRecord lock = record(BOB, CheckInOutEnum.LOCK, SEP_10.withHour(10));
+        lock.setClientAddress("10.0.0.1");
+
+        assertNull(service.saveCheckInOutRecord(lock).getClientAddress());
+    }
+
     // --- pass-throughs -------------------------------------------------------------------------
 
     @Test

@@ -136,14 +136,23 @@ class CheckInOutRestServiceTest {
 
     // --- helpers ------------------------------------------------------------------------------------------
 
-    private static RequestPostProcessor as(String dn) {
-        return x509(cert(dn));
-    }
-
-    /** The logoff task: no certificate, no ticket. */
-    private RequestPostProcessor anonymous() {
+    /** Signed in with {@code dn}'s certificate, from this test's workstation address. */
+    private RequestPostProcessor as(String dn) {
         return request -> {
             request.setRemoteAddr(address);
+            return x509(cert(dn)).postProcessRequest(request);
+        };
+    }
+
+    /** The logoff task: no certificate, no ticket, from this test's workstation address. */
+    private RequestPostProcessor anonymous() {
+        return anonymousFrom(address);
+    }
+
+    /** The logoff task's call, as if from {@code from}. */
+    private static RequestPostProcessor anonymousFrom(String from) {
+        return request -> {
+            request.setRemoteAddr(from);
             return request;
         };
     }
@@ -286,7 +295,7 @@ class CheckInOutRestServiceTest {
     /** A workstation left logged on over a weekend or a long shift still records its logoff. */
     @Test
     void aSessionYoungerThanTheMaximumAgeIsAccepted() throws Exception {
-        records.save(CheckInOutRecord.builder().dn(ALICE).action(CheckInOutEnum.CHECK_IN)
+        records.save(CheckInOutRecord.builder().dn(ALICE).action(CheckInOutEnum.CHECK_IN).clientAddress(address)
                 .timestamp(ZonedDateTime.now().minusHours(167)).sessionId("monday-weeks-session").build());
 
         report("out", anonymous(), "monday-weeks-session").andExpect(status().isOk());
@@ -308,6 +317,133 @@ class CheckInOutRestServiceTest {
         report("out", anonymous(), "made-up").andExpect(status().isUnauthorized());
 
         assertEquals(0, records.count(), "no record without a DN");
+    }
+
+    // --- bound to the logon's address ----------------------------------------------------------------------
+
+    @Test
+    void theCheckInRecordsTheAddressItCameFrom() throws Exception {
+        logon(ALICE);
+        report("lock", as(ALICE), null).andExpect(status().isOk());
+
+        assertEquals(address, stored(CheckInOutEnum.CHECK_IN).getFirst().getClientAddress());
+        assertNull(stored(CheckInOutEnum.LOCK).getFirst().getClientAddress(), "only a check-in keeps an address");
+    }
+
+    /** The day's first unlock is recorded as the check-in, and binds its session id's logoff the same way. */
+    @Test
+    void anUnlockRecordedAsTheCheckInRecordsItsAddress() throws Exception {
+        report("unlock", as(ALICE), null).andExpect(status().isOk()).andExpect(jsonPath("$.action").value("CHECK_IN"));
+
+        assertEquals(address, stored(CheckInOutEnum.CHECK_IN).getFirst().getClientAddress());
+    }
+
+    @Test
+    void aLogoffFromTheLogonsAddressIsAccepted() throws Exception {
+        String alices = logon(ALICE);
+
+        report("out", anonymous(), alices).andExpect(status().isOk()).andExpect(jsonPath("$.dn").value(ALICE));
+
+        assertEquals(ALICE, stored(CheckInOutEnum.CHECK_OUT).getFirst().getDn());
+        verify(securityAudit, never()).clientSessionFromOtherAddress(any(), any(), any());
+    }
+
+    @Test
+    void aLogoffFromAnotherAddressIsRefusedAuditedAndDoesNotUseTheSessionUp() throws Exception {
+        String alices = logon(ALICE);
+        String logonAddress = address;
+
+        report("out", anonymousFrom("192.0.2.66"), alices)
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("unknown_session"));
+
+        assertTrue(stored(CheckInOutEnum.CHECK_OUT).isEmpty(), "nothing stored for the refused logoff");
+        verify(securityAudit).clientSessionFromOtherAddress(any(), eq(ALICE), eq(logonAddress));
+        verify(securityAudit, never()).unknownClientSession(any());
+
+        // Alice's own workstation still checks her out.
+        report("out", anonymous(), alices).andExpect(status().isOk()).andExpect(jsonPath("$.dn").value(ALICE));
+    }
+
+    /** A used id is refused from everywhere: from its own address again, and from another one. */
+    @Test
+    void aReplayedLogoffIsRefusedFromAnyAddress() throws Exception {
+        String alices = logon(ALICE);
+        report("out", anonymous(), alices).andExpect(status().isOk());
+
+        report("out", anonymous(), alices).andExpect(status().isUnauthorized());
+        report("out", anonymousFrom("192.0.2.67"), alices).andExpect(status().isUnauthorized());
+
+        assertEquals(1, stored(CheckInOutEnum.CHECK_OUT).size());
+        verify(securityAudit, times(2)).unknownClientSession(any());
+        verify(securityAudit, never()).clientSessionFromOtherAddress(any(), any(), any());
+    }
+
+    /** Refusals for another address count towards that address's limit like any other. */
+    @Test
+    void logoffsFromAnotherAddressCountTowardsItsLimit() throws Exception {
+        String alices = logon(ALICE);
+        for (int i = 0; i < RATE_LIMIT; i++) {
+            report("out", anonymousFrom("192.0.2.68"), alices).andExpect(status().isUnauthorized());
+        }
+
+        report("out", anonymousFrom("192.0.2.68"), alices).andExpect(status().isTooManyRequests());
+
+        verify(securityAudit, times(RATE_LIMIT)).clientSessionFromOtherAddress(any(), eq(ALICE), any());
+        report("out", anonymous(), alices).andExpect(status().isOk());
+    }
+
+    /** The same host however its address is spelt: IPv4 mapped into IPv6 is the IPv4 address. */
+    @Test
+    void theSameAddressSpeltAnotherWayIsTheSameAddress() throws Exception {
+        String alices = logon(ALICE);
+
+        report("out", anonymousFrom("::ffff:" + address), alices).andExpect(status().isOk());
+    }
+
+    /** Check-ins from before the binding (V5 marks them '*') keep working from anywhere, once, until they expire. */
+    @Test
+    void aSessionFromBeforeTheBindingIsAcceptedFromAnyAddressOnce() throws Exception {
+        records.save(CheckInOutRecord.builder().dn(ALICE).action(CheckInOutEnum.CHECK_IN)
+                .clientAddress(CheckInOutRecord.ANY_ADDRESS)
+                .timestamp(ZonedDateTime.now().minusHours(20)).sessionId("pre-upgrade-session").build());
+
+        report("out", anonymousFrom("192.0.2.69"), "pre-upgrade-session")
+                .andExpect(status().isOk()).andExpect(jsonPath("$.dn").value(ALICE));
+        report("out", anonymousFrom("192.0.2.69"), "pre-upgrade-session").andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void aSessionFromBeforeTheBindingStillExpires() throws Exception {
+        records.save(CheckInOutRecord.builder().dn(ALICE).action(CheckInOutEnum.CHECK_IN)
+                .clientAddress(CheckInOutRecord.ANY_ADDRESS)
+                .timestamp(ZonedDateTime.now().minusHours(169)).sessionId("old-pre-upgrade-session").build());
+
+        report("out", anonymous(), "old-pre-upgrade-session").andExpect(status().isUnauthorized());
+    }
+
+    /** A check-in with no address at all was never answered to a client by this release; it binds to nothing. */
+    @Test
+    void aCheckInWithoutAnAddressIdentifiesNoLogoff() throws Exception {
+        records.save(CheckInOutRecord.builder().dn(ALICE).action(CheckInOutEnum.CHECK_IN)
+                .timestamp(ZonedDateTime.now().minusHours(1)).sessionId("addressless-session").build());
+
+        report("out", anonymous(), "addressless-session").andExpect(status().isUnauthorized());
+
+        assertTrue(stored(CheckInOutEnum.CHECK_OUT).isEmpty());
+        verify(securityAudit).clientSessionFromOtherAddress(any(), eq(ALICE), eq(null));
+    }
+
+    /** A signed-in logoff is the user's own whatever the address; it still uses its own session up. */
+    @Test
+    void aSignedInLogoffFromAnotherAddressIsUnaffected() throws Exception {
+        String alices = logon(ALICE);
+        String logonAddress = address;
+        address = "192.0.2.70";
+
+        report("out", as(ALICE), alices).andExpect(status().isOk());
+
+        report("out", anonymousFrom(logonAddress), alices).andExpect(status().isUnauthorized());
     }
 
     // --- the limit on refused logoffs ----------------------------------------------------------------------
@@ -393,6 +529,7 @@ class CheckInOutRestServiceTest {
         JsonNode row = page.get("data").get(0);
         assertEquals(ALICE, row.get("dn").asString());
         assertFalse(row.has("sessionId"), "a record's JSON must not carry its session id: " + row);
+        assertFalse(row.has("clientAddress"), "nor its client address: " + row);
     }
 
     static X509Certificate cert(String dn) {

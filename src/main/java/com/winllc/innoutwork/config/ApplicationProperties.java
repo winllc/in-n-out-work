@@ -194,6 +194,12 @@ public class ApplicationProperties {
          */
         @Min(0)
         private int refusedPerMinute = 30;
+        /**
+         * Accept a logoff's session id only from the client address its logon came from; one from another address
+         * is refused and audited. Turn off only where workstations' addresses change between logon and logoff
+         * (roaming laptops, short DHCP leases, VPN reconnects) and those logoffs matter more than the binding.
+         */
+        private boolean bindToAddress = true;
     }
 
     /**
