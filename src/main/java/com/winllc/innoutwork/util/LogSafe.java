@@ -1,8 +1,8 @@
 package com.winllc.innoutwork.util;
 
 /**
- * Values from a request, made safe to log: line breaks and other control characters are replaced, so a value
- * can't start a forged log line.
+ * Values from a request, made safe to log: each line break (the regex {@code \R}: LF, CR LF, CR and the Unicode
+ * ones) and every other control character is replaced, so a value can't start a forged log line.
  */
 public final class LogSafe {
 
@@ -13,6 +13,6 @@ public final class LogSafe {
         if (value == null) {
             return null;
         }
-        return value.replaceAll("[\\r\\n]", "_").replaceAll("\\p{Cntrl}", "?");
+        return value.replaceAll("\\R", "_").replaceAll("\\p{Cntrl}", "?");
     }
 }

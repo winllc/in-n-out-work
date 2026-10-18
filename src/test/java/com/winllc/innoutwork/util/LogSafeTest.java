@@ -10,7 +10,8 @@ class LogSafeTest {
     @Test
     void lineBreaksCannotStartANewLogLine() {
         assertEquals("cn=a_ INFO forged", LogSafe.of("cn=a\n INFO forged"));
-        assertEquals("cn=a__x", LogSafe.of("cn=a\r\nx"));
+        assertEquals("cn=a_x", LogSafe.of("cn=a\r\nx"));
+        assertEquals("cn=a_x", LogSafe.of("cn=a\u2028x"));
     }
 
     @Test
