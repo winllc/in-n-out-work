@@ -2,7 +2,6 @@ package com.winllc.innoutwork.service;
 
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.UserRecordRepository;
-import com.winllc.innoutwork.util.LogSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -58,7 +57,7 @@ final class UserRecordStore {
             if (existing.isEmpty()) {
                 throw e;
             }
-            log.debug("User record for {} was created concurrently; using that one", LogSafe.of(dn));
+            log.debug("A user record was created concurrently; using that one");
             return new Result(existing.get(), false);
         }
     }
