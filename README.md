@@ -81,11 +81,37 @@ the answer to the login carries a server-issued `sessionId`, which the client ca
 and echoes back with the logout. The server takes it as the user's identity only on
 `/api/check/out`, only for a check-in's id that no logout has used yet, and only for
 `application.logoff.session-max-age-hours` (168, a week) after the logon; a signed-in
-logout with someone else's id is refused. A logout with a usable id is always accepted;
+logout with someone else's id is refused. The id is also bound to the client address
+the logon came from: a logout presenting it from another address is refused like an
+unknown id and audited as `auth.login` failure `session from another address` (with
+the owner and the logon's address), so an id copied off a workstation cannot log its
+user off from elsewhere (`application.logoff.bind-to-address`, on by default; see
+*Upgrading the logoff binding* below). A logout with a usable id is always accepted;
 only refused ones count towards a per-address limit
 (`application.logoff.refused-per-minute`, 30), past which they get 429 and are no
 longer audited one by one. Every other call records the signed-in user, whatever the
 body says, and no other response or page shows a `sessionId`.
+
+The binding is to the address ReadyRoom sees: behind a reverse proxy with
+`SERVER_FORWARD_HEADERS_STRATEGY` set, the one its `X-Forwarded-For` reports, so the
+proxy must set that header itself rather than pass on a client's. Workstations behind
+one NAT address share it, so there the id is bound to that network, not the machine.
+The logoff runs as SYSTEM with no client certificate (the user's is in their unloaded
+profile) and no Windows ticket, so there is no certificate or account to bind it to; the
+address is what the server can check. A workstation whose address changed between
+logon and logoff (a roaming laptop, a VPN reconnect) has its logoff refused; where
+that matters more, set `application.logoff.bind-to-address=false`
+(`APPLICATION_LOGOFF_BIND_TO_ADDRESS`).
+
+**Upgrading the logoff binding.** Nothing changes on the workstations: the client
+sends what it always has, and the address is taken from the connection. Check-ins
+made before the upgrade have no recorded address; the migration
+(`V5__logoff_client_address.sql`) marks those from the last 90 days as valid from any
+address, so the ids already cached in agents' session files keep working, once, until
+they expire (`session-max-age-hours`, a week by default). Every logon after the
+upgrade is bound. During a rolling upgrade, a check-in an old replica stores after
+the migration has no address and its logoff is refused; the user's next logon is
+bound as usual.
 
 Every other post, put and delete needs a CSRF token: forms built with `th:action`
 carry it, and `layout.html` adds it to the pages' `fetch()` calls from its `_csrf`
@@ -286,7 +312,7 @@ never reaches. A person's summaries are in their export (below).
 user menu): `GET /app/privacy/export`, a JSON file (`readyroom-personal-data/1`) with their profile (notes, preferred
 and average login time, role, favourite groups, delegates and the directory fields copied at sign-in), group access
 granted in ReadyRoom, whose delegate and which groups' alternate manager they are, every check-in record (without the
-logoff session id, a credential), calendar status, status request (with notes and comments), absence alert about
+logoff session id, a credential; with the client address a check-in came from), calendar status, status request (with notes and comments), absence alert about
 them, and monthly summary; times in ISO 8601. The page also says who sees what and for how long. Each download is
 audited as `data.exported` (`details.report` `personal-data`, `requestedBy` `self`, with counts). Administrators can
 download anyone's from *Administration &rarr; Privacy* (`/app/admin/privacy/export?dn=...`, `requestedBy` the
