@@ -55,6 +55,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 /**
  * The status classes, enforced by the server whatever the page offered: a person sets late arrival themselves,
@@ -86,7 +87,7 @@ class StatusClassesEndpointTest {
     static class TestSecurityConfig {
         @Bean
         SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-            http.csrf(csrf -> csrf.disable())
+            http
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .x509(x509 -> x509.subjectPrincipalRegex("(.*)").userDetailsService(userDetailsService()));
             return http.build();
@@ -117,7 +118,7 @@ class StatusClassesEndpointTest {
 
     @Test
     void aStatusThePersonSetsIsSetAtOnce() throws Exception {
-        mockMvc.perform(post("/api/event/update").with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromDate\":\"2026-11-02\",\"toDate\":\"2026-11-03\",\"status\":\"LATE_ARRIVAL\","
                                 + "\"lateArrivalTime\":\"10:30\"}"))
                 .andExpect(status().isOk())
@@ -133,7 +134,7 @@ class StatusClassesEndpointTest {
         when(requestService.create(eq(ALICE), eq(UserStatusEnum.SCHEDULED_LEAVE), any(), any(), any()))
                 .thenReturn(pending(7));
 
-        mockMvc.perform(post("/api/event/update").with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
                         .content(body("SCHEDULED_LEAVE")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.outcome").value("requested"))
@@ -146,7 +147,7 @@ class StatusClassesEndpointTest {
     void absentExcusedCanNoLongerBeSetByThePersonThemselves() throws Exception {
         when(requestService.create(any(), any(), any(), any(), any())).thenReturn(pending(8));
 
-        mockMvc.perform(post("/api/event/update").with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
                         .content(body("ABSENT_EXCUSED")))
                 .andExpect(jsonPath("$.outcome").value("requested"));
 
@@ -155,7 +156,7 @@ class StatusClassesEndpointTest {
 
     @Test
     void aManagersStatusIsRefusedOnOnesOwnCalendar() throws Exception {
-        mockMvc.perform(post("/api/event/update").with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
                         .content(body("ABSENT_UNEXCUSED")))
                 .andExpect(status().isForbidden());
 
@@ -178,7 +179,7 @@ class StatusClassesEndpointTest {
     void theirManagerSetsAnyStatusForThem() throws Exception {
         when(approvers.mayDecide(any(), eq(ALICE))).thenReturn(true);
 
-        mockMvc.perform(post("/api/event/update").with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"dn\":\"" + ALICE + "\",\"fromDate\":\"2026-11-02\",\"toDate\":\"2026-11-03\","
                                 + "\"status\":\"ABSENT_UNEXCUSED\"}"))
                 .andExpect(status().isOk())
@@ -191,7 +192,7 @@ class StatusClassesEndpointTest {
     void aCoworkerSetsNothingForSomeoneElse() throws Exception {
         when(approvers.mayDecide(any(), anyString())).thenReturn(false);
 
-        mockMvc.perform(post("/api/event/update").with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"dn\":\"" + ALICE + "\",\"fromDate\":\"2026-11-02\",\"toDate\":\"2026-11-03\","
                                 + "\"status\":\"WORK_FROM_HOME\"}"))
                 .andExpect(status().isForbidden());
@@ -201,7 +202,7 @@ class StatusClassesEndpointTest {
 
     @Test
     void aTargetThatIsNotADnIsRefused() throws Exception {
-        mockMvc.perform(post("/api/event/update").with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"dn\":\"not a dn\",\"fromDate\":\"2026-11-02\",\"toDate\":\"2026-11-03\","
                                 + "\"status\":\"ABSENT\"}"))
                 .andExpect(status().isBadRequest())
@@ -214,7 +215,7 @@ class StatusClassesEndpointTest {
     void theApiCreatesAndDecidesThroughTheService() throws Exception {
         when(requestService.create(eq(ALICE), eq(UserStatusEnum.TDY), any(), any(), eq("conference")))
                 .thenReturn(pending(9));
-        mockMvc.perform(post("/api/requests").with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/requests").with(csrf()).with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromDate\":\"2026-11-02\",\"toDate\":\"2026-11-04\",\"status\":\"TDY\","
                                 + "\"note\":\"conference\"}"))
                 .andExpect(status().isCreated())
@@ -224,7 +225,7 @@ class StatusClassesEndpointTest {
         StatusRequest approved = pending(9);
         approved.setState(RequestState.APPROVED);
         when(requestService.approve(any(), eq(9L), eq("ok"))).thenReturn(approved);
-        mockMvc.perform(post("/api/requests/9/approve").with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/requests/9/approve").with(csrf()).with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"comment\":\"ok\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.state").value("APPROVED"));
@@ -233,18 +234,18 @@ class StatusClassesEndpointTest {
     @Test
     void theApiAnswersRefusalsAsTheServiceDecides() throws Exception {
         when(requestService.approve(any(), eq(5L), any())).thenThrow(new AccessDeniedException("not theirs"));
-        mockMvc.perform(post("/api/requests/5/approve").with(x509(cert(ALICE))))
+        mockMvc.perform(post("/api/requests/5/approve").with(csrf()).with(x509(cert(ALICE))))
                 .andExpect(status().isForbidden());
 
         when(requestService.reject(any(), eq(6L), any())).thenThrow(InvalidRequestException.conflict("not_pending", "done"));
-        mockMvc.perform(post("/api/requests/6/reject").with(x509(cert(MANAGER))))
+        mockMvc.perform(post("/api/requests/6/reject").with(csrf()).with(x509(cert(MANAGER))))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.error").value("not_pending"));
     }
 
     @Test
     void anOverlongRequestIsRefusedBeforeTheService() throws Exception {
-        mockMvc.perform(post("/api/requests").with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/requests").with(csrf()).with(x509(cert(ALICE))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromDate\":\"2026-11-02\",\"toDate\":\"2027-11-04\",\"status\":\"TDY\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("range_too_long"));
@@ -272,12 +273,12 @@ class StatusClassesEndpointTest {
         StatusRequest approved = pending(12);
         approved.setState(RequestState.APPROVED);
         when(requestService.approve(any(), eq(12L), any())).thenReturn(approved);
-        mockMvc.perform(post("/app/approvals/12/approve").with(x509(cert(MANAGER))))
+        mockMvc.perform(post("/app/approvals/12/approve").with(csrf()).with(x509(cert(MANAGER))))
                 .andExpect(redirectedUrl("/app/approvals"))
                 .andExpect(flash().attribute("message", containsString("Approved")));
 
         when(requestService.cancel(any(), anyLong())).thenThrow(InvalidRequestException.conflict("not_cancellable", "over"));
-        mockMvc.perform(post("/app/approvals/13/cancel").with(x509(cert(ALICE))))
+        mockMvc.perform(post("/app/approvals/13/cancel").with(csrf()).with(x509(cert(ALICE))))
                 .andExpect(redirectedUrl("/app/approvals"))
                 .andExpect(flash().attribute("error", "over"));
     }

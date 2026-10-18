@@ -45,6 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 /** Self-service export (audited) and an administrator's two-step erasure. */
 @WebMvcTest
@@ -68,7 +69,7 @@ class PrivacyEndpointsTest {
     static class TestConfig {
         @Bean
         SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-            http.csrf(csrf -> csrf.disable())
+            http
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .x509(x509 -> x509.subjectPrincipalRegex("(.*)").userDetailsService(userDetailsService()));
             return http.build();
@@ -148,7 +149,7 @@ class PrivacyEndpointsTest {
         mockMvc.perform(get("/app/admin/privacy").with(x509(cert(JANE)))).andExpect(status().isForbidden());
         mockMvc.perform(get("/app/admin/privacy/export").param("dn", ADMIN).with(x509(cert(JANE))))
                 .andExpect(status().isForbidden());
-        mockMvc.perform(post("/app/admin/privacy/erase").param("dn", ADMIN).param("token", "x")
+        mockMvc.perform(post("/app/admin/privacy/erase").with(csrf()).param("dn", ADMIN).param("token", "x")
                 .param("confirmName", "admin").with(x509(cert(JANE)))).andExpect(status().isForbidden());
         verify(personalData, never()).erase(anyString());
         verify(personalData, never()).export(anyString());
@@ -183,26 +184,26 @@ class PrivacyEndpointsTest {
         MockHttpSession session = new MockHttpSession();
         String token = stepOne(session);
 
-        mockMvc.perform(post("/app/admin/privacy/erase").param("dn", JANE).param("token", "not-it")
+        mockMvc.perform(post("/app/admin/privacy/erase").with(csrf()).param("dn", JANE).param("token", "not-it")
                         .param("confirmName", "Jane Doe").session(session).with(x509(cert(ADMIN))))
                 .andExpect(flash().attribute("error", containsString("start again")));
         verify(personalData, never()).erase(anyString());
 
         token = stepOne(session);
-        mockMvc.perform(post("/app/admin/privacy/erase").param("dn", JANE).param("token", token)
+        mockMvc.perform(post("/app/admin/privacy/erase").with(csrf()).param("dn", JANE).param("token", token)
                         .param("confirmName", "John Roe").session(session).with(x509(cert(ADMIN))))
                 .andExpect(flash().attribute("error", containsString("does not match")));
         verify(personalData, never()).erase(anyString());
 
         token = stepOne(session);
-        mockMvc.perform(post("/app/admin/privacy/erase").param("dn", JANE).param("token", token)
+        mockMvc.perform(post("/app/admin/privacy/erase").with(csrf()).param("dn", JANE).param("token", token)
                         .param("confirmName", " jane doe ").session(session).with(x509(cert(ADMIN))))
                 .andExpect(flash().attribute("message", containsString("Erased the personal data of Jane Doe")))
                 .andExpect(flash().attribute("warning", containsString("still in the directory")));
         verify(personalData).erase("CN=Jane Doe,OU=Users,DC=winllc,DC=com");
 
         // The token was single use.
-        mockMvc.perform(post("/app/admin/privacy/erase").param("dn", JANE).param("token", token)
+        mockMvc.perform(post("/app/admin/privacy/erase").with(csrf()).param("dn", JANE).param("token", token)
                         .param("confirmName", "Jane Doe").session(session).with(x509(cert(ADMIN))))
                 .andExpect(flash().attribute("error", containsString("start again")));
     }
@@ -214,7 +215,7 @@ class PrivacyEndpointsTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString("You cannot erase yourself")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(containsString("id=\"erase-form\""))));
-        mockMvc.perform(post("/app/admin/privacy/erase").param("dn", ADMIN).param("token", "x")
+        mockMvc.perform(post("/app/admin/privacy/erase").with(csrf()).param("dn", ADMIN).param("token", "x")
                         .param("confirmName", "admin").session(session).with(x509(cert(ADMIN))))
                 .andExpect(flash().attribute("error", containsString("start again")));
         verify(personalData, never()).erase(anyString());

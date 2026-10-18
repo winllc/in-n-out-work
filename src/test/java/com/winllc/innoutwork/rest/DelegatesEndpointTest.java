@@ -43,6 +43,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 /** Delegates are set by administrators only: people can no longer pick their own. */
 @WebMvcTest
@@ -69,7 +70,7 @@ class DelegatesEndpointTest {
     static class TestSecurityConfig {
         @Bean
         SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-            http.csrf(csrf -> csrf.disable())
+            http
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .x509(x509 -> x509.subjectPrincipalRegex("(.*)").userDetailsService(userDetailsService()));
             return http.build();
@@ -92,10 +93,10 @@ class DelegatesEndpointTest {
 
     @Test
     void aPersonCannotSetTheirOwnDelegatesAnyMore() throws Exception {
-        mockMvc.perform(post("/api/users/managers/update").with(x509(cert(ALICE)))
+        mockMvc.perform(post("/api/users/managers/update").with(csrf()).with(x509(cert(ALICE)))
                         .contentType(MediaType.APPLICATION_JSON).content("[\"" + BOB + "\"]"))
                 .andExpect(status().is4xxClientError());
-        mockMvc.perform(post("/api/users/managers/update/{dn}", ALICE).with(x509(cert(ALICE)))
+        mockMvc.perform(post("/api/users/managers/update/{dn}", ALICE).with(csrf()).with(x509(cert(ALICE)))
                         .contentType(MediaType.APPLICATION_JSON).content("[\"" + BOB + "\"]"))
                 .andExpect(status().isForbidden());
 
@@ -107,7 +108,7 @@ class DelegatesEndpointTest {
         when(delegateService.setDelegates(eq(ALICE), eq(List.of(BOB))))
                 .thenReturn(UserRecord.builder().dn(ALICE).alternateManagers(BOB).build());
 
-        mockMvc.perform(post("/api/users/managers/update/{dn}", ALICE).with(x509(cert(ADMIN)))
+        mockMvc.perform(post("/api/users/managers/update/{dn}", ALICE).with(csrf()).with(x509(cert(ADMIN)))
                         .contentType(MediaType.APPLICATION_JSON).content("[\"" + BOB + "\"]"))
                 .andExpect(status().isOk())
                 .andExpect(content().string(containsString(BOB)));
@@ -125,10 +126,10 @@ class DelegatesEndpointTest {
                 .andExpect(content().string(containsString("id=\"delegates-to-review\"")))
                 .andExpect(content().string(containsString("The person, to review")));
 
-        mockMvc.perform(post("/app/admin/delegates/keep").param("dn", ALICE).with(x509(cert(ALICE))))
+        mockMvc.perform(post("/app/admin/delegates/keep").with(csrf()).param("dn", ALICE).with(x509(cert(ALICE))))
                 .andExpect(status().isForbidden());
         verify(delegateService, never()).keep(any());
-        mockMvc.perform(post("/app/admin/delegates/keep").param("dn", ALICE).with(x509(cert(ADMIN))))
+        mockMvc.perform(post("/app/admin/delegates/keep").with(csrf()).param("dn", ALICE).with(x509(cert(ADMIN))))
                 .andExpect(status().is3xxRedirection());
         verify(delegateService).keep(ALICE);
     }

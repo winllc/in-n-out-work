@@ -29,6 +29,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 
 /**
  * Every API that creates events holds its date range to application.events.max-range-days, refusing a longer one
@@ -57,7 +58,7 @@ class EventRangeCapTest {
     static class TestSecurityConfig {
         @Bean
         SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-            http.csrf(csrf -> csrf.disable())
+            http
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .x509(x509 -> x509.subjectPrincipalRegex("(.*)").userDetailsService(userDetailsService()));
             return http.build();
@@ -88,7 +89,7 @@ class EventRangeCapTest {
 
     @Test
     void aPersonsStatusOverTooLongARangeIsRefused() throws Exception {
-        mockMvc.perform(post("/api/event/update").with(x509(cert(ADMIN))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(ADMIN))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromDate\":\"2026-11-01\",\"toDate\":\"2026-12-03\",\"status\":\"LATE_ARRIVAL\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("range_too_long"));
@@ -98,11 +99,11 @@ class EventRangeCapTest {
 
     @Test
     void aBackwardsRangeAndAnUnknownStatusAreRefused() throws Exception {
-        mockMvc.perform(post("/api/event/update").with(x509(cert(ADMIN))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(ADMIN))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromDate\":\"2026-11-05\",\"toDate\":\"2026-11-01\",\"status\":\"LATE_ARRIVAL\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("invalid_range"));
-        mockMvc.perform(post("/api/event/update").with(x509(cert(ADMIN))).contentType(MediaType.APPLICATION_JSON)
+        mockMvc.perform(post("/api/event/update").with(csrf()).with(x509(cert(ADMIN))).contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromDate\":\"2026-11-01\",\"toDate\":\"2026-11-02\",\"status\":\"ON_A_BEACH\"}"))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.error").value("invalid_status"));
@@ -112,7 +113,7 @@ class EventRangeCapTest {
 
     @Test
     void anOrganizationEventOverTooLongARangeIsRefused() throws Exception {
-        mockMvc.perform(post("/api/settings/calendar/update").with(x509(cert(ADMIN)))
+        mockMvc.perform(post("/api/settings/calendar/update").with(csrf()).with(x509(cert(ADMIN)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromDate\":\"2026-01-01T05:00:00.000Z\",\"toDate\":\"2027-01-01T05:00:00.000Z\","
                                 + "\"title\":\"Shutdown\",\"holiday\":\"true\"}"))
@@ -124,7 +125,7 @@ class EventRangeCapTest {
 
     @Test
     void aRangeWithinTheCapIsSaved() throws Exception {
-        mockMvc.perform(post("/api/settings/calendar/update").with(x509(cert(ADMIN)))
+        mockMvc.perform(post("/api/settings/calendar/update").with(csrf()).with(x509(cert(ADMIN)))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"fromDate\":\"2026-12-24\",\"toDate\":\"2026-12-27\",\"title\":\"Holidays\","
                                 + "\"holiday\":\"true\"}"))

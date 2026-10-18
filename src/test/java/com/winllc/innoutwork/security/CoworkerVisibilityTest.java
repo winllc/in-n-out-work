@@ -86,7 +86,7 @@ class CoworkerVisibilityTest {
     static class TestSecurityConfig {
         @Bean
         SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-            http.csrf(csrf -> csrf.disable())
+            http
                     .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                     .x509(x509 -> x509.subjectPrincipalRegex("(.*)").userDetailsService(userDetailsService()));
             return http.build();
