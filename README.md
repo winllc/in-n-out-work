@@ -532,6 +532,12 @@ environment variables (not Spring properties) say where they are:
 | `ENS_LICENSE_FILE` | `/var/lib/ens/readyroom/license.lic` | `/etc/ens/readyroom.lic` |
 | `ENS_LICENSE_STATE_DIR` | `/var/lib/ens/readyroom` | `/var/lib/ens/readyroom` |
 
+If the database was migrated by an earlier release, holds no installation id yet, and
+`ENS_LICENSE_STATE_DIR` has no `installation-id` to import (an upgrade straight to several replicas with the
+license volume off), ReadyRoom does not make up a new id, which would silently break a license bound to the
+old one: it stays unlicensed and logs how to fix it, mounting the old volume for one start, or
+`ENS_LICENSE_NEW_INSTALLATION_ID=true` to accept a new id.
+
 **Upgrading:** keep the license volume mounted for the first start of this release (the release bundle and
 the chart do, unchanged); after that it is not read again and may be removed (the chart:
 `persistence.license.enabled=false`, which several replicas need). Back up the database: it now holds the
@@ -817,13 +823,16 @@ through `ENS_SSO_ROLE_MAPPING`; a group not listed there grants nothing, whateve
 | `ENS_SSO_SAML_DISPLAY_NAME` | `Sign in with SAML single sign-on` | The button |
 
 A missing required setting, a filter with no placeholder, or a role mapping to anything but `MANAGER` or
-`ADMIN` stops startup with the setting's name. Map on a claim the identity provider controls and verifies, such as
-the UPN, not one users can set themselves: Entra ID's `email` claim, for example, is not verified, so
-`(mail={email})` there would let someone claim another person's address.
+`ADMIN` stops startup with the setting's name. Map on an immutable claim the identity provider controls, such as the
+UPN or an employee id, not one users can set themselves. An OIDC filter using `{email}` signs in only when the
+ID token says `email_verified: true`; Entra ID's `email` claim, for example, is not verified.
 
-**Endpoints to register at the identity provider** (`<base>` is `APPLICATION_BASE_URL`, the address users
-reach; behind a proxy set `SERVER_FORWARD_HEADERS_STRATEGY=framework` so ReadyRoom builds these with the
-public host and `https`):
+**Endpoints to register at the identity provider.** `<base>` is `APPLICATION_BASE_URL`, which single sign-on
+requires to be set to the absolute URL users reach (startup stops while it is the packaged default). Every
+address below, and the SAML entity id (the audience assertions must name), is built from it and never from a
+request's `Host`, `Forwarded` or `X-Forwarded-Host`, which a client can set: otherwise a response the IdP
+issued to another service provider could be made to match. `ENS_SSO_SAML_ENTITY_ID`, when set, must be an
+absolute URI.
 
 | | |
 |---|---|

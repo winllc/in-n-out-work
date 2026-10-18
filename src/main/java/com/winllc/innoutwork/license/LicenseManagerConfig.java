@@ -1,5 +1,6 @@
 package com.winllc.innoutwork.license;
 
+import com.enssolutions.license.JdbcLicenseStore;
 import com.enssolutions.license.LicenseCheck;
 import com.enssolutions.license.LicenseManager;
 import com.enssolutions.license.LicenseVerifier;
@@ -13,6 +14,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.event.EventListener;
 
 import javax.sql.DataSource;
+import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
 
@@ -31,7 +34,8 @@ import java.util.Optional;
  *       sets {@code /var/lib/ens/readyroom/license.lic}.</li>
  *   <li>{@code ENS_LICENSE_STATE_DIR}: the installation id and revisions, default {@code /var/lib/ens/readyroom}.</li>
  * </ul>
- * After that the files are not read again. {@code ENS_LICENSE} works as before.
+ * After that the files are not read again. {@code ENS_LICENSE} works as before. An installation that had an id
+ * in files the first start cannot see is not given a new one ({@link FirstInstallationIdGuard}).
  *
  * <p>The release date that perpetual maintenance is measured against is the build time from
  * Spring Boot's build-info (build.gradle {@code springBoot { buildInfo() }}). Without build-info
@@ -49,8 +53,21 @@ public class LicenseManagerConfig {
     @Bean
     LicenseManager licenseManager(ObjectProvider<BuildProperties> build, DataSource dataSource) {
         Optional<Instant> released = Optional.ofNullable(build.getIfAvailable()).map(BuildProperties::getTime);
-        return LicenseManager.fromEnvironment(
-                LicensedFeature.PRODUCT, LicenseVerifier.trusting(EnsKeys.PUBLIC_KEYS), released, dataSource);
+        String product = LicensedFeature.PRODUCT;
+        Path licenseFile = Path.of(env("ENS_LICENSE_FILE", "/etc/ens/" + product + ".lic"));
+        Path stateDir = Path.of(env("ENS_LICENSE_STATE_DIR", "/var/lib/ens/" + product));
+        // As LicenseManager.fromEnvironment(..., dataSource), plus the guard against a new id for an old installation.
+        JdbcLicenseStore store = new JdbcLicenseStore(dataSource, product)
+                .importingFileStateOnFirstUse(licenseFile, stateDir);
+        return new LicenseManager(product, LicenseVerifier.trusting(EnsKeys.PUBLIC_KEYS),
+                new FirstInstallationIdGuard(store, dataSource, stateDir,
+                        Boolean.parseBoolean(env("ENS_LICENSE_NEW_INSTALLATION_ID", "false"))),
+                released, Clock.systemUTC(), Optional.ofNullable(System.getenv("ENS_LICENSE")));
+    }
+
+    private static String env(String name, String fallback) {
+        String value = System.getenv(name);
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     /** Once the schema is migrated (the store's tables are Flyway's), not when the bean is made. */

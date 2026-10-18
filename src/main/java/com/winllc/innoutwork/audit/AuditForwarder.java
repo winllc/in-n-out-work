@@ -169,7 +169,8 @@ public class AuditForwarder {
             failed(state, e);
             throw e;
         }
-        state.setLastSeq(batch.getLast().getSeq());
+        // Only ever forward: the cursor was read under this delivery's lock, and the batch is after it.
+        state.setLastSeq(Math.max(state.getLastSeq(), batch.getLast().getSeq()));
         state.setLastDeliveredAt(clock.instant());
         if (state.getFailingSince() != null) {
             recovered(state);

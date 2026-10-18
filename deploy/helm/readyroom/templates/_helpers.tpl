@@ -246,14 +246,14 @@ true
 {{- end -}}
 
 {{/*
-The Deployment strategy: strategy when set; otherwise RollingUpdate, except Recreate while the license is on a
-ReadWriteOnce volume, which a new pod on another node could not attach while the old one still holds it.
+The Deployment strategy: strategy when set; otherwise RollingUpdate, except Recreate while the license or the audit
+file is on a ReadWriteOnce volume, which a new pod on another node could not attach while the old one holds it.
 */}}
 {{- define "readyroom.strategy" -}}
 {{- $v := .Values -}}
 {{- if $v.strategy -}}
 {{- toYaml $v.strategy -}}
-{{- else if and $v.persistence.license.enabled (not (has "ReadWriteMany" $v.persistence.license.accessModes)) -}}
+{{- else if or (and $v.persistence.license.enabled (not (has "ReadWriteMany" $v.persistence.license.accessModes))) (and $v.audit.file.enabled $v.audit.file.persistence.enabled (not (has "ReadWriteMany" $v.audit.file.persistence.accessModes))) -}}
 type: Recreate
 {{- else -}}
 type: RollingUpdate

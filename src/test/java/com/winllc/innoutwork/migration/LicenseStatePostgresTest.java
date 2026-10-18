@@ -4,6 +4,7 @@ import com.enssolutions.license.InstallationId;
 import com.enssolutions.license.JdbcLicenseStore;
 import com.enssolutions.license.LicenseManager;
 import com.enssolutions.license.LicenseVerifier;
+import com.winllc.innoutwork.license.FirstInstallationIdGuard;
 import com.winllc.innoutwork.license.LicensedFeature;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -18,6 +19,7 @@ import java.time.Clock;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -75,5 +77,49 @@ class LicenseStatePostgresTest extends PostgresTestSupport {
         String id = a.installationId();
         assertEquals(id, b.installationId());
         assertTrue(id.length() > 8);
+    }
+
+    /**
+     * An upgrade straight to several replicas, with the old license volume not mounted: the database predates the
+     * license tables and nothing can be imported, so no new id is made up (a license bound to the old one would
+     * silently stop working).
+     */
+    @Test
+    void anEarlierInstallationWithoutItsStateGetsNoNewId() throws Exception {
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        java.sql.Timestamp before = jdbc.queryForObject(
+                "SELECT installed_on FROM flyway_schema_history WHERE version = '1'", java.sql.Timestamp.class);
+        jdbc.update("UPDATE flyway_schema_history SET installed_on = installed_on - interval '30 days' WHERE version = '1'");
+        try {
+            Path empty = Files.createDirectories(oldVolume.resolve("empty"));
+            JdbcLicenseStore store = new JdbcLicenseStore(dataSource, LicensedFeature.PRODUCT)
+                    .importingFileStateOnFirstUse(empty.resolve("license.lic"), empty);
+            LicenseManager guarded = new LicenseManager(LicensedFeature.PRODUCT, VERIFIER,
+                    new FirstInstallationIdGuard(store, dataSource, empty, false), Optional.empty(), Clock.systemUTC(),
+                    Optional.empty());
+
+            IllegalStateException refused = assertThrows(IllegalStateException.class, guarded::installationId);
+            assertTrue(refused.getMessage().contains("mount the old license volume"), refused.getMessage());
+            assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM ens_license_installation", Integer.class));
+
+            LicenseManager confirmed = new LicenseManager(LicensedFeature.PRODUCT, VERIFIER,
+                    new FirstInstallationIdGuard(store, dataSource, empty, true), Optional.empty(), Clock.systemUTC(),
+                    Optional.empty());
+            assertTrue(confirmed.installationId().length() > 8, "ENS_LICENSE_NEW_INSTALLATION_ID=true accepts a new id");
+        } finally {
+            jdbc.update("UPDATE flyway_schema_history SET installed_on = ? WHERE version = '1'", before);
+        }
+    }
+
+    /** A new installation, whose migrations all ran together, gets its id as before. */
+    @Test
+    void aNewInstallationGetsAnId() throws Exception {
+        Path empty = Files.createDirectories(oldVolume.resolve("new"));
+        JdbcLicenseStore store = new JdbcLicenseStore(dataSource, LicensedFeature.PRODUCT)
+                .importingFileStateOnFirstUse(empty.resolve("license.lic"), empty);
+        LicenseManager licenses = new LicenseManager(LicensedFeature.PRODUCT, VERIFIER,
+                new FirstInstallationIdGuard(store, dataSource, empty, false), Optional.empty(), Clock.systemUTC(),
+                Optional.empty());
+        assertTrue(licenses.installationId().length() > 8);
     }
 }

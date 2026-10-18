@@ -105,6 +105,7 @@ class OidcSignInTest {
         registry.add("ens.sso.oidc.client-secret", () -> "s3cret");
         registry.add("ens.sso.oidc.user-filter", () -> "(userPrincipalName={preferred_username})");
         registry.add("ens.sso.role-mapping", () -> "ReadyRoom Admins=ADMIN");
+        registry.add("application.application-base-url", () -> "https://readyroom.example.com");
     }
 
     @Configuration
@@ -154,6 +155,20 @@ class OidcSignInTest {
                         .contentType("application/json").content("{}"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/home")).andExpect(redirectedUrl("/login"));
+    }
+
+    /** The redirect URI is APPLICATION_BASE_URL's, whatever Host or forwarded headers the request carries. */
+    @Test
+    void theRedirectUriIsPinnedToThePublicUrl() throws Exception {
+        MvcResult start = mvc.perform(get("/oauth2/authorization/oidc").session(new MockHttpSession())
+                        .header("Host", "attacker.example.com")
+                        .header("Forwarded", "host=attacker.example.com;proto=https")
+                        .header("X-Forwarded-Host", "attacker.example.com"))
+                .andExpect(status().is3xxRedirection()).andReturn();
+        String redirectUri = UriComponentsBuilder.fromUriString(start.getResponse().getRedirectedUrl()).build()
+                .getQueryParams().getFirst("redirect_uri");
+        assertEquals("https://readyroom.example.com/login/oauth2/code/oidc",
+                URLDecoder.decode(redirectUri, StandardCharsets.UTF_8));
     }
 
     @Test

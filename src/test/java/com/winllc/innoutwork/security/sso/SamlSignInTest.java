@@ -111,7 +111,6 @@ class SamlSignInTest {
         EnsProperties.Sso sso = new EnsProperties.Sso();
         sso.getSaml().setEnabled(true);
         sso.getSaml().setIdpMetadata("file:" + dir.resolve("idp.xml"));
-        sso.getSaml().setEntityId(SP);
         sso.getSaml().setUserFilter("(userPrincipalName={" + UPN_ATTRIBUTE + "})");
         sso.setRoleMapping("ReadyRoom Managers=MANAGER");
 
@@ -133,9 +132,8 @@ class SamlSignInTest {
         });
 
         signIn = new SamlSignIn(sso, new SsoUserMapper(users, ldap, RoleMapping.parse(sso.getRoleMapping())), seen,
-                Clock.systemUTC());
-        registration = signIn.registrations().findByRegistrationId("saml").mutate()
-                .assertionConsumerServiceLocation(ACS).build();
+                Clock.systemUTC(), "https://readyroom.example.com");
+        registration = signIn.registrations().findByRegistrationId("saml");
         provider = signIn.authenticationProvider();
     }
 
@@ -144,6 +142,35 @@ class SamlSignInTest {
         RelyingPartyRegistration loaded = signIn.registrations().findByRegistrationId("saml");
         assertEquals(Saml2MessageBinding.REDIRECT, loaded.getAssertingPartyMetadata().getSingleSignOnServiceBinding());
         assertEquals(IDP + "/redirect", loaded.getAssertingPartyMetadata().getSingleSignOnServiceLocation());
+    }
+
+    /**
+     * The audience and destination come from APPLICATION_BASE_URL, never from a request's Host or forwarded
+     * headers: the registration holds no {baseUrl} template for a request to fill in.
+     */
+    @Test
+    void theEntityIdAndConsumerServiceArePinnedToThePublicUrl() {
+        assertEquals(SP, registration.getEntityId());
+        assertEquals(ACS, registration.getAssertionConsumerServiceLocation());
+        org.springframework.mock.web.MockHttpServletRequest spoofed =
+                new org.springframework.mock.web.MockHttpServletRequest("POST", "/login/saml2/sso/saml");
+        spoofed.setServerName("other-sp.example.com");
+        spoofed.addHeader("Forwarded", "host=other-sp.example.com;proto=https");
+        spoofed.addHeader("X-Forwarded-Host", "other-sp.example.com");
+        RelyingPartyRegistration resolved = new org.springframework.security.saml2.provider.service.web
+                .DefaultRelyingPartyRegistrationResolver(signIn.registrations()).resolve(spoofed, "saml");
+        assertEquals(SP, resolved.getEntityId());
+        assertEquals(ACS, resolved.getAssertionConsumerServiceLocation());
+    }
+
+    @Test
+    void aRelativeEntityIdStopsStartup() {
+        EnsProperties.Sso sso = new EnsProperties.Sso();
+        sso.getSaml().setIdpMetadata("file:/nowhere");
+        sso.getSaml().setUserFilter("(uid={nameid})");
+        sso.getSaml().setEntityId("readyroom");
+        assertThrows(IllegalStateException.class,
+                () -> new SamlSignIn(sso, null, seen, Clock.systemUTC(), "https://readyroom.example.com"));
     }
 
     @Test
@@ -219,7 +246,8 @@ class SamlSignInTest {
         EnsProperties.Sso sso = new EnsProperties.Sso();
         sso.getSaml().setIdpMetadata("file:/nowhere");
         sso.getSaml().setUserFilter("(uid=alice)");
-        assertThrows(IllegalStateException.class, () -> new SamlSignIn(sso, null, seen, Clock.systemUTC()));
+        assertThrows(IllegalStateException.class,
+                () -> new SamlSignIn(sso, null, seen, Clock.systemUTC(), "https://readyroom.example.com"));
     }
 
     // --- an identity provider ---------------------------------------------------------------------------------

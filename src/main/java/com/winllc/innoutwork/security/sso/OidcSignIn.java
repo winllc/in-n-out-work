@@ -65,9 +65,15 @@ public class OidcSignIn {
     private final Duration clockSkew;
     private final SsoUserMapper mapper;
     private final LazyClientRegistrationRepository registrations;
+    private final String redirectUri;
 
-    public OidcSignIn(EnsProperties.Sso settings, SsoUserMapper mapper) {
+    /**
+     * @param baseUrl the public base URL (APPLICATION_BASE_URL): the redirect URI is built from it, never from the
+     *                request's Host or forwarded headers, which a client can set.
+     */
+    public OidcSignIn(EnsProperties.Sso settings, SsoUserMapper mapper, String baseUrl) {
         this.settings = settings.getOidc();
+        this.redirectUri = baseUrl + "/login/oauth2/code/" + REGISTRATION_ID;
         this.clockSkew = settings.getClockSkew();
         this.mapper = mapper;
         if (this.settings.getIssuerUri() == null || this.settings.getIssuerUri().isBlank()) {
@@ -98,7 +104,7 @@ public class OidcSignIn {
                 .clientAuthenticationMethod(secret.isEmpty() ? ClientAuthenticationMethod.NONE
                         : ClientAuthenticationMethod.CLIENT_SECRET_BASIC)
                 .scope(scopes)
-                .redirectUri("{baseUrl}/login/oauth2/code/{registrationId}")
+                .redirectUri(redirectUri)
                 .userNameAttributeName("sub")
                 .clientName(settings.getDisplayName())
                 .clientSettings(ClientRegistration.ClientSettings.builder().requireProofKey(true).build())
@@ -136,6 +142,12 @@ public class OidcSignIn {
             OidcUser idpUser = delegate.loadUser(request);
             Map<String, List<String>> values = new HashMap<>();
             idpUser.getClaims().forEach((name, value) -> values.put(name, strings(value)));
+            if (usesEmail(settings.getUserFilter()) && !Boolean.TRUE.equals(idpUser.getEmailVerified())) {
+                // An address the IdP has not verified is anyone's to claim.
+                throw new OAuth2AuthenticationException(new OAuth2Error("sso_refused",
+                        "the identity provider did not say the e-mail address is verified (email_verified)"
+                                + " (subject " + idpUser.getSubject() + ")", null), "email not verified");
+            }
             AppUserDetails user;
             try {
                 user = mapper.map(settings.getUserFilter(), values, values.getOrDefault(settings.getGroupsClaim(),
@@ -151,6 +163,15 @@ public class OidcSignIn {
             claims.put(DN_CLAIM, user.getUsername());
             return new DefaultOidcUser(user.getAuthorities(), idpUser.getIdToken(), new OidcUserInfo(claims), DN_CLAIM);
         };
+    }
+
+    /** Whether the user filter maps on the e-mail claim, which counts only when the IdP says it is verified. */
+    static boolean usesEmail(String template) {
+        return template != null && template.toLowerCase(java.util.Locale.ROOT).contains("{email}");
+    }
+
+    public String redirectUri() {
+        return redirectUri;
     }
 
     /** Claims as strings: a list's elements, or the value itself. */

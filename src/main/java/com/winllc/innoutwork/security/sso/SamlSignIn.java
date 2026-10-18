@@ -82,9 +82,25 @@ public class SamlSignIn {
     private final SsoAssertionSeenRepository seen;
     private final Clock clock;
     private final LazyRegistrations registrations = new LazyRegistrations();
+    private final String entityId;
+    private final String acsLocation;
 
-    public SamlSignIn(EnsProperties.Sso settings, SsoUserMapper mapper, SsoAssertionSeenRepository seen, Clock clock) {
+    /**
+     * @param baseUrl the public base URL (APPLICATION_BASE_URL). This service provider's entity id (the audience
+     *                assertions must name) and its assertion consumer service (the destination and recipient)
+     *                are built from it, never from the request's Host or forwarded headers: otherwise a response
+     *                the IdP issued to another service provider could be made to match.
+     */
+    public SamlSignIn(EnsProperties.Sso settings, SsoUserMapper mapper, SsoAssertionSeenRepository seen, Clock clock,
+                      String baseUrl) {
         this.settings = settings.getSaml();
+        String configured = this.settings.getEntityId();
+        this.entityId = configured == null || configured.isBlank()
+                ? baseUrl + "/saml2/service-provider-metadata/" + REGISTRATION_ID : configured.strip();
+        if (!java.net.URI.create(this.entityId).isAbsolute()) {
+            throw new IllegalStateException("ENS_SSO_SAML_ENTITY_ID must be an absolute URI: " + this.entityId);
+        }
+        this.acsLocation = baseUrl + "/login/saml2/sso/" + REGISTRATION_ID;
         this.clockSkew = settings.getClockSkew();
         this.mapper = mapper;
         this.seen = seen;
@@ -191,9 +207,8 @@ public class SamlSignIn {
         RelyingPartyRegistration.Builder builder = RelyingPartyRegistrations
                 .fromMetadata(new ByteArrayInputStream(metadata))
                 .registrationId(REGISTRATION_ID)
-                .entityId(settings.getEntityId().isBlank()
-                        ? "{baseUrl}/saml2/service-provider-metadata/{registrationId}" : settings.getEntityId())
-                .assertionConsumerServiceLocation("{baseUrl}/login/saml2/sso/{registrationId}")
+                .entityId(entityId)
+                .assertionConsumerServiceLocation(acsLocation)
                 .assertionConsumerServiceBinding(Saml2MessageBinding.POST);
         if (!settings.getSpKeyFile().isBlank()) {
             Credentials c = credentials();
