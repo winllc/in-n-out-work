@@ -279,8 +279,8 @@ public class RetentionService {
     /** Summarises, then deletes, one day's records and statuses of a batch of people; in the caller's transaction. */
     private void purgeBatch(LocalDate day, ZonedDateTime dayStart, ZonedDateTime nextDay, List<String> people,
                             Counts counts) {
-        List<CheckInOutRecord> records = checkIns.findByLowercaseDnInAndTimestampBetween(people, dayStart,
-                nextDay.minusNanos(1));
+        // Half-open, [dayStart, nextDay): the same day the DNs were found on, with no rounding at midnight.
+        List<CheckInOutRecord> records = checkIns.findByLowercaseDnInFromUntil(people, dayStart, nextDay);
         List<UserEventRecord> statuses = events.findByLowercaseDnInAndDateBetween(people, day, day);
         if (records.isEmpty() && statuses.isEmpty()) {
             return;

@@ -209,6 +209,19 @@ class RetentionPostgresTest extends PostgresTestSupport {
         assertEquals(1200, count("attendance_summaries"));
     }
 
+    /** A record at midnight belongs to the day it starts: the day before the cutoff keeps nothing of it. */
+    @Test
+    void aRecordAtMidnightOfTheCutoffDayStays() throws Exception {
+        checkIn(BOB, "CHECK_IN", CUTOFF.minusDays(1), 23, 0);
+        jdbc.update("INSERT INTO check_in_out_records (dn, \"timestamp\", action) VALUES (?, ?, 'CHECK_OUT')", BOB,
+                java.sql.Timestamp.from(CUTOFF.atStartOfDay(ZONE).toInstant()));
+
+        RetentionService.Result result = purgeOn(TODAY, 40).purge();
+
+        assertEquals(1, result.checkIns());
+        assertEquals(1, count("check_in_out_records"), "the check-out at 00:00 on the cutoff day is kept");
+    }
+
     @Test
     void retentionOffPurgesNothing() throws Exception {
         checkIn(BOB, "CHECK_IN", LocalDate.of(2020, 1, 6), 8, 0);

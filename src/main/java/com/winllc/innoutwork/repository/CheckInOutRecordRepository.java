@@ -160,6 +160,12 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
             + " and r.timestamp >= :from and r.timestamp < :to")
     List<String> findDistinctLowercaseDnsBetween(@Param("from") ZonedDateTime from, @Param("to") ZonedDateTime to);
 
+    /** Records of a set of users in [from, to); DNs compared lower-cased, so pass them lower-cased. */
+    @Query("select r from CheckInOutRecord r where lower(r.dn) in :dns and r.timestamp >= :from and r.timestamp < :to")
+    List<CheckInOutRecord> findByLowercaseDnInFromUntil(@Param("dns") Collection<String> dns,
+                                                        @Param("from") ZonedDateTime from,
+                                                        @Param("to") ZonedDateTime to);
+
     /** Records without a DN in [from, to): nobody's, deleted by the purge without a summary. */
     @Modifying
     @Query("delete from CheckInOutRecord r where r.dn is null and r.timestamp >= :from and r.timestamp < :to")

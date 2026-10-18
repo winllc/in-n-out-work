@@ -145,12 +145,15 @@ public class StatusRequestService {
     }
 
     private StatusRequest decide(Authentication viewer, long id, String comment, RequestState decision) {
+        // Who may decide is asked first, without the lock: it can take a directory lookup, and the requester of a
+        // request never changes.
+        String requesterDn = requests.findById(id).orElseThrow(() -> notFound(id)).getRequesterDn();
+        if (!approvers.mayDecide(viewer, requesterDn)) {
+            throw new AccessDeniedException("%s may not decide request %d of %s"
+                    .formatted(viewer.getName(), id, requesterDn));
+        }
         StatusRequest decided = audit.inTransaction(() -> {
             StatusRequest request = requests.findByIdForUpdate(id).orElseThrow(() -> notFound(id));
-            if (!approvers.mayDecide(viewer, request.getRequesterDn())) {
-                throw new AccessDeniedException("%s may not decide request %d of %s"
-                        .formatted(viewer.getName(), id, request.getRequesterDn()));
-            }
             if (!request.getState().isOpen()) {
                 throw InvalidRequestException.conflict("not_pending",
                         "Request %d is already %s".formatted(id, request.getState().name().toLowerCase()));
