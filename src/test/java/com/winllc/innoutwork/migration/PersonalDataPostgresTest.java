@@ -78,8 +78,8 @@ class PersonalDataPostgresTest extends PostgresTestSupport {
                     + " alternate_managers, alternate_managers_review_pending) VALUES (?, ?, 'USER', '08:30', ?, false)"
                     + " RETURNING id", Long.class, dn, "notes of " + dn, dn.equals(MAX) ? JANE.toUpperCase() : null);
             jdbc.update("INSERT INTO permission_records (user_id, group_dn) VALUES (?, ?)", id, GROUP);
-            jdbc.update("INSERT INTO check_in_out_records (dn, \"timestamp\", action, session_id, forced)"
-                    + " VALUES (?, now(), 'CHECK_IN', 'secret-session', false)", dn);
+            jdbc.update("INSERT INTO check_in_out_records (dn, \"timestamp\", action, session_id, forced, client_address)"
+                    + " VALUES (?, now(), 'CHECK_IN', 'secret-session', false, '192.0.2.10')", dn);
             jdbc.update("INSERT INTO user_event_records (dn, date, status) VALUES (?, current_date, 'LATE_ARRIVAL')", dn);
             jdbc.update("INSERT INTO status_requests (requester_dn, status, from_date, to_date, state, created_at, note)"
                     + " VALUES (?, 'SCHEDULED_LEAVE', current_date, current_date, 'REQUESTED', now(), 'wedding')", dn);
@@ -129,6 +129,7 @@ class PersonalDataPostgresTest extends PostgresTestSupport {
         Map<String, Object> checkIn = (Map<String, Object>) ((List<?>) export.get("checkIns")).getFirst();
         assertTrue(checkIn.get("timestamp").toString().matches("\\d{4}-\\d{2}-\\d{2}T.*[+-]\\d{2}:\\d{2}|.*Z"),
                 () -> "ISO 8601 with an offset: " + checkIn.get("timestamp"));
+        assertEquals("192.0.2.10", checkIn.get("clientAddress"), "the address the check-in came from is about them");
     }
 
     @Test
