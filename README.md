@@ -64,6 +64,10 @@ TLS-terminating proxy (see [Client certificates](#client-certificates-cacpiv)).
 Browsers without a certificate fall back to the branded form login at `/login`,
 validated by the LDAP authentication provider.
 
+Browsers can also sign in through an identity provider, OpenID Connect or SAML 2.0
+(Entra ID, Okta, ADFS), mapped to the same directory users and roles; off until
+configured, see [Single sign-on](#single-sign-on-openid-connect-saml).
+
 The Windows client's check-in, lock and unlock calls can also sign in with the
 user's Windows logon (Kerberos). This is off by default; see
 [Windows authentication](#windows-authentication).
@@ -179,6 +183,12 @@ to sign-in (`/login?expired`; API calls get `401`) and is audited as `auth.sessi
 | `ENS_SESSION_ADMIN_IDLE_TIMEOUT` | same as idle | A shorter idle timeout for administrators (STIG suggests `15m`) |
 | `ENS_SESSION_ABSOLUTE_TIMEOUT` | `12h` | A session ends this long after sign-in |
 | `ENS_SESSION_MAX_PER_USER` | `0` (no limit) | Concurrent sessions per user; past it the oldest is ended (STIG suggests `3`) |
+
+Sessions are kept in the database (Spring Session JDBC, tables from Flyway `V6`), so any replica serves any
+request, a restart or rolling update does not sign anyone out, and the per-user limit counts sessions on every
+replica. Expired sessions are deleted once a minute, on one replica (`security.SessionExpiry`), which also
+audits each idle expiry. The cookie keeps its name, `JSESSIONID`. A session attribute a replica of another
+release cannot read back (during a rolling update) is treated as absent: at worst that person signs in again.
 
 Timeouts under a minute, or a negative limit, stop startup with the setting's name. ReadyRoom had no idle
 setting of its own before; Spring Boot's `SERVER_SERVLET_SESSION_TIMEOUT` no longer decides how long a
@@ -505,22 +515,28 @@ another product, bound to another installation, or an older revision of one alre
 refused with the reason, and the installed one stays. Anyone else sent there while there is no usable
 license sees "ReadyRoom is not licensed, ask your administrator" (and can sign out).
 `GET /api/license` reports the state to any signed-in user; administrators also get the installation
-id and the file path.
+id and where the license is kept.
 
-**Where the license lives.** Two environment variables (not Spring properties):
+**Where the license lives.** In the database: the license, this installation's id and the highest
+revision seen of each license (so an older file cannot be put back), in the `ens_license_*` tables (Flyway
+`V8__ens_license_state.sql`, ens-license 1.2.0's `JdbcLicenseStore`). Every replica reads the same state,
+an upload on one is in force on all within seconds, and a short database hiccup keeps the license read last
+in force.
+
+Earlier releases kept it in files, and on its first start this release imports them once, when the database
+holds no installation id yet, so the installation keeps its id and licenses bound to it keep working. Two
+environment variables (not Spring properties) say where they are:
 
 | Variable | In the images | Outside a container (library default) |
 |---|---|---|
 | `ENS_LICENSE_FILE` | `/var/lib/ens/readyroom/license.lic` | `/etc/ens/readyroom.lic` |
 | `ENS_LICENSE_STATE_DIR` | `/var/lib/ens/readyroom` | `/var/lib/ens/readyroom` |
 
-The state directory holds the installation id and the highest revision seen of each license (so an
-older file cannot be put back). It must be writable and persistent: lose it and the installation
-gets a new id, so licenses bound to the old one stop working. The upload writes the license file, so
-in the images both live in one writable volume. For `./gradlew bootRun`, point both somewhere you can
-write, for example `ENS_LICENSE_STATE_DIR=$PWD/license-state ENS_LICENSE_FILE=$PWD/license-state/license.lic`.
-The file is re-read whenever it changes, so a license copied in by hand also takes effect without a
-restart.
+**Upgrading:** keep the license volume mounted for the first start of this release (the release bundle and
+the chart do, unchanged); after that it is not read again and may be removed (the chart:
+`persistence.license.enabled=false`, which several replicas need). Back up the database: it now holds the
+installation id. `ENS_LICENSE` (the license itself, from a secret) works as before: it is installed when no
+usable license is, or when it is a newer revision.
 
 The release date that a perpetual license's maintenance is compared with is the build time from
 Spring Boot's build-info (`springBoot { buildInfo() }` in `build.gradle`); without build-info (running
@@ -765,6 +781,133 @@ proxy_set_header X-ENS-Proxy-Secret "<the secret>";
 | `ENS_X509_REVOCATION_CACHE` | `10m` | How long a good or revoked answer is kept, per issuer and serial |
 
 ---
+
+## Single sign-on (OpenID Connect, SAML)
+
+Browsers can sign in through your identity provider instead of the directory password form: OpenID Connect
+(authorization code flow with PKCE) and SAML 2.0 Web SSO, each off until enabled. Both can be on at once; the
+sign-in page then shows a button for each next to the form, which keeps working, as do client certificates.
+The Windows client is not affected: its API never goes to the identity provider.
+
+**Who signs in.** Whoever the identity provider signs in must match exactly one directory user by the
+protocol's user filter, an LDAP filter with the IdP's claims (OIDC) or attributes (SAML) as `{placeholders}`,
+the same way `ENS_X509_USER_FILTER` maps a certificate. The values are escaped. No match, or several, is
+refused. That directory user then gets exactly the roles any other sign-in would: `USER`, an
+administrator-assigned role, `ADMIN` for `super-user-dns`. The IdP's groups add `MANAGER` or `ADMIN` only
+through `ENS_SSO_ROLE_MAPPING`; a group not listed there grants nothing, whatever it is called.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `ENS_SSO_ROLE_MAPPING` | empty | IdP group to role: `ReadyRoom Admins=ADMIN;ReadyRoom Managers=MANAGER` (`;` or new lines; matched ignoring case; the last `=` separates the role, so DN-style group names work) |
+| `ENS_SSO_CLOCK_SKEW` | `60s` | How far the IdP's clock may be off for token and assertion times (at most 5 minutes) |
+| `ENS_SSO_OIDC_ENABLED` | `false` | OpenID Connect |
+| `ENS_SSO_OIDC_ISSUER_URI` | | The issuer; its discovery document is read on first use (not at startup, so an IdP outage does not stop ReadyRoom) |
+| `ENS_SSO_OIDC_CLIENT_ID` | | Also the audience ID tokens must name |
+| `ENS_SSO_OIDC_CLIENT_SECRET`, `_FILE` | empty | Empty: a public client (PKCE only). The file wins |
+| `ENS_SSO_OIDC_SCOPES` | `openid,profile,email` | |
+| `ENS_SSO_OIDC_USER_FILTER` | required | e.g. `(userPrincipalName={preferred_username})`, `(mail={email})` |
+| `ENS_SSO_OIDC_GROUPS_CLAIM` | `groups` | |
+| `ENS_SSO_OIDC_DISPLAY_NAME` | `Sign in with single sign-on` | The button |
+| `ENS_SSO_SAML_ENABLED` | `false` | SAML 2.0 |
+| `ENS_SSO_SAML_IDP_METADATA` | | The IdP's metadata: `https://...` (read on first use and every 12 hours, keeping the last good copy) or `file:/path` |
+| `ENS_SSO_SAML_ENTITY_ID` | `{baseUrl}/saml2/service-provider-metadata/saml` | This service provider's entity id |
+| `ENS_SSO_SAML_USER_FILTER` | required | `{nameid}` and attribute names, e.g. `(userPrincipalName={http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn})` |
+| `ENS_SSO_SAML_GROUPS_ATTRIBUTE` | `http://schemas.microsoft.com/ws/2008/06/identity/claims/groups` | |
+| `ENS_SSO_SAML_SP_KEY_FILE`, `_SP_CERT_FILE` | empty | PEM, PKCS#8 RSA key and certificate: signs requests and decrypts encrypted assertions, if the IdP wants either |
+| `ENS_SSO_SAML_DISPLAY_NAME` | `Sign in with SAML single sign-on` | The button |
+
+A missing required setting, a filter with no placeholder, or a role mapping to anything but `MANAGER` or
+`ADMIN` stops startup with the setting's name.
+
+**Endpoints to register at the identity provider** (`<base>` is `APPLICATION_BASE_URL`, the address users
+reach; behind a proxy set `SERVER_FORWARD_HEADERS_STRATEGY=framework` so ReadyRoom builds these with the
+public host and `https`):
+
+| | |
+|---|---|
+| OIDC redirect URI | `<base>/login/oauth2/code/oidc` |
+| SAML entity id / metadata | `<base>/saml2/service-provider-metadata/saml` (download it for the IdP) |
+| SAML assertion consumer service (HTTP-POST) | `<base>/login/saml2/sso/saml` |
+
+**Entra ID.** OIDC: register an app (web platform) with the redirect URI, create a client secret; issuer
+`https://login.microsoftonline.com/<tenant id>/v2.0`; user filter `(userPrincipalName={preferred_username})`.
+For groups, add the *groups* claim (security groups) to the ID token; Entra sends group object ids, so map
+those (`<object id>=ADMIN`). A user in more than 200 groups gets no `groups` claim (the overage case): assign
+the app's groups explicitly ("Groups assigned to the application") or rely on ReadyRoom's own roles. SAML:
+create an enterprise application, upload the SP metadata, use the *App Federation Metadata Url* as
+`ENS_SSO_SAML_IDP_METADATA`, user filter on the `upn`/`name` attribute.
+
+**Okta.** OIDC: a Web app integration with the redirect URI; issuer `https://<org>.okta.com` (or an
+authorization server's); add a `groups` claim filtered to the ReadyRoom groups. SAML: an app integration with
+the ACS URL and entity id above, NameID or an attribute carrying the user's login, a `groups` attribute
+statement; the metadata URL from *Sign On*.
+
+**ADFS.** SAML: add a relying party trust from the SP metadata URL (or file); claim rules sending UPN (and
+*Token-Groups* as `http://schemas.microsoft.com/ws/2008/06/identity/claims/groups` or *Group*); metadata
+`https://<adfs>/FederationMetadata/2007-06/FederationMetadata.xml`. OIDC (ADFS 2016 and later): an
+application group with a server application; issuer `https://<adfs>/adfs`; filter on `{upn}`.
+
+**What is checked.** OIDC: the state, the nonce, PKCE (always, also with a client secret), the ID token's
+signature against the issuer's published keys, its issuer, audience and times. Access and refresh tokens are
+not kept. SAML: the response's or assertion's signature against the metadata's certificates, issuer,
+audience, destination and recipient, and times; the response must answer a request this browser started
+(`InResponseTo`; IdP-initiated sign-in is refused); each assertion is used once, across replicas
+(`sso_assertion_seen`). The SAML answer is a cross-site POST, on which browsers leave out the `SameSite=Lax`
+session cookie, so the request it answers is kept in the database by its RelayState
+(`sso_saml_request`, Flyway `V7`, ten minutes) and tied to the browser by a cookie of its own
+(`ENS_SAML_<relay state>`, `SameSite=None; Secure`, only sent to the assertion consumer service): SAML needs
+HTTPS. ReadyRoom asks the IdP's HTTP-Redirect sign-in endpoint (the POST binding would need a self-submitting
+form, which the Content-Security-Policy blocks). The consent banner, when on, must be acknowledged before
+either method starts.
+
+**Audit.** Every sign-in is `auth.login` with `method` `oidc` or `saml2`; every refusal is a failed
+`auth.login` with the reason (the IdP's error, the check that failed, `no single directory user matches`...).
+
+**Not included.** Sign-out ends the ReadyRoom session only, not the one at the identity provider (no
+single logout). Demo mode does not offer single sign-on.
+
+## Several replicas, upgrades and outages
+
+ReadyRoom can run as several replicas behind one Service, and a rolling update keeps one serving throughout,
+so the Windows client's events, which it sends once and never retries, are not lost during an upgrade.
+
+| Shared state | Where it lives |
+|---|---|
+| Browser sessions | The database (Spring Session JDBC); see [Session lifetime](#session-lifetime) |
+| Scheduled jobs | Run on one replica at a time: each holds a lock in the database (ShedLock, table `shedlock`) while it runs: the directory sync, auto check-out, absence alerts, the retention purge, audit retention and session clean-up. A replica that finds a job's lock held skips that run. The lock is kept alive while a run lasts, kept for 90% of the job's interval after a quick run (so the job still runs about once an interval), and lapses within an interval if its replica dies |
+| Audit forwarding (Splunk, syslog) | Every replica runs a forwarder; each batch is delivered under a lock, so none goes out twice |
+| License state | The database (see [Licensing](#licensing)) |
+| License mode changes | Each replica notices; the change is recorded once |
+
+What stays per replica, by design: the access-denial summaries (each replica collapses and records its own),
+the limit on refused logoffs per client address (`application.logoff.refused-per-minute` applies per replica,
+so with N replicas an address may get up to N times as many refusals a minute before 429; it only bounds
+noise), and caches that are re-read on their own (directory users and groups, revocation answers and CRLs).
+
+**Stopping a replica** (an update, a scale-down, a node drain): it leaves the Service first (the chart's
+`preStop` sleep), then finishes requests in progress (`server.shutdown: graceful`) and lets a scheduled job
+already running finish and release its lock (`spring.task.scheduling.shutdown`), within the pod's grace
+period. A replica killed mid-job leaves its lock to lapse: the others skip that job until then (a delayed
+run, never a duplicate).
+
+**Outages and absence alerts.** Every replica updates a heartbeat in the database every 15 seconds. When the
+whole service was down, which with a single replica includes every upgrade with the `Recreate` strategy, the
+gap is recorded (`service_outage`), since check-ins sent during it were lost. Then:
+
+- someone whose check-in time plus grace fell after the outage began is not alerted about until the outage's
+  end plus `application.ha.outage-grace` (`APPLICATION_HA_OUTAGEGRACE`, `30m`; `0` turns this off), so their
+  next logon or unlock (which checks them in) can arrive first;
+- a session last seen locked before the outage is checked out automatically only `checkOutAfterMinutes` after
+  the outage's end, since its unlock may have been lost.
+
+With two replicas and rolling updates there is no such gap, and alerts go out on time. The real fix for lost
+events is the client's offline queue (planned).
+
+**Upgrading to this release.** Nothing to do by hand. Flyway adds the tables (`V6` sessions, job locks,
+heartbeat; `V7` single sign-on; `V8` license state). Everyone signs in again once, as at any restart. The
+license volume is imported on the first start (keep it mounted then). The chart keeps one replica and, while
+the license is on a ReadWriteOnce volume, the `Recreate` strategy; to run several replicas, see the chart's
+README ("Several replicas"). With the release bundle (Docker Compose) there is one instance as before.
 
 ## Windows authentication
 
