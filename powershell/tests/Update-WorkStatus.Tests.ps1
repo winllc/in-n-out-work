@@ -908,7 +908,7 @@ Describe 'Windows' -Tag 'Windows' -Skip:(-not $OnWindows) {
 
         It 'exits 0 and says what it would post' {
             $run = Invoke-Agent -Action lock -Authentication Windows -BaseUrl 'https://readyroom.example.com/api/check/' -WhatIf
-            $run.ExitCode | Should -Be 0
+            $run.ExitCode | Should -Be 0 -Because $run.Output
             $run.Output | Should -Match ([regex]::Escape('WhatIf: would POST to https://readyroom.example.com/api/check/lock'))
             $run.Output | Should -Match 'signing in with: Windows'
         }
@@ -917,7 +917,7 @@ Describe 'Windows' -Tag 'Windows' -Skip:(-not $OnWindows) {
             # Resolve-Configuration once read $PSBoundParameters itself - its own,
             # empty set - so this switch on the command line did nothing.
             $run = Invoke-Agent -Action lock -Authentication Windows -BaseUrl 'https://readyroom.example.com/api/check' -SkipCertificateCheck -WhatIf
-            $run.ExitCode | Should -Be 0
+            $run.ExitCode | Should -Be 0 -Because $run.Output
             $run.Output | Should -Match 'Server certificate validation DISABLED'
         }
 
@@ -929,7 +929,7 @@ Describe 'Windows' -Tag 'Windows' -Skip:(-not $OnWindows) {
 
         It 'logs out as the user without -UserSid, anonymously' {
             $run = Invoke-Agent -Action logout -BaseUrl 'https://readyroom.example.com/api/check' -UserSid '$(TargetUserSid)' -WhatIf
-            $run.ExitCode | Should -Be 0
+            $run.ExitCode | Should -Be 0 -Because $run.Output
             $run.Output | Should -Match 'signing in with: Anonymous'
         }
 
