@@ -83,6 +83,10 @@
               3 HTTP request failed, 4 logout run as SYSTEM without a valid -UserSid.
 #>
 
+# The parameters are read by Resolve-Configuration through $PSBoundParameters,
+# which the analyzer does not follow.
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSReviewUnusedParameter', '',
+    Justification = 'Passed to Resolve-Configuration as $PSBoundParameters.')]
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -128,28 +132,15 @@ $ActionMap = @{
 $SystemSid = 'S-1-5-18'
 $AdminsSid = 'S-1-5-32-544'
 
-$CurrentSid      = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-$RunningAsSystem = $CurrentSid -eq $SystemSid
-
-# The installer creates both folders and sets their permissions: sessions\ lets
-# a user add a file but not list, change or delete anyone else's, and logs\ is
-# writable by SYSTEM and administrators only.
-$DataDir    = Join-Path $env:ProgramData 'InOutWorker'
-$SessionDir = Join-Path $DataDir 'sessions'
-
-if ($RunningAsSystem) {
-    $LogDir = Join-Path $DataDir 'logs'
-} elseif ($env:LOCALAPPDATA) {
-    # A user cannot write to the SYSTEM log folder, so their runs log to their profile.
-    $LogDir = Join-Path $env:LOCALAPPDATA 'InOutWorker\logs'
-} else {
-    $LogDir = $null
-}
-$LogFile       = $null
-$LogDirTrusted = $null
-if ($LogDir) {
-    $LogFile = Join-Path $LogDir ("inoutworker-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
-}
+# Who is running and where things go. Set under "Main" below; dot-sourcing the
+# script (as its tests do) defines the functions and stops before that.
+$CurrentSid      = $null
+$RunningAsSystem = $false
+$DataDir         = $null
+$SessionDir      = $null
+$LogDir          = $null
+$LogFile         = $null
+$LogDirTrusted   = $null
 
 # ---------------------------------------------------------------------------
 # Paths SYSTEM touches. It reads or writes under %ProgramData%\InOutWorker only
@@ -175,7 +166,7 @@ function Test-NoReparsePoint {
 function Test-TrustedPath {
     param([string]$Path, [string[]]$Owners)
 
-    # No logging here: Write-Log calls this.
+    # No logging here: Write-StatusLog calls this.
     try {
         if (-not (Test-NoReparsePoint -Path $Path)) { return $false }
         $owner = (Get-Acl -LiteralPath $Path).GetOwner([Security.Principal.SecurityIdentifier]).Value
@@ -189,7 +180,14 @@ function Test-TrustedPath {
 # Logging - Write-Host alone is invisible under Task Scheduler, so everything
 # is also appended to a dated log file.
 # ---------------------------------------------------------------------------
-function Write-Log {
+function Write-StatusLog {
+    # Write-Host because Task Scheduler runs have no one reading the output
+    # streams; the colour is for someone running it by hand. The log file is the
+    # record.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
+        Justification = 'Console echo for interactive runs; the log file is the record.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingEmptyCatchBlock', '',
+        Justification = 'Logging must never be the reason the run fails.')]
     param(
         [string]$Message,
         [ValidateSet('INFO', 'WARN', 'ERROR')]
@@ -230,13 +228,21 @@ function Write-Log {
 # Configuration
 # ---------------------------------------------------------------------------
 function Resolve-Configuration {
+    # $Parameters is the script's $PSBoundParameters. Inside this function the
+    # automatic variable is the function's own, so it has to be passed in: read
+    # here directly, -SkipCertificateCheck on the command line was ignored.
+    param(
+        [Collections.IDictionary]$Parameters = @{},
+        [string]$ScriptRoot = $PSScriptRoot
+    )
+
     $config = $Defaults.Clone()
 
     # Only from beside the script, in the install folder administrators own -
     # never from %ProgramData%, which earlier versions let any user write to.
     $candidates = @()
-    if ($ConfigPath) { $candidates += $ConfigPath }
-    $candidates += (Join-Path $PSScriptRoot 'inoutworker.config.json')
+    if ($Parameters['ConfigPath']) { $candidates += [string]$Parameters['ConfigPath'] }
+    $candidates += (Join-Path $ScriptRoot 'inoutworker.config.json')
 
     foreach ($candidate in $candidates) {
         if ($candidate -and (Test-Path $candidate)) {
@@ -247,24 +253,25 @@ function Resolve-Configuration {
                         $config[$key] = $fromFile.$key
                     }
                 }
-                Write-Log "Loaded configuration from $candidate"
+                Write-StatusLog "Loaded configuration from $candidate"
             } catch {
-                Write-Log "Ignoring unreadable config ${candidate}: $($_.Exception.Message)" 'WARN'
+                Write-StatusLog "Ignoring unreadable config ${candidate}: $($_.Exception.Message)" 'WARN'
             }
             break
         }
     }
 
     # Explicit parameters win over the file.
-    if ($BaseUrl)                    { $config.BaseUrl                    = $BaseUrl }
-    if ($Authentication)             { $config.Authentication             = $Authentication }
-    if ($CertificateThumbprint)      { $config.CertificateThumbprint      = $CertificateThumbprint }
-    if ($CertificateSubjectContains) { $config.CertificateSubjectContains = $CertificateSubjectContains }
-    if ($PSBoundParameters.ContainsKey('SkipCertificateCheck')) {
-        $config.SkipCertificateCheck = [bool]$SkipCertificateCheck
+    foreach ($key in @('BaseUrl', 'Authentication', 'CertificateThumbprint', 'CertificateSubjectContains')) {
+        if ($Parameters[$key]) { $config[$key] = [string]$Parameters[$key] }
+    }
+    # Keys, not Contains(): $PSBoundParameters is a generic Dictionary, whose
+    # Contains is not callable from PowerShell.
+    if (@($Parameters.Keys) -contains 'SkipCertificateCheck') {
+        $config.SkipCertificateCheck = [bool]$Parameters['SkipCertificateCheck']
     }
 
-    $config.BaseUrl = $config.BaseUrl.TrimEnd('/')
+    $config.BaseUrl = ([string]$config.BaseUrl).TrimEnd('/')
 
     if ([string]::IsNullOrWhiteSpace($config.BaseUrl)) {
         throw 'BaseUrl is not configured.'
@@ -283,7 +290,7 @@ function Resolve-Configuration {
     if ($config.Authentication -ne 'Certificate' -and ([uri]$config.BaseUrl).HostNameType -ne 'Dns') {
         # Kerberos tickets are issued for host names. With an IP address Windows
         # falls back to NTLM, which the server does not accept.
-        Write-Log "BaseUrl uses an IP address; Windows sign-in needs the server's host name." 'WARN'
+        Write-StatusLog "BaseUrl uses an IP address; Windows sign-in needs the server's host name." 'WARN'
     }
 
     return $config
@@ -295,6 +302,8 @@ function Resolve-Configuration {
 # unconditionally, silently removing the protection mTLS is there to provide.
 # ---------------------------------------------------------------------------
 function Initialize-Tls {
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '',
+        Justification = 'TLS is not a plural.')]
     param([bool]$SkipValidation)
 
     try {
@@ -306,7 +315,7 @@ function Initialize-Tls {
 
     if (-not $SkipValidation) { return }
 
-    Write-Log 'Server certificate validation DISABLED by configuration.' 'WARN'
+    Write-StatusLog 'Server certificate validation DISABLED by configuration.' 'WARN'
     [Net.ServicePointManager]::ServerCertificateValidationCallback = { $true }
 }
 
@@ -334,7 +343,7 @@ function Wait-ForUserProfile {
                 }
             }
         } catch {
-            Write-Log "Profile probe failed: $($_.Exception.Message)" 'WARN'
+            Write-StatusLog "Profile probe failed: $($_.Exception.Message)" 'WARN'
         }
         Start-Sleep -Seconds 2
     }
@@ -351,44 +360,57 @@ function Find-UserCertificate {
     try {
         $store = New-Object System.Security.Cryptography.X509Certificates.X509Store 'My', 'CurrentUser'
         $store.Open('ReadOnly')
-
-        $usable = @($store.Certificates | Where-Object {
-            $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) -and $_.NotBefore -le (Get-Date)
-        })
-
-        if ($usable.Count -eq 0) {
-            Write-Log 'No valid certificate with a private key in CurrentUser\My.' 'WARN'
-            return $null
-        }
-
-        if ($Thumbprint) {
-            $clean = ($Thumbprint -replace '[^0-9A-Fa-f]', '')
-            $match = @($usable | Where-Object { $_.Thumbprint -eq $clean })
-            if ($match.Count -gt 0) {
-                Write-Log "Selected certificate by thumbprint: $($match[0].Subject)"
-                return $match[0]
-            }
-            Write-Log "No certificate matched thumbprint $clean; falling back." 'WARN'
-        }
-
-        if ($SubjectContains) {
-            $match = @($usable | Where-Object { $_.Subject -like "*$SubjectContains*" })
-            if ($match.Count -gt 0) {
-                Write-Log "Selected certificate by subject: $($match[0].Subject)"
-                return $match[0]
-            }
-            Write-Log "No certificate subject contained '$SubjectContains'; falling back." 'WARN'
-        }
-
-        $latest = $usable | Sort-Object NotBefore -Descending | Select-Object -First 1
-        Write-Log "Selected most recent valid certificate: $($latest.Subject)"
-        return $latest
+        return (Select-ClientCertificate -Certificates @($store.Certificates) -Thumbprint $Thumbprint `
+                                         -SubjectContains $SubjectContains)
     } catch {
-        Write-Log "Certificate lookup failed: $($_.Exception.Message)" 'ERROR'
+        Write-StatusLog "Certificate lookup failed: $($_.Exception.Message)" 'ERROR'
         return $null
     } finally {
         if ($store) { $store.Close() }
     }
+}
+
+function Select-ClientCertificate {
+    # The certificate to sign in with: by thumbprint, then by subject, then the
+    # most recent. Only ones that are valid now and have a private key.
+    param(
+        [System.Security.Cryptography.X509Certificates.X509Certificate2[]]$Certificates,
+        [string]$Thumbprint,
+        [string]$SubjectContains
+    )
+
+    $now = Get-Date
+    $usable = @($Certificates | Where-Object {
+        $_ -and $_.HasPrivateKey -and $_.NotAfter -gt $now -and $_.NotBefore -le $now
+    })
+
+    if ($usable.Count -eq 0) {
+        Write-StatusLog 'No valid certificate with a private key in CurrentUser\My.' 'WARN'
+        return $null
+    }
+
+    if ($Thumbprint) {
+        $clean = ($Thumbprint -replace '[^0-9A-Fa-f]', '')
+        $match = @($usable | Where-Object { $_.Thumbprint -eq $clean })
+        if ($match.Count -gt 0) {
+            Write-StatusLog "Selected certificate by thumbprint: $($match[0].Subject)"
+            return $match[0]
+        }
+        Write-StatusLog "No certificate matched thumbprint $clean; falling back." 'WARN'
+    }
+
+    if ($SubjectContains) {
+        $match = @($usable | Where-Object { $_.Subject -like "*$SubjectContains*" })
+        if ($match.Count -gt 0) {
+            Write-StatusLog "Selected certificate by subject: $($match[0].Subject)"
+            return $match[0]
+        }
+        Write-StatusLog "No certificate subject contained '$SubjectContains'; falling back." 'WARN'
+    }
+
+    $latest = $usable | Sort-Object NotBefore -Descending | Select-Object -First 1
+    Write-StatusLog "Selected most recent valid certificate: $($latest.Subject)"
+    return $latest
 }
 
 # ---------------------------------------------------------------------------
@@ -416,6 +438,9 @@ function Get-SessionFilePath {
 }
 
 function Save-SessionFile {
+    # Sets the DACL with whichever API the running edition has; see below.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseCompatibleTypes', '',
+        Justification = 'Branches on $PSVersionTable.PSEdition: FileSystemAclExtensions on Core, File.SetAccessControl on Desktop.')]
     param([object]$Response, [string]$Sid, [string]$WindowsUserId)
 
     $path = Get-SessionFilePath -Sid $Sid
@@ -423,7 +448,7 @@ function Save-SessionFile {
         if (-not (Test-Path $SessionDir)) {
             # Only the installer creates it, with the permissions that make it
             # safe for SYSTEM to read from.
-            Write-Log "$SessionDir does not exist; re-run Install-InOutWorker.ps1. The next logoff cannot be attributed." 'WARN'
+            Write-StatusLog "$SessionDir does not exist; re-run Install-InOutWorker.ps1. The next logoff cannot be attributed." 'WARN'
             return
         }
 
@@ -461,20 +486,20 @@ function Save-SessionFile {
                 [System.IO.File]::SetAccessControl($path, $acl)
             }
         } catch {
-            Write-Log "Could not restrict ACL on ${path}: $($_.Exception.Message)" 'WARN'
+            Write-StatusLog "Could not restrict ACL on ${path}: $($_.Exception.Message)" 'WARN'
         }
 
         # Never log the sessionId itself: it is all it takes to check this
         # user out.
         if ($sessionId) {
-            Write-Log "Session cached at $path."
+            Write-StatusLog "Session cached at $path."
         } else {
-            Write-Log "Session cached at $path but the response carried no sessionId." 'WARN'
+            Write-StatusLog "Session cached at $path but the response carried no sessionId." 'WARN'
         }
     } catch {
         # Access denied here usually means another account created this file
         # first; an administrator can delete it.
-        Write-Log "Failed to write session file ${path}: $($_.Exception.Message)" 'WARN'
+        Write-StatusLog "Failed to write session file ${path}: $($_.Exception.Message)" 'WARN'
     }
 }
 
@@ -486,12 +511,12 @@ function Read-SessionFile {
     # The SYSTEM run also checks the folder: the installer made it, so anything
     # else means it has been tampered with or the installer was not re-run.
     if ($RunningAsSystem -and -not (Test-TrustedPath -Path $SessionDir -Owners @($SystemSid, $AdminsSid))) {
-        Write-Log "$SessionDir is missing, a link, or not owned by SYSTEM or Administrators; not reading it. Re-run Install-InOutWorker.ps1." 'WARN'
+        Write-StatusLog "$SessionDir is missing, a link, or not owned by SYSTEM or Administrators; not reading it. Re-run Install-InOutWorker.ps1." 'WARN'
         return $null
     }
 
     if (-not (Test-Path -LiteralPath $path)) {
-        Write-Log "No session file at $path; posting logout without a sessionId." 'WARN'
+        Write-StatusLog "No session file at $path; posting logout without a sessionId." 'WARN'
         return $null
     }
 
@@ -499,13 +524,13 @@ function Read-SessionFile {
     # without passing through a junction or link. It is never deleted: the next
     # login overwrites it, and the server refuses a sessionId used before.
     if (-not (Test-TrustedPath -Path $path -Owners @($Sid, $SystemSid, $AdminsSid))) {
-        Write-Log "Session file $path is a link or not owned by $Sid; ignoring it." 'WARN'
+        Write-StatusLog "Session file $path is a link or not owned by $Sid; ignoring it." 'WARN'
         return $null
     }
 
     try {
         if ((Get-Item -LiteralPath $path -Force).Length -gt 64KB) {
-            Write-Log "Session file $path is too large to be one this script wrote; ignoring it." 'WARN'
+            Write-StatusLog "Session file $path is too large to be one this script wrote; ignoring it." 'WARN'
             return $null
         }
 
@@ -516,7 +541,7 @@ function Read-SessionFile {
         $names  = $parsed.PSObject.Properties.Name
 
         if (-not ($names -contains 'userSid' -and [string]$parsed.userSid -eq $Sid)) {
-            Write-Log "Session file $path was not written for $Sid; ignoring it." 'WARN'
+            Write-StatusLog "Session file $path was not written for $Sid; ignoring it." 'WARN'
             return $null
         }
 
@@ -531,7 +556,7 @@ function Read-SessionFile {
             WindowsUserId = $windowsUserId
         }
     } catch {
-        Write-Log "Session file unreadable: $($_.Exception.Message)" 'WARN'
+        Write-StatusLog "Session file unreadable: $($_.Exception.Message)" 'WARN'
         return $null
     }
 }
@@ -582,7 +607,7 @@ function Send-StatusPost {
     }
 
     # Not the body: at logout it carries the sessionId.
-    Write-Log "POST $Url"
+    Write-StatusLog "POST $Url"
     try {
         $response = Invoke-RestMethod @requestArgs
     } catch [System.InvalidOperationException] {
@@ -600,6 +625,9 @@ function Send-StatusPost {
 }
 
 function Get-HttpStatus {
+    # Best effort: whatever is missing from the error is left out of the message.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingEmptyCatchBlock', '',
+        Justification = 'Best-effort detail for a log line; the caller already reports the failure.')]
     param([System.Management.Automation.ErrorRecord]$ErrorRecord)
     $text = ''
     try {
@@ -622,62 +650,60 @@ function Get-HttpStatus {
 }
 
 # ---------------------------------------------------------------------------
-# Main
+# The request: how to sign in, and what to send
 # ---------------------------------------------------------------------------
-try {
-    $config = Resolve-Configuration
-} catch {
-    Write-Log "Configuration error: $($_.Exception.Message)" 'ERROR'
-    exit 1
-}
+function Get-SignInPlan {
+    # How to sign in, in order of preference ('Windows', 'Certificate' or
+    # 'Anonymous'), and the certificate if one is used. $null when the action
+    # must sign in with a certificate and there is none (exit code 2).
+    param([hashtable]$Plan, [hashtable]$Config)
 
-$plan = $ActionMap[$Action]
-$url  = "$($config.BaseUrl)/$($plan.Endpoint)"
-
-Initialize-Tls -SkipValidation ([bool]$config.SkipCertificateCheck)
-
-$windowsUserId = $env:USERNAME
-$certificate   = $null
-
-if ($plan.WaitForProfile) {
-    if (-not (Wait-ForUserProfile -Username $windowsUserId -TimeoutSeconds $ProfileWaitTimeoutSec)) {
-        Write-Log "Profile for $windowsUserId not ready after ${ProfileWaitTimeoutSec}s; continuing anyway." 'WARN'
+    $attempts    = @()
+    $certificate = $null
+    if (-not $Plan.Authenticated) {
+        # Logout is anonymous.
+        return [pscustomobject]@{ Attempts = @('Anonymous'); Certificate = $null }
     }
-}
-
-# How to sign in, in order of preference. Logout is anonymous.
-$attempts = @()
-if ($plan.Authenticated) {
-    if ($config.Authentication -ne 'Certificate') {
+    if ($Config.Authentication -ne 'Certificate') {
         $attempts += 'Windows'
     }
-    if ($config.Authentication -ne 'Windows') {
-        $certificate = Find-UserCertificate -Thumbprint $config.CertificateThumbprint `
-                                            -SubjectContains $config.CertificateSubjectContains
+    if ($Config.Authentication -ne 'Windows') {
+        $certificate = Find-UserCertificate -Thumbprint $Config.CertificateThumbprint `
+                                            -SubjectContains $Config.CertificateSubjectContains
         if ($certificate) {
             $attempts += 'Certificate'
-        } elseif ($config.Authentication -eq 'Certificate') {
-            Write-Log "'$Action' posts to an authenticated endpoint and no client certificate is available." 'ERROR'
-            exit 2
+        } elseif ($Config.Authentication -eq 'Certificate') {
+            Write-StatusLog "'$Action' posts to an authenticated endpoint and no client certificate is available." 'ERROR'
+            return $null
         } else {
-            Write-Log 'No client certificate to fall back on if Windows sign-in fails.' 'WARN'
+            Write-StatusLog 'No client certificate to fall back on if Windows sign-in fails.' 'WARN'
         }
     }
-} else {
-    $attempts += 'Anonymous'
+    return [pscustomobject]@{ Attempts = $attempts; Certificate = $certificate }
 }
 
-# Build the body. CheckInOut on the server binds exactly two fields.
-$body = @{ windowsUserId = $windowsUserId }
+function Get-StatusBody {
+    # The JSON body. CheckInOut on the server binds exactly two fields:
+    # windowsUserId and, at logout, sessionId. $null when a logout cannot tell
+    # whose session ended (exit code 4).
+    param(
+        [string]$Action,
+        [string]$WindowsUserId,
+        [string]$UserSid,
+        [string]$CurrentSid,
+        [bool]$RunningAsSystem
+    )
 
-if ($Action -eq 'logout') {
+    $body = @{ windowsUserId = $WindowsUserId }
+    if ($Action -ne 'logout') { return $body }
+
     # Whose session ended: run as SYSTEM, the logoff event says (-UserSid); run
     # as the user (a remote disconnect), it is their own.
     $sessionSid = ConvertTo-Sid $UserSid
     if (-not $sessionSid -and -not $RunningAsSystem) { $sessionSid = $CurrentSid }
     if (-not $sessionSid) {
-        Write-Log "Logout needs -UserSid when run as SYSTEM (the Logout task passes it from event 4647); got '$UserSid'." 'ERROR'
-        exit 4
+        Write-StatusLog "Logout needs -UserSid when run as SYSTEM (the Logout task passes it from event 4647); got '$UserSid'." 'ERROR'
+        return $null
     }
 
     $session = Read-SessionFile -Sid $sessionSid
@@ -691,12 +717,73 @@ if ($Action -eq 'logout') {
         $body.windowsUserId = Get-AccountName -Sid $sessionSid
     }
     if (-not $body.ContainsKey('sessionId')) {
-        Write-Log 'Logout has no sessionId; the server cannot resolve the DN from it.' 'WARN'
+        Write-StatusLog 'Logout has no sessionId; the server cannot resolve the DN from it.' 'WARN'
+    }
+    return $body
+}
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+# Dot-sourced (". .\Update-WorkStatus.ps1 -Action login", as the Pester tests
+# do): stop here, with the functions defined and nothing run.
+if ($MyInvocation.InvocationName -eq '.') { return }
+
+$CurrentSid      = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$RunningAsSystem = $CurrentSid -eq $SystemSid
+
+# The installer creates both folders and sets their permissions: sessions\ lets
+# a user add a file but not list, change or delete anyone else's, and logs\ is
+# writable by SYSTEM and administrators only.
+$DataDir    = Join-Path $env:ProgramData 'InOutWorker'
+$SessionDir = Join-Path $DataDir 'sessions'
+
+if ($RunningAsSystem) {
+    $LogDir = Join-Path $DataDir 'logs'
+} elseif ($env:LOCALAPPDATA) {
+    # A user cannot write to the SYSTEM log folder, so their runs log to their profile.
+    $LogDir = Join-Path $env:LOCALAPPDATA 'InOutWorker\logs'
+} else {
+    $LogDir = $null
+}
+$LogFile       = $null
+$LogDirTrusted = $null
+if ($LogDir) {
+    $LogFile = Join-Path $LogDir ("inoutworker-{0}.log" -f (Get-Date -Format 'yyyyMMdd'))
+}
+
+try {
+    $config = Resolve-Configuration -Parameters $PSBoundParameters
+} catch {
+    Write-StatusLog "Configuration error: $($_.Exception.Message)" 'ERROR'
+    exit 1
+}
+
+$plan = $ActionMap[$Action]
+$url  = "$($config.BaseUrl)/$($plan.Endpoint)"
+
+Initialize-Tls -SkipValidation ([bool]$config.SkipCertificateCheck)
+
+$windowsUserId = $env:USERNAME
+
+if ($plan.WaitForProfile) {
+    if (-not (Wait-ForUserProfile -Username $windowsUserId -TimeoutSeconds $ProfileWaitTimeoutSec)) {
+        Write-StatusLog "Profile for $windowsUserId not ready after ${ProfileWaitTimeoutSec}s; continuing anyway." 'WARN'
     }
 }
 
+$signIn = Get-SignInPlan -Plan $plan -Config $config
+if (-not $signIn) { exit 2 }
+$attempts    = @($signIn.Attempts)
+$certificate = $signIn.Certificate
+
+$body = Get-StatusBody -Action $Action -WindowsUserId $windowsUserId -UserSid $UserSid `
+                       -CurrentSid $CurrentSid -RunningAsSystem $RunningAsSystem
+if ($null -eq $body) { exit 4 }
+
 if (-not $PSCmdlet.ShouldProcess($url, "POST $Action")) {
-    Write-Log "WhatIf: would POST to $url as user '$($body.windowsUserId)' signing in with: $($attempts -join ', then ')."
+    Write-StatusLog "WhatIf: would POST to $url as user '$($body.windowsUserId)' signing in with: $($attempts -join ', then ')."
     exit 0
 }
 
@@ -709,13 +796,13 @@ foreach ($attempt in $attempts) {
             'Certificate' { $response = Send-StatusPost -Url $url -Body $body -Certificate $certificate -TimeoutSeconds $TimeoutSec }
             default       { $response = Send-StatusPost -Url $url -Body $body -TimeoutSeconds $TimeoutSec }
         }
-        Write-Log "Server accepted '$Action' ($attempt sign-in)."
+        Write-StatusLog "Server accepted '$Action' ($attempt sign-in)."
         $accepted = $true
         break
     } catch {
         $status = Get-HttpStatus -ErrorRecord $_
         $level = if ($attempt -eq $attempts[-1]) { 'ERROR' } else { 'WARN' }
-        Write-Log "POST to $url with $attempt sign-in failed${status}: $($_.Exception.Message)" $level
+        Write-StatusLog "POST to $url with $attempt sign-in failed${status}: $($_.Exception.Message)" $level
     }
 }
 if (-not $accepted) {
@@ -726,5 +813,5 @@ if ($Action -eq 'login') {
     Save-SessionFile -Response $response -Sid $CurrentSid -WindowsUserId $windowsUserId
 }
 
-Write-Log "Done."
+Write-StatusLog "Done."
 exit 0

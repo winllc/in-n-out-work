@@ -113,6 +113,46 @@ jobs:
           fi
           grep -q "x509.source header needs x509.trustedCa" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
 
+  windows-client:
+    # The Windows client (powershell/): PSScriptAnalyzer and the Pester tests, with Pester and PSScriptAnalyzer
+    # pinned by version and SHA-256 in Invoke-ClientChecks.ps1. Linux runs everything that does not need Windows;
+    # Windows runs it all, real ACLs, SIDs and junctions included, under Windows PowerShell 5.1 (what the
+    # scheduled tasks run) and PowerShell 7.
+    name: windows-client (${{ matrix.os }}, ${{ matrix.shell }})
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            shell: pwsh
+          - os: windows-latest
+            shell: powershell
+          - os: windows-latest
+            shell: pwsh
+
+    defaults:
+      run:
+        # A step's own shell cannot read the matrix; the job's default can.
+        shell: ${{ matrix.shell }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Analyze and test
+        run: >-
+          ./powershell/tests/Invoke-ClientChecks.ps1
+          -ModulePath (Join-Path $env:RUNNER_TEMP 'psmodules')
+          -TestResultPath (Join-Path $env:RUNNER_TEMP 'pester.xml')
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pester-${{ matrix.os }}-${{ matrix.shell }}
+          path: ${{ runner.temp }}/pester.xml
+
   image:
     # Builds the image on every push, checks it starts, and publishes what it just checked.
     # Nothing is published from a pull request: a fork's token cannot write packages, and

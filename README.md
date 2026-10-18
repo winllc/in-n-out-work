@@ -416,6 +416,22 @@ machine.
 > Server TLS validation is **on** by default. If your server uses a self-signed
 > certificate, pass `-SkipCertificateCheck`, otherwise the tasks will fail.
 
+**Tests.** `powershell/tests/` holds Pester tests for both scripts, and
+`powershell/PSScriptAnalyzerSettings.psd1` the analyzer rules, including
+compatibility with Windows PowerShell 5.1, which the tasks run. CI runs both on
+Linux, and on Windows under Windows PowerShell 5.1 and PowerShell 7; to run
+them yourself:
+
+```bash
+pwsh ./powershell/tests/Invoke-ClientChecks.ps1
+```
+
+It fetches the pinned Pester and PSScriptAnalyzer from the PowerShell Gallery
+and checks their SHA-256 first. Off Windows, the tests that need real ACLs,
+SIDs and junctions are skipped; the rest mock the Windows-only commands. Not
+covered anywhere: the ACLs the installer writes and the task registration,
+which need an elevated Windows run, and the server round trip.
+
 The superseded `login.ps1`, `logout.ps1` and `updatestatus.ps1`, and the task
 XMLs that ran them, have been removed: they accepted any server certificate.
 Remove them, and any task that runs them, from workstations that still have
