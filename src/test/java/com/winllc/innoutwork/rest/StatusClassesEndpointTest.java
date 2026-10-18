@@ -199,6 +199,15 @@ class StatusClassesEndpointTest {
         verify(statusCalendar, never()).set(any(), any(), anyList(), any(), any());
     }
 
+    @Test
+    void aTargetThatIsNotADnIsRefused() throws Exception {
+        mockMvc.perform(post("/api/event/update").with(x509(cert(MANAGER))).contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"dn\":\"not a dn\",\"fromDate\":\"2026-11-02\",\"toDate\":\"2026-11-03\","
+                                + "\"status\":\"ABSENT\"}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_dn"));
+    }
+
     // --- the approvals API and page -------------------------------------------------------------------------
 
     @Test

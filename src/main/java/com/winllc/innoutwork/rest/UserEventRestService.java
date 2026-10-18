@@ -182,7 +182,7 @@ public class UserEventRestService {
         log.debug("updateEventForDay called by %s with data: %s".formatted(authentication.getName(), data));
 
         String me = authentication.getName();
-        String target = StringUtils.isBlank(data.getDn()) ? me : data.getDn().strip();
+        String target = StringUtils.isBlank(data.getDn()) ? me : targetDn(data.getDn());
         UserStatusEnum status = parseStatus(data.getStatus());
         EventRange range = EventRange.parse(data.getFromDate(), data.getToDate(),
                 properties.getEvents().getMaxRangeDays());
@@ -240,6 +240,14 @@ public class UserEventRestService {
     @ExceptionHandler(InvalidRequestException.class)
     public ResponseEntity<Map<String, String>> invalid(InvalidRequestException e) {
         return ApiErrors.of(e);
+    }
+
+    private static String targetDn(String dn) {
+        try {
+            return new LdapDn(dn.strip()).dn();
+        } catch (IllegalArgumentException e) {
+            throw InvalidRequestException.badRequest("invalid_dn", "Not a DN: " + dn);
+        }
     }
 
     static UserStatusEnum parseStatus(String status) {

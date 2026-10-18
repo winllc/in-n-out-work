@@ -54,8 +54,10 @@
                     </table>
                 </div>
                 <p class="text-secondary">
-                    A status you set on your calendar, such as work from home, TDY, leave or a late arrival, is shown
-                    instead, so people can see where you are even when you aren't at your workstation.
+                    A status on your calendar, such as work from home, TDY, leave or a late arrival, is shown instead,
+                    so people can see where you are even when you aren't at your workstation. What coworkers see of you
+                    depends on your organization's privacy setting; your times and notes are only ever seen by you,
+                    your managers and administrators.
                 </p>
 
                 <h3 class="mt-4">Finding your way around</h3>
@@ -83,6 +85,14 @@
                         <strong><i class="ti ti-list-check me-2"></i>My Reports</strong>
                         <div class="text-secondary">Everyone who reports to you in the directory, in one table.</div>
                     </div>
+                    <div class="list-group-item px-0" id="help-approvals"
+                         th:if="${licenseInfo == null or licenseInfo.isEnabled('calendar')}">
+                        <strong><i class="ti ti-checkbox me-2"></i>Approvals</strong>
+                        <div class="text-secondary">
+                            Your requests for leave, telework and other statuses that need approval, and the requests
+                            waiting for you if you approve other people's.
+                        </div>
+                    </div>
                     <div class="list-group-item px-0" th:if="${licenseInfo == null or licenseInfo.isEnabled('org-chart')}">
                         <strong><i class="ti ti-hierarchy-3 me-2"></i>Org Chart</strong>
                         <div class="text-secondary">The organization's structure. Open an organization to see who is in it.</div>
@@ -108,10 +118,17 @@
                 <p class="mb-2">Open <strong>My Profile</strong> from the menu at the top right to:</p>
                 <ul>
                     <li>set your usual <strong>login time</strong>; without one, your average arrival time is used;</li>
-                    <li>add <strong>additional managers</strong> who should be told if you're not in;</li>
-                    <li>drag across days on your <strong>calendar</strong> to set a status, such as leave or work from home, ahead of time;</li>
-                    <li>leave <strong>notes</strong> for the people who look you up.</li>
+                    <li>drag across days on your <strong>calendar</strong> to set a late arrival or early leave, or to
+                        <strong>request</strong> leave, work from home and the like: those count once your manager
+                        approves them;</li>
+                    <li>leave <strong>notes</strong> for your managers;</li>
+                    <li>see your <strong>delegates</strong>, who are told along with your manager if you're not in
+                        (an administrator sets them).</li>
                 </ul>
+                <p class="mb-2">
+                    <strong>My data</strong>, in the same menu, says what ReadyRoom keeps about you and for how long,
+                    and downloads all of it.
+                </p>
 
                 <h3 class="mt-4">If you're not in on time</h3>
                 <p>
@@ -119,8 +136,9 @@
                     a late arrival you've entered for today, otherwise your login time, otherwise your average arrival,
                     <span id="help-grace"
                           th:text="${absenceGraceMinutes != null ? 'plus a ' + absenceGraceMinutes + ' minute grace period' : 'plus a grace period'}">plus a grace period</span>.
-                    Weekends and holidays are skipped, as are days covered by an excused status. Managers see these
-                    alerts under the <i class="ti ti-bell"></i> bell at the top left and can record what happened.
+                    Weekends and holidays are skipped, as are days covered by an approved excused status (a request
+                    still waiting for approval does not count). Managers see these alerts under the
+                    <i class="ti ti-bell"></i> bell at the top left and can record what happened.
                 </p>
 
                 <th:block sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
