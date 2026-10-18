@@ -230,13 +230,21 @@ function Write-Log {
 # Configuration
 # ---------------------------------------------------------------------------
 function Resolve-Configuration {
+    # $Parameters is the script's $PSBoundParameters. Inside this function the
+    # automatic variable is the function's own, so it has to be passed in: read
+    # here directly, -SkipCertificateCheck on the command line was ignored.
+    param(
+        [Collections.IDictionary]$Parameters = @{},
+        [string]$ScriptRoot = $PSScriptRoot
+    )
+
     $config = $Defaults.Clone()
 
     # Only from beside the script, in the install folder administrators own -
     # never from %ProgramData%, which earlier versions let any user write to.
     $candidates = @()
-    if ($ConfigPath) { $candidates += $ConfigPath }
-    $candidates += (Join-Path $PSScriptRoot 'inoutworker.config.json')
+    if ($Parameters['ConfigPath']) { $candidates += [string]$Parameters['ConfigPath'] }
+    $candidates += (Join-Path $ScriptRoot 'inoutworker.config.json')
 
     foreach ($candidate in $candidates) {
         if ($candidate -and (Test-Path $candidate)) {
@@ -256,15 +264,14 @@ function Resolve-Configuration {
     }
 
     # Explicit parameters win over the file.
-    if ($BaseUrl)                    { $config.BaseUrl                    = $BaseUrl }
-    if ($Authentication)             { $config.Authentication             = $Authentication }
-    if ($CertificateThumbprint)      { $config.CertificateThumbprint      = $CertificateThumbprint }
-    if ($CertificateSubjectContains) { $config.CertificateSubjectContains = $CertificateSubjectContains }
-    if ($PSBoundParameters.ContainsKey('SkipCertificateCheck')) {
-        $config.SkipCertificateCheck = [bool]$SkipCertificateCheck
+    foreach ($key in @('BaseUrl', 'Authentication', 'CertificateThumbprint', 'CertificateSubjectContains')) {
+        if ($Parameters[$key]) { $config[$key] = [string]$Parameters[$key] }
+    }
+    if ($Parameters.Contains('SkipCertificateCheck')) {
+        $config.SkipCertificateCheck = [bool]$Parameters['SkipCertificateCheck']
     }
 
-    $config.BaseUrl = $config.BaseUrl.TrimEnd('/')
+    $config.BaseUrl = ([string]$config.BaseUrl).TrimEnd('/')
 
     if ([string]::IsNullOrWhiteSpace($config.BaseUrl)) {
         throw 'BaseUrl is not configured.'
@@ -625,7 +632,7 @@ function Get-HttpStatus {
 # Main
 # ---------------------------------------------------------------------------
 try {
-    $config = Resolve-Configuration
+    $config = Resolve-Configuration -Parameters $PSBoundParameters
 } catch {
     Write-Log "Configuration error: $($_.Exception.Message)" 'ERROR'
     exit 1
