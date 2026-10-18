@@ -805,7 +805,7 @@ through `ENS_SSO_ROLE_MAPPING`; a group not listed there grants nothing, whateve
 | `ENS_SSO_OIDC_CLIENT_ID` | | Also the audience ID tokens must name |
 | `ENS_SSO_OIDC_CLIENT_SECRET`, `_FILE` | empty | Empty: a public client (PKCE only). The file wins |
 | `ENS_SSO_OIDC_SCOPES` | `openid,profile,email` | |
-| `ENS_SSO_OIDC_USER_FILTER` | required | e.g. `(userPrincipalName={preferred_username})`, `(mail={email})` |
+| `ENS_SSO_OIDC_USER_FILTER` | required | e.g. `(userPrincipalName={preferred_username})`; see below on which claims to trust |
 | `ENS_SSO_OIDC_GROUPS_CLAIM` | `groups` | |
 | `ENS_SSO_OIDC_DISPLAY_NAME` | `Sign in with single sign-on` | The button |
 | `ENS_SSO_SAML_ENABLED` | `false` | SAML 2.0 |
@@ -817,7 +817,9 @@ through `ENS_SSO_ROLE_MAPPING`; a group not listed there grants nothing, whateve
 | `ENS_SSO_SAML_DISPLAY_NAME` | `Sign in with SAML single sign-on` | The button |
 
 A missing required setting, a filter with no placeholder, or a role mapping to anything but `MANAGER` or
-`ADMIN` stops startup with the setting's name.
+`ADMIN` stops startup with the setting's name. Map on a claim the identity provider controls and verifies, such as
+the UPN, not one users can set themselves: Entra ID's `email` claim, for example, is not verified, so
+`(mail={email})` there would let someone claim another person's address.
 
 **Endpoints to register at the identity provider** (`<base>` is `APPLICATION_BASE_URL`, the address users
 reach; behind a proxy set `SERVER_FORWARD_HEADERS_STRATEGY=framework` so ReadyRoom builds these with the

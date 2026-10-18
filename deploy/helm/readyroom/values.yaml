@@ -425,7 +425,7 @@ sso:
     existingSecret: ""
     existingSecretKey: oidc-client-secret
     scopes: openid,profile,email
-    # Required: e.g. (userPrincipalName={preferred_username}) or (mail={email}).
+    # Required: e.g. (userPrincipalName={preferred_username}). Use a claim the IdP verifies (not Entra's email).
     userFilter: ""
     groupsClaim: groups
   saml:

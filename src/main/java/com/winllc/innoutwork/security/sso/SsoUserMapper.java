@@ -47,7 +47,7 @@ public class SsoUserMapper {
     public static void requireTemplate(String setting, String template) {
         if (template == null || template.isBlank()) {
             throw new IllegalStateException(setting + " is required: an LDAP filter finding the directory user,"
-                    + " for example (userPrincipalName={preferred_username})");
+                    + " for example (userPrincipalName={preferred_username}); use a claim the identity provider verifies");
         }
         if (!PLACEHOLDER.matcher(template).find()) {
             throw new IllegalStateException(setting + " has no {placeholder}: it would match the same directory"
