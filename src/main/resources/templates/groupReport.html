@@ -98,6 +98,42 @@
             </div>
         </div>
 
+        <!-- Retention: days before purgedBefore have no records any more, only these monthly summaries. -->
+        <div class="card mt-4" th:if="${report.purgedBefore != null}" id="purged-period">
+            <div class="card-header">
+                <h3 class="card-title">Before <span th:text="${report.formattedPurgedBefore}"></span>: monthly summaries</h3>
+            </div>
+            <div class="card-body">
+                <p class="text-secondary mb-0">
+                    Check-in records and statuses before this date have been deleted under the retention setting,
+                    after being summarised per person and month. The days below show nothing for that period;
+                    these totals are what remains of it.
+                </p>
+            </div>
+            <div class="table-responsive" th:unless="${#lists.isEmpty(report.monthlySummaries)}">
+                <table class="table table-sm table-vcenter card-table">
+                    <thead>
+                    <tr>
+                        <th>Month</th>
+                        <th>Person</th>
+                        <th>Days checked in</th>
+                        <th>Time in</th>
+                        <th>Days with a status</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:each="summary : ${report.monthlySummaries}">
+                        <td th:text="${#temporals.format(summary.month, 'yyyy-MM')}"></td>
+                        <td th:text="${summary.cn}"></td>
+                        <td th:text="${summary.daysCheckedIn}"></td>
+                        <td th:text="${summary.timeIn}"></td>
+                        <td th:text="${summary.statusSummary}"></td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
         <h3 class="mt-4 mb-2">Day Reports</h3>
 
         <div class="row row-cards">

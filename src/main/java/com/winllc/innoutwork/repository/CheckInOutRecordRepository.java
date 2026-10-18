@@ -8,6 +8,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.repository.PagingAndSortingRepository;
@@ -147,6 +148,31 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
             + " from CheckInOutRecord r where r.dn is not null and r.timestamp >= :from and r.timestamp <= :to"
             + " group by lower(r.dn)")
     List<LastSeen> findLastSeenBetween(@Param("from") ZonedDateTime from, @Param("to") ZonedDateTime to);
+
+    // --- retention and erasure ------------------------------------------------------------------------------
+
+    /** The earliest record at or after {@code from} and before {@code to}, or null: the purge's next day. */
+    @Query("select min(r.timestamp) from CheckInOutRecord r where r.timestamp >= :from and r.timestamp < :to")
+    ZonedDateTime findEarliestBetween(@Param("from") ZonedDateTime from, @Param("to") ZonedDateTime to);
+
+    /** Lower-cased DNs with a record in [from, to). */
+    @Query("select distinct lower(r.dn) from CheckInOutRecord r where r.dn is not null"
+            + " and r.timestamp >= :from and r.timestamp < :to")
+    List<String> findDistinctLowercaseDnsBetween(@Param("from") ZonedDateTime from, @Param("to") ZonedDateTime to);
+
+    /** Records without a DN in [from, to): nobody's, deleted by the purge without a summary. */
+    @Modifying
+    @Query("delete from CheckInOutRecord r where r.dn is null and r.timestamp >= :from and r.timestamp < :to")
+    int deleteWithoutDnBetween(@Param("from") ZonedDateTime from, @Param("to") ZonedDateTime to);
+
+    @Modifying
+    @Query("delete from CheckInOutRecord r where lower(r.dn) = lower(:dn)")
+    int deleteByDn(@Param("dn") String dn);
+
+    @Query("select r from CheckInOutRecord r where lower(r.dn) = lower(:dn) order by r.timestamp")
+    List<CheckInOutRecord> findAllByDn(@Param("dn") String dn);
+
+    long countByDnIgnoreCase(String dn);
 
     /** The same, for a set of users; DNs compared lower-cased, so pass them lower-cased. */
     @Query("select new com.winllc.innoutwork.data.metrics.LastSeen(lower(r.dn), max(r.timestamp))"

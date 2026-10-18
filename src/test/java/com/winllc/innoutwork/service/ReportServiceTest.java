@@ -99,6 +99,39 @@ class ReportServiceTest {
         verify(ldapService, never()).lookupUser(any());
     }
 
+    /** Days the retention purge summarised: their monthly summaries come with the report. */
+    @Test
+    void aReportReachingBeforeThePurgeCarriesTheMonthlySummaries() {
+        RetentionService retention = org.mockito.Mockito.mock(RetentionService.class);
+        com.winllc.innoutwork.repository.AttendanceSummaryRepository summaries =
+                org.mockito.Mockito.mock(com.winllc.innoutwork.repository.AttendanceSummaryRepository.class);
+        service.setRetention(retention, summaries);
+        when(retention.purgedBefore()).thenReturn(MONDAY.plusDays(1));
+        com.winllc.innoutwork.model.AttendanceSummary august =
+                new com.winllc.innoutwork.model.AttendanceSummary(BOB, MONDAY.withDayOfMonth(1));
+        august.setDaysCheckedIn(12);
+        when(summaries.findByLowercaseDnInAndMonthBetween(any(), eq(MONDAY.withDayOfMonth(1)), eq(MONDAY.withDayOfMonth(1))))
+                .thenReturn(List.of(august));
+
+        GroupReport report = service.generateGroupReport(GROUP, FROM, TO);
+
+        assertEquals(MONDAY.plusDays(1), report.getPurgedBefore());
+        assertEquals(List.of(august), report.getMonthlySummaries());
+    }
+
+    @Test
+    void aReportAfterThePurgeHasNoSummaries() {
+        RetentionService retention = org.mockito.Mockito.mock(RetentionService.class);
+        service.setRetention(retention, org.mockito.Mockito.mock(
+                com.winllc.innoutwork.repository.AttendanceSummaryRepository.class));
+        when(retention.purgedBefore()).thenReturn(MONDAY.minusDays(30));
+
+        GroupReport report = service.generateGroupReport(GROUP, FROM, TO);
+
+        assertNull(report.getPurgedBefore());
+        assertTrue(report.getMonthlySummaries().isEmpty());
+    }
+
     @Test
     void anUnknownGroupHasNoReport() {
         when(ldapService.lookupGroup(any())).thenReturn(Optional.empty());

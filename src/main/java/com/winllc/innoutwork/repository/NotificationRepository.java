@@ -2,6 +2,7 @@ package com.winllc.innoutwork.repository;
 
 import com.winllc.innoutwork.model.NotificationRecord;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.PagingAndSortingRepository;
@@ -43,6 +44,20 @@ public interface NotificationRepository extends JpaRepository<NotificationRecord
     List<NotificationRecord> findByAboutUserDnIgnoreCaseAndNotificationDateBetween(@Param("dn") String dn,
                                                                                  @Param("start") ZonedDateTime start,
                                                                                  @Param("end") ZonedDateTime end);
+
+    // --- retention and erasure ------------------------------------------------------------------------------
+
+    /** Ids of alerts raised before {@code cutoff}, oldest first, a batch at a time. */
+    @Query("select n.id from NotificationRecord n where n.notificationDate < :cutoff order by n.notificationDate, n.id")
+    List<Long> findIdsBefore(@Param("cutoff") ZonedDateTime cutoff, org.springframework.data.domain.Pageable page);
+
+    /** Alerts about a person or sent to them. */
+    @Modifying
+    @Query("delete from NotificationRecord n where lower(n.aboutUserDn) = lower(:dn) or lower(n.forUserDn) = lower(:dn)")
+    int deleteAboutOrFor(@Param("dn") String dn);
+
+    @Query("select count(n) from NotificationRecord n where lower(n.aboutUserDn) = lower(:dn) or lower(n.forUserDn) = lower(:dn)")
+    long countAboutOrFor(@Param("dn") String dn);
 
     /** Notifications about a set of users in a window; DNs compared lower-cased, so pass them lower-cased. */
     @Query("select n from NotificationRecord n where lower(n.aboutUserDn) in :dns"

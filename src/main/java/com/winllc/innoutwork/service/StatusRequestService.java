@@ -11,6 +11,7 @@ import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.EventRange;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.LdapUser;
+import com.winllc.innoutwork.metrics.EnsMetrics;
 import com.winllc.innoutwork.model.StatusRequest;
 import com.winllc.innoutwork.repository.StatusRequestRepository;
 import com.winllc.innoutwork.security.AccessPolicy;
@@ -118,6 +119,7 @@ public class StatusRequestService {
             return stored;
         });
         // Committed: now the mail, which looks the approvers up in the directory, outside the transaction.
+        EnsMetrics.request("created");
         mailApprovers(saved, "requested");
         log.info("Status request {}: {} asked for {} from {} to {}", saved.getId(), requesterDn, status,
                 saved.getFromDate(), saved.getToDate());
@@ -168,6 +170,7 @@ public class StatusRequestService {
                     stored).detail("daysWritten", days));
             return stored;
         });
+        EnsMetrics.request(decision.name());
         mailRequester(decided);
         log.info("Status request {} {} by {}", id, decision.name().toLowerCase(), viewer.getName());
         return decided;
@@ -207,6 +210,7 @@ public class StatusRequestService {
                     .detail("daysRemoved", removed));
             return stored;
         });
+        EnsMetrics.request("cancelled");
         mailApprovers(cancelled, "cancelled");
         log.info("Status request {} cancelled by {}", id, viewer.getName());
         return cancelled;

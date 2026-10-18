@@ -53,6 +53,24 @@ public final class EnsMetrics {
         registry().counter("ens.readyroom.logoffs.refused", "reason", label(reason)).increment();
     }
 
+    /**
+     * {@code ens_readyroom_requests_total{outcome}}: status requests created, approved, rejected and cancelled
+     * (StatusRequestService).
+     */
+    public static void request(String outcome) {
+        registry().counter("ens.readyroom.requests", "outcome", label(outcome)).increment();
+    }
+
+    /**
+     * {@code ens_readyroom_retention_purged_total{kind}}: records the retention purge deleted (checkin, status,
+     * notification, request).
+     */
+    public static void retentionPurged(String kind, long count) {
+        if (count > 0) {
+            registry().counter("ens.readyroom.retention.purged", "kind", label(kind)).increment(count);
+        }
+    }
+
     private static String label(String value) {
         return value == null || value.isBlank() ? "unknown" : value.toLowerCase(Locale.ROOT);
     }

@@ -91,6 +91,41 @@ public class ApplicationProperties {
     private Events events = new Events();
     @Valid
     private Privacy privacy = new Privacy();
+    @Valid
+    private Retention retention = new Retention();
+
+    /**
+     * How long check-in and status records are kept (service.RetentionService). Audit events have their own retention
+     * (ENS_AUDIT_RETENTION_DAYS) and are never purged by this.
+     */
+    @Data
+    public static class Retention {
+        /** The shortest retention: the home page, My Reports and the average login time read the last 30 days. */
+        public static final int MIN_EVENTS_DAYS = 31;
+
+        /**
+         * Days to keep check-in records, calendar statuses, status requests and absence alerts; older ones are rolled
+         * up into monthly summaries and deleted. 0 (the default) keeps them forever, as before.
+         */
+        @Min(value = 0, message = "application.retention.events-days (APPLICATION_RETENTION_EVENTSDAYS) must be 0"
+                + " (keep forever) or at least " + MIN_EVENTS_DAYS)
+        private int eventsDays = 0;
+
+        /** When the purge runs: a Spring cron expression (second minute hour day month weekday). Daily at 02:17. */
+        private String cron = "0 17 2 * * *";
+
+        @AssertTrue(message = "application.retention.events-days (APPLICATION_RETENTION_EVENTSDAYS) must be 0 (keep"
+                + " forever) or at least " + MIN_EVENTS_DAYS + ": the home page and reports read the last 30 days")
+        public boolean isEventsDaysValid() {
+            return eventsDays <= 0 || eventsDays >= MIN_EVENTS_DAYS;
+        }
+
+        @AssertTrue(message = "application.retention.cron (APPLICATION_RETENTION_CRON) must be a Spring cron expression"
+                + " with six fields, e.g. 0 17 2 * * *")
+        public boolean isCronValid() {
+            return cron != null && org.springframework.scheduling.support.CronExpression.isValidExpression(cron);
+        }
+    }
 
     /** What people see of each other, and keep. See AccessPolicy and the README's "Privacy and retention". */
     @Data

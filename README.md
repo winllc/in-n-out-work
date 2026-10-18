@@ -257,6 +257,30 @@ Whatever the setting, people see themselves in full, managers the people they ar
 their groups' members, the people they are a delegate of) and administrators everyone. Any other value stops startup
 naming the setting.
 
+**Retention.** ReadyRoom keeps everything by default, as it always has. Set `application.retention.events-days`
+(`APPLICATION_RETENTION_EVENTSDAYS`) to keep check-in records, calendar statuses, status requests and absence alerts
+for that many days (0, the default, keeps them forever; otherwise at least 31, since the home page, My Reports and
+the average login time read the last 30 days). A job (`service.RetentionService`, on `application.retention.cron`,
+`APPLICATION_RETENTION_CRON`, default `0 17 2 * * *`, 02:17 daily) then deletes what is older:
+
+- check-in records and calendar statuses, after rolling them up into one summary per person per month
+  (`attendance_summaries`): days checked in, time in (first check-in to last check-out each day, as the reports count
+  it) and days per status. A later run adds to a month already summarised; nothing is counted twice;
+- absence alerts (by the day they were raised) and status requests (once their last day is past), without a summary.
+
+It works a day at a time, oldest first, 500 people per transaction, so it never holds a table for long; several
+instances take turns (each batch locks the one row of `retention_state`). Each run is audited as `data.purged`
+(category `data`, actor `system`) with its counts (`checkIns`, `unattributedCheckIns`, `statuses`, `notifications`,
+`requests`, `summariesWritten`, `days`), the cutoff (`purgedBefore`) and `retentionDays`, and counted in
+`ens_readyroom_retention_purged_total{kind}`; a failure is `job.failed` and the next run carries on.
+**Audit events are not purged by this**: they have their own retention, `ENS_AUDIT_RETENTION_DAYS`.
+
+*What reports show for purged periods.* Before the cutoff there are no per-day records: the group report's days show
+no check-in times, durations or statuses there, and it adds a "Before <date>: monthly summaries" table with each
+member's days checked in, time in and days per status for the months it covers. Calendars (profile, user details)
+show nothing for purged days. The home page, My Reports and metrics read at most the last 30 days, which retention
+never reaches. A person's summaries are in their export (below).
+
 ---
 
 ## Windows client
@@ -495,6 +519,8 @@ values that most often need changing per deployment:
 | `duty-sub-org-groups-base-dn` | Enables the org chart; blank disables it |
 | `ldap.max-pages` | Most pages one paged search reads before returning what it has (default 1000). Bounds a directory that keeps returning a paging cookie, which would otherwise hold the request open indefinitely. |
 | `checkOutAfterMinutes` | Minutes a session may stay locked before `MarkInactiveCron` checks it out (default 240; the packaged configuration used to say 2) |
+| `retention.events-days` | Days to keep check-in records, statuses, requests and absence alerts (`APPLICATION_RETENTION_EVENTSDAYS`); `0` (default) keeps them forever, otherwise at least 31. See [Privacy and retention](#privacy-and-retention). |
+| `retention.cron` | When the retention purge runs (`APPLICATION_RETENTION_CRON`, a six-field Spring cron, default `0 17 2 * * *`) |
 | `privacy.coworker-visibility` | `full` (default), `status` or `none`: what people see of coworkers (`APPLICATION_PRIVACY_COWORKERVISIBILITY`); see [Privacy and retention](#privacy-and-retention) |
 | `events.request-statuses` | The statuses people request rather than set (`APPLICATION_EVENTS_REQUESTSTATUSES`, comma-separated; default `OUT_OF_OFFICE,WORK_FROM_HOME,TDY,SCHEDULED_LEAVE,ABSENT_EXCUSED`, every status that excuses an absence). `STANDARD` is refused at startup. See [Statuses and approvals](#statuses-and-approvals). |
 | `events.max-range-days` | The most days one call may set a status, a status request or an organization calendar event on (`APPLICATION_EVENTS_MAXRANGEDAYS`, default 366). Every API that creates events checks it and refuses a longer range with 400 (`range_too_long`) before writing anything. |
@@ -799,7 +825,7 @@ append-only in the database itself: a trigger refuses every UPDATE (see [Databas
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
 | account | `person.created` (a new tracked person, at first sign-in or lookup), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
 | configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |
-| data | `person.updated` (profile notes and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download) |
+| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download) |
 | license | `license.installed`, `license.rejected`, `license.mode-changed` (also across restarts), `license.limit-exceeded` |
 | system | `system.started`, `system.stopped`, `job.completed` / `job.failed` (one per run, with counts and duration), `job.skipped` (once per license mode change) |
 | audit | `audit.exported`, `audit.verified`, `audit.token-created`, `audit.token-revoked`, `audit.pruned`, `audit.delivery-failed`, `audit.delivery-recovered` |
@@ -890,6 +916,7 @@ index an interrupted script left invalid is rebuilt.
 |---|---|
 | `V2__status_requests.sql` | The `status_requests` table, and `user_event_records.request_id`, the approved request a calendar day comes from (see [Statuses and approvals](#statuses-and-approvals)). Existing rows are untouched. |
 | `V3__admin_managed_delegates.sql` | `user_records.alternate_managers` widened to 2000 characters, and `alternate_managers_review_pending`, set on every person who had delegates they chose themselves (see [Delegates](#delegates)). |
+| `V4__retention_summaries.sql` | `attendance_summaries` and `attendance_summary_statuses` (monthly roll-ups the retention purge writes), `retention_state` (one row: how far it has purged), and an index on `notification_records.notification_date` |
 
 **Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
 Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the
@@ -988,6 +1015,8 @@ the management port (the image's `HEALTHCHECK` does). The Helm chart does all th
 | `ens_readyroom_people_in` | gauge | People whose latest event today is a check-in or unlock (refreshed at most once a minute) |
 | `ens_readyroom_alerts_sent_total` | counter | Absence alert e-mails sent |
 | `ens_readyroom_logoffs_refused_total{reason}` | counter | Logoffs refused: `unknown_session`, `rate_limited` |
+| `ens_readyroom_requests_total{outcome}` | counter | Status requests `created`, `approved`, `rejected`, `cancelled` |
+| `ens_readyroom_retention_purged_total{kind}` | counter | Records the retention purge deleted: `checkin`, `status`, `notification`, `request` |
 
 Spring Boot's own JVM, HTTP, database pool and Tomcat metrics are there too, tagged `application="readyroom"`.
 
