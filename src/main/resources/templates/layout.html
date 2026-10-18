@@ -187,6 +187,15 @@
                             <span class="nav-link-title">Delegates</span>
                         </a>
                     </li>
+                    <!-- Retention, and a person's export and erasure: open in every license state. -->
+                    <li class="nav-item" sec:authorize="hasAuthority('ADMIN')">
+                        <a class="nav-link" th:href="@{/app/admin/privacy}">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <i class="ti ti-shield-lock"></i>
+                            </span>
+                            <span class="nav-link-title">Privacy</span>
+                        </a>
+                    </li>
                     <!-- Open in every license state, like the license screen: the audit trail stays available. -->
                     <li class="nav-item" sec:authorize="hasAuthority('ADMIN')">
                         <a class="nav-link" th:href="@{/app/admin/audit}">
@@ -249,6 +258,9 @@
                     <div class="dropdown-menu dropdown-menu-end dropdown-menu-arrow" aria-labelledby="drop2">
                         <a th:href="@{/app/profile}" class="dropdown-item">
                             <i class="ti ti-user me-2"></i>My Profile
+                        </a>
+                        <a th:href="@{/app/privacy}" class="dropdown-item">
+                            <i class="ti ti-database-export me-2"></i>My data
                         </a>
                         <!-- Password sessions only: a client certificate would sign straight back in. -->
                         <th:block th:if="${passwordLogin}">

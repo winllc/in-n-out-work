@@ -99,6 +99,19 @@ final class LicenseGatingSupport {
         List<Object> events() {
             return List.of();
         }
+
+        /** A person's export: ungated, like the audit log (LicensingConfiguration.PRIVACY_SCREEN). */
+        @GetMapping("/app/privacy/export")
+        @ResponseBody
+        Map<String, Object> privacyExport() {
+            return Map.of("format", "readyroom-personal-data/1");
+        }
+
+        /** An administrator's erasure: ungated, writes included. */
+        @PostMapping("/app/admin/privacy/erase")
+        String erase() {
+            return "redirect:/app/admin/privacy";
+        }
     }
 
     @Configuration

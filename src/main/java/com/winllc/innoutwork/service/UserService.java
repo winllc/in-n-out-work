@@ -128,7 +128,9 @@ public class UserService {
                     .target("user", dn, LdapDn.cnOf(dn))
                     .detail("via", "profile");
             if (!Objects.equals(oldNotes, saved.getNotes())) {
-                entry.change("notes", oldNotes, saved.getNotes());
+                // That the notes changed, not what they say: the audit trail is kept when a person's data is erased
+                // (RR-12), so it holds no notes.
+                entry.detail("notesChanged", true);
             }
             if (!Objects.equals(oldLoginTime, saved.getChosenLoginTime())) {
                 entry.change("expectedLoginTime", Objects.toString(oldLoginTime, null),

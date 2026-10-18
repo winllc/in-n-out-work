@@ -148,6 +148,19 @@ class LicenseModesTest {
                 .andExpect(jsonPath("$.installationId").value(licenses.installationId()));
     }
 
+    /** A person's rights over their data do not depend on the license: export unlicensed, erasure read-only. */
+    @Test
+    void exportAndErasureWorkInEveryLicenseState() throws Exception {
+        TestLicenses.removeFile(licenses);
+        mockMvc.perform(get("/app/privacy/export").with(USER))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.format").value("readyroom-personal-data/1"));
+
+        TestLicenses.installFile(licenses, TestLicenses.license().expired(5).sign());
+        mockMvc.perform(post("/app/admin/privacy/erase").with(ADMIN).accept(MediaType.TEXT_HTML))
+                .andExpect(status().is3xxRedirection());
+    }
+
     // --- read-only ----------------------------------------------------------------------------------------
 
     @Test

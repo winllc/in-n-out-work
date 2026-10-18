@@ -115,6 +115,11 @@
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Role</h3>
+                    <div class="card-actions">
+                        <a class="btn btn-sm btn-outline-secondary" th:href="@{/app/admin/privacy(dn=${user.dn})}">
+                            <i class="ti ti-shield-lock me-1"></i>Export or erase data
+                        </a>
+                    </div>
                 </div>
                 <div class="card-body">
                     <form th:action="@{/app/user/details}" method="post" th:object="${roleForm}">

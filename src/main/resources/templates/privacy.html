@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>My data</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">My data</span>
+
+<div layout:fragment="page-actions">
+    <a class="btn btn-primary" th:href="@{/app/privacy/export}" id="download-my-data">
+        <i class="ti ti-download me-1"></i>Download my data
+    </a>
+</div>
+
+<div layout:fragment="content">
+    <div class="row row-cards">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">What ReadyRoom keeps about you</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary">
+                        Your name, e-mail, phone, groups and manager come from the directory and are kept there.
+                        ReadyRoom itself stores:
+                    </p>
+                    <div class="datagrid">
+                        <div class="datagrid-item">
+                            <div class="datagrid-title">Your profile</div>
+                            <div class="datagrid-content"
+                                 th:text="${counts['userRecord'] > 0} ? 'Notes, preferred and average login time, role, favourite groups, delegates, and the directory details copied at sign-in' : 'None'"></div>
+                        </div>
+                        <div class="datagrid-item">
+                            <div class="datagrid-title">Check-ins</div>
+                            <div class="datagrid-content" th:text="${counts['checkIns']}">0</div>
+                        </div>
+                        <div class="datagrid-item">
+                            <div class="datagrid-title">Calendar statuses</div>
+                            <div class="datagrid-content" th:text="${counts['calendarStatuses']}">0</div>
+                        </div>
+                        <div class="datagrid-item">
+                            <div class="datagrid-title">Status requests</div>
+                            <div class="datagrid-content" th:text="${counts['statusRequests']}">0</div>
+                        </div>
+                        <div class="datagrid-item">
+                            <div class="datagrid-title">Absence alerts about you or sent to you</div>
+                            <div class="datagrid-content" th:text="${counts['absenceAlerts']}">0</div>
+                        </div>
+                        <div class="datagrid-item">
+                            <div class="datagrid-title">Monthly summaries</div>
+                            <div class="datagrid-content" th:text="${counts['monthlySummaries']}">0</div>
+                        </div>
+                    </div>
+                    <p class="text-secondary mt-3 mb-0">
+                        The download has all of it as JSON. Downloading is recorded in the audit log.
+                    </p>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Who sees it, and for how long</h3>
+                </div>
+                <div class="card-body">
+                    <p>
+                        <strong>Your times, notes and history</strong> are seen by you, your manager, your delegates,
+                        the managers of your groups and administrators.
+                    </p>
+                    <p th:switch="${visibility}">
+                        <strong>Coworkers</strong>
+                        <span th:case="'none'">see who you are, and nothing of your attendance.</span>
+                        <span th:case="'status'">see who you are and whether you are in or out today.</span>
+                        <span th:case="*">see who you are, whether you are in today, and the day's status (telework,
+                            leave and the like).</span>
+                    </p>
+                    <p th:if="${retentionDays > 0}">
+                        <strong>Check-ins, statuses, requests and absence alerts</strong> are kept for
+                        <span th:text="${retentionDays}">365</span> days, then summarised by month (days checked in,
+                        time in, days per status) and deleted<span th:if="${purgedBefore != null}">; nothing before
+                        <span th:text="${purgedBefore}"></span> is kept in detail</span>.
+                    </p>
+                    <p th:unless="${retentionDays > 0}">
+                        <strong>Check-ins, statuses, requests and absence alerts</strong> are kept until an
+                        administrator deletes them.
+                    </p>
+                    <p class="mb-0">
+                        To have your data erased, ask an administrator. The audit log, which records who did what but
+                        not your notes, is kept.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

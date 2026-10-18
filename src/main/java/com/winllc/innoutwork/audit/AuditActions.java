@@ -18,6 +18,7 @@ public final class AuditActions {
             "access.denied",
             // account
             "person.created", "account.role-changed", "account.permission-granted", "account.permission-revoked",
+            "person.erased",
             // configuration
             "settings.changed", "settings.cache-evicted", "calendar.org-event-created", "calendar.org-event-deleted",
             "group.managers-changed",

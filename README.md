@@ -281,6 +281,35 @@ member's days checked in, time in and days per status for the months it covers. 
 show nothing for purged days. The home page, My Reports and metrics read at most the last 30 days, which retention
 never reaches. A person's summaries are in their export (below).
 
+
+**Export.** Any signed-in user downloads everything ReadyRoom holds about them from *My data* (`/app/privacy`, in the
+user menu): `GET /app/privacy/export`, a JSON file (`readyroom-personal-data/1`) with their profile (notes, preferred
+and average login time, role, favourite groups, delegates and the directory fields copied at sign-in), group access
+granted in ReadyRoom, whose delegate and which groups' alternate manager they are, every check-in record (without the
+logoff session id, a credential), calendar status, status request (with notes and comments), absence alert about
+them, and monthly summary; times in ISO 8601. The page also says who sees what and for how long. Each download is
+audited as `data.exported` (`details.report` `personal-data`, `requestedBy` `self`, with counts). Administrators can
+download anyone's from *Administration &rarr; Privacy* (`/app/admin/privacy/export?dn=...`, `requestedBy` the
+administrator). The audit trail is not in the export; an administrator exports a person's events from the audit log
+page (filter by actor or target).
+
+**Erasure.** On request, an administrator erases a person's data from *Administration &rarr; Privacy*
+(`/app/admin/privacy`, or *Export or erase data* on their details page), in two steps: choosing the person shows
+what is held about them and whether they are still in the directory, with a form carrying a one-time token (10
+minutes, that person only, in the administrator's session); erasing needs that token and the person's name typed
+again, and the browser asks once more. Nobody erases themselves. It deletes, in one transaction, their user record
+and group access, check-ins, calendar statuses, status requests, absence alerts about them or sent to them, and
+monthly summaries, and takes them off other people's delegates and groups' alternate managers. It is audited as
+`person.erased` (category `account`) with the counts and `inDirectory`. **Kept:** the audit trail (append-only and
+hash-chained; its events name people by DN but hold no notes: profile notes changes are recorded as `notesChanged`
+from this release, though events from earlier releases still carry the old and new text until audit retention
+prunes them), and the person's DN where it stands in others' records as the one who decided a request or answered an
+alert. **If the person is still in the directory** the page says so: ReadyRoom creates their account again (an empty
+user record) at their next sign-in, and the hourly directory refresh does too, so remove or disable them in the
+directory first.
+
+Export and erasure are not licensed features and work in every license state, as the audit log does (erasure too
+while read-only); demo mode refuses erasure like every other change.
 ---
 
 ## Windows client
@@ -383,7 +412,7 @@ air-gapped enclave.
 |---|---|---|
 | `VALID`, `GRACE` (expired, within its grace days) | full | Everything the license's features include. In grace, and in the last 30 days before expiry, administrators see a renewal warning. |
 | `EXPIRED` (past grace), `RELEASE_NOT_COVERED` (perpetual license, build newer than its maintenance) | read-only | Pages and GET calls work; anything else is refused with 403 (`license_read_only`), the Windows client's check-ins included. Scheduled jobs pause: directory sync, auto check-out, absence e-mails. |
-| `MISSING`, `INVALID`, `WRONG_PRODUCT`, `WRONG_INSTALLATION`, `SUPERSEDED`, `NOT_YET_VALID` | unlicensed | Only sign-in/out, the license screen, `GET /api/license`, the audit log (`/app/admin/audit`) and its pull API (`/api/audit/events`), static assets, actuator and the error page. Browsers are sent to the license screen; API callers get 403 JSON. |
+| `MISSING`, `INVALID`, `WRONG_PRODUCT`, `WRONG_INSTALLATION`, `SUPERSEDED`, `NOT_YET_VALID` | unlicensed | Only sign-in/out, the license screen, `GET /api/license`, the audit log (`/app/admin/audit`) and its pull API (`/api/audit/events`), a person's data export and erasure (`/app/privacy/**`, `/app/admin/privacy/**`), static assets, actuator and the error page. Browsers are sent to the license screen; API callers get 403 JSON. |
 
 An evaluation license shows an "Evaluation license" banner on every page.
 
@@ -823,9 +852,9 @@ append-only in the database itself: a trigger refuses every UPDATE (see [Databas
 |---|---|
 | authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout`, `auth.consent-acknowledged` (the notice-and-consent banner, with the client address), `auth.session-expired` (`reason` `idle`, `absolute` or `concurrent`) |
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
-| account | `person.created` (a new tracked person, at first sign-in or lookup), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
+| account | `person.created` (a new tracked person, at first sign-in or lookup), `person.erased` (an administrator's erasure of their data, with counts), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
 | configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |
-| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download) |
+| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes changed, never their text, and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download, a person's data export) |
 | license | `license.installed`, `license.rejected`, `license.mode-changed` (also across restarts), `license.limit-exceeded` |
 | system | `system.started`, `system.stopped`, `job.completed` / `job.failed` (one per run, with counts and duration), `job.skipped` (once per license mode change) |
 | audit | `audit.exported`, `audit.verified`, `audit.token-created`, `audit.token-revoked`, `audit.pruned`, `audit.delivery-failed`, `audit.delivery-recovered` |
