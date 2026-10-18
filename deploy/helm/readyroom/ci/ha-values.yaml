@@ -1,0 +1,16 @@
+# Two replicas with rolling updates and a PodDisruptionBudget; the license state is not on a ReadWriteOnce volume.
+database:
+  host: postgres.example.internal
+  password: example-db-password
+ldap:
+  host: ldap.example.internal
+  bindDn: CN=readyroom-svc,OU=Service Accounts,DC=example,DC=com
+  bindPassword: example-ldap-password
+  userBaseDn: DC=example,DC=com
+superUserDns:
+  - CN=Jane Admin,OU=Users,DC=example,DC=com
+publicUrl: https://readyroom.example.com
+replicaCount: 2
+persistence:
+  license:
+    enabled: false

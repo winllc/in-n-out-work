@@ -164,6 +164,37 @@ data:
   {{- end }}
   ENS_X509_REVOCATION_FAIL: {{ $v.x509.revocation.fail | quote }}
   ENS_X509_REVOCATION_CACHE: {{ $v.x509.revocation.cache | quote }}
+  {{- if or $v.sso.oidc.enabled $v.sso.saml.enabled }}
+  ENS_SSO_ROLE_MAPPING: {{ $v.sso.roleMapping | quote }}
+  ENS_SSO_CLOCK_SKEW: {{ $v.sso.clockSkew | quote }}
+  {{- end }}
+  {{- if $v.sso.oidc.enabled }}
+  ENS_SSO_OIDC_ENABLED: "true"
+  ENS_SSO_OIDC_DISPLAY_NAME: {{ $v.sso.oidc.displayName | quote }}
+  ENS_SSO_OIDC_ISSUER_URI: {{ required "sso.oidc.issuerUri is required with sso.oidc.enabled" $v.sso.oidc.issuerUri | quote }}
+  ENS_SSO_OIDC_CLIENT_ID: {{ required "sso.oidc.clientId is required with sso.oidc.enabled" $v.sso.oidc.clientId | quote }}
+  ENS_SSO_OIDC_SCOPES: {{ $v.sso.oidc.scopes | quote }}
+  ENS_SSO_OIDC_USER_FILTER: {{ required "sso.oidc.userFilter is required with sso.oidc.enabled" $v.sso.oidc.userFilter | quote }}
+  ENS_SSO_OIDC_GROUPS_CLAIM: {{ $v.sso.oidc.groupsClaim | quote }}
+  {{- end }}
+  {{- if $v.sso.saml.enabled }}
+  ENS_SSO_SAML_ENABLED: "true"
+  ENS_SSO_SAML_DISPLAY_NAME: {{ $v.sso.saml.displayName | quote }}
+  {{- if $v.sso.saml.metadataConfigMap }}
+  ENS_SSO_SAML_IDP_METADATA: file:/etc/in-n-out/saml-idp/metadata.xml
+  {{- else }}
+  ENS_SSO_SAML_IDP_METADATA: {{ required "sso.saml.idpMetadataUrl or sso.saml.metadataConfigMap is required with sso.saml.enabled" $v.sso.saml.idpMetadataUrl | quote }}
+  {{- end }}
+  {{- with $v.sso.saml.entityId }}
+  ENS_SSO_SAML_ENTITY_ID: {{ . | quote }}
+  {{- end }}
+  ENS_SSO_SAML_USER_FILTER: {{ required "sso.saml.userFilter is required with sso.saml.enabled" $v.sso.saml.userFilter | quote }}
+  ENS_SSO_SAML_GROUPS_ATTRIBUTE: {{ $v.sso.saml.groupsAttribute | quote }}
+  {{- if $v.sso.saml.spKeySecret }}
+  ENS_SSO_SAML_SP_KEY_FILE: /etc/in-n-out/saml-sp/tls.key
+  ENS_SSO_SAML_SP_CERT_FILE: /etc/in-n-out/saml-sp/tls.crt
+  {{- end }}
+  {{- end }}
 
   # Windows (Kerberos) sign-in
   APPLICATION_WINDOWSAUTH_ENABLED: {{ $v.windowsAuth.enabled | quote }}

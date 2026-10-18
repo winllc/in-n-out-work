@@ -26,15 +26,27 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# One replica only. ReadyRoom keeps single-writer state: the license and installation id in the
-# license volume (ReadWriteOnce), and its scheduled jobs (directory sync, auto check-out, absence
-# e-mails) run in every instance, so a second replica would send duplicate e-mails and race the first
-# on the same records. More than 1 is not supported.
+# Replicas. Scheduled jobs run on one replica at a time (database locks), browser sessions are in the
+# database, and a rolling update keeps one replica serving, so check-ins are not lost while it runs. More than
+# 1 also needs the license state out of the pod's volume: see persistence.license.
 replicaCount: 1
 
-# Recreate: the old pod releases the license volume before the new one mounts it.
-strategy:
-  type: Recreate
+# Empty: RollingUpdate (a new pod is ready before an old one stops: maxSurge 1, maxUnavailable 0), except while
+# the license is on a ReadWriteOnce volume, which two pods on different nodes cannot share: then Recreate, the
+# old pod stopping before the new one starts (a short outage; see "Upgrades and outages" in README.md).
+# Set it to override either.
+strategy: {}
+
+# With more than one replica: a PodDisruptionBudget keeping this many available during voluntary disruptions
+# (node drains, cluster upgrades).
+podDisruptionBudget:
+  minAvailable: 1
+
+# Stopping a pod: it is first taken out of the Service and waits preStopSleepSeconds for the endpoints to update
+# everywhere, then finishes requests in progress and any scheduled job already running (releasing its lock), all
+# within terminationGracePeriodSeconds.
+preStopSleepSeconds: 10
+terminationGracePeriodSeconds: 60
 
 revisionHistoryLimit: 3
 
@@ -391,6 +403,50 @@ x509:
     cache: 10m
 
 # ---------------------------------------------------------------------------------------------------
+# Single sign-on (ENS_SSO_*): OpenID Connect and SAML 2.0, each off until enabled. See "Single sign-on" in
+# the ReadyRoom README for Entra ID, Okta and ADFS. Whoever the identity provider signs in must match exactly one
+# directory user by userFilter and gets that user's roles; roleMapping adds roles for the IdP's groups, and
+# nothing else the IdP says grants any. The Windows client is unaffected (certificates, Windows tickets).
+# ---------------------------------------------------------------------------------------------------
+
+sso:
+  # IdP group to role, group=ROLE pairs separated by ; (MANAGER or ADMIN). Empty: the IdP's groups grant nothing.
+  roleMapping: ""
+  clockSkew: 60s
+  oidc:
+    enabled: false
+    displayName: Sign in with single sign-on
+    # The issuer (Entra ID: https://login.microsoftonline.com/<tenant id>/v2.0). Redirect URI to register at the
+    # IdP: <publicUrl>/login/oauth2/code/oidc.
+    issuerUri: ""
+    clientId: ""
+    # Inline, or from your own Secret; empty: a public client (PKCE only).
+    clientSecret: ""
+    existingSecret: ""
+    existingSecretKey: oidc-client-secret
+    scopes: openid,profile,email
+    # Required: e.g. (userPrincipalName={preferred_username}) or (mail={email}).
+    userFilter: ""
+    groupsClaim: groups
+  saml:
+    enabled: false
+    displayName: Sign in with SAML single sign-on
+    # The IdP's metadata URL (https://...), or empty and metadataConfigMap: a ConfigMap of your own holding it
+    # under metadataConfigMapKey. This service provider's metadata for the IdP: <publicUrl>/saml2/service-provider-metadata/saml
+    idpMetadataUrl: ""
+    metadataConfigMap: ""
+    metadataConfigMapKey: metadata.xml
+    # Empty: <publicUrl>/saml2/service-provider-metadata/saml.
+    entityId: ""
+    # Required: e.g. (userPrincipalName={http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn}) or
+    # (mail={nameid}).
+    userFilter: ""
+    groupsAttribute: http://schemas.microsoft.com/ws/2008/06/identity/claims/groups
+    # Optional: a Secret with a PKCS#8 PEM key (tls.key) and its certificate (tls.crt), to sign requests and
+    # decrypt encrypted assertions.
+    spKeySecret: ""
+
+# ---------------------------------------------------------------------------------------------------
 # Windows (Kerberos) sign-in for the Windows client's check-in, lock and unlock calls
 # ---------------------------------------------------------------------------------------------------
 
@@ -544,8 +600,8 @@ networkPolicy:
     # Destinations for the database, LDAP, SMTP and audit outputs.
     cidrs:
       - 0.0.0.0/0
-    # TCP ports to allow to cidrs. The database port, the LDAP and SMTP ports and the audit ports are
-    # added from the values above.
+    # TCP ports to allow to cidrs. The database port, the LDAP and SMTP ports, the audit ports and, with single
+    # sign-on, 443 (the identity provider) are added from the values above.
     extraPorts: []
 
 # ---------------------------------------------------------------------------------------------------
