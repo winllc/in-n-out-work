@@ -2,6 +2,7 @@ package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.audit.AuditEntry;
 import com.winllc.innoutwork.audit.AuditLog;
+import com.winllc.innoutwork.util.LogSafe;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
@@ -179,7 +180,7 @@ public class UserEventRestService {
     public Map<String, Object> updateEventForDay(Authentication authentication,
                                                  @RequestBody UserEventData data){
 
-        log.debug("updateEventForDay called by %s with data: %s".formatted(authentication.getName(), data));
+        log.debug("updateEventForDay called by {} with data: {}", authentication.getName(), LogSafe.of(String.valueOf(data)));
 
         String me = authentication.getName();
         String target = StringUtils.isBlank(data.getDn()) ? me : targetDn(data.getDn());

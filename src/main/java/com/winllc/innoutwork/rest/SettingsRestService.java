@@ -2,6 +2,7 @@ package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.audit.AuditEntry;
 import com.winllc.innoutwork.audit.AuditLog;
+import com.winllc.innoutwork.util.LogSafe;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
@@ -78,7 +79,7 @@ public class SettingsRestService {
     public CalendarEventData updateCalendar(Authentication authentication,
                                              @RequestBody CalendarEventData data){
 
-        log.debug("updateCalendar called by %s with data: %s".formatted(authentication.getName(), data));
+        log.debug("updateCalendar called by {} with data: {}", authentication.getName(), LogSafe.of(String.valueOf(data)));
 
         // At most application.events.max-range-days, like every API that creates events; refused with 400 otherwise.
         EventRange range = EventRange.parse(data.getFromDate(), data.getToDate(),
