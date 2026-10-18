@@ -60,6 +60,7 @@ class CsrfProtectionTest {
     @MockitoBean UserService userService;
     @MockitoBean AccessPolicy accessPolicy;
     @MockitoBean DirectReportsService directReportsService;
+    @MockitoBean com.winllc.innoutwork.service.Approvers approvers;
     @MockitoBean CheckInOutService checkIns;
 
     @Configuration

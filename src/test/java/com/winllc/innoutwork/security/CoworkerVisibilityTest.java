@@ -78,6 +78,7 @@ class CoworkerVisibilityTest {
     @MockitoBean OrgChartService orgChartService;
     @MockitoBean DirectReportsService directReportsService;
     @MockitoBean DelegateService delegateService;
+    @MockitoBean com.winllc.innoutwork.service.Approvers approvers;
 
     @Configuration
     @EnableWebSecurity

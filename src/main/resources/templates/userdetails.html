@@ -16,6 +16,35 @@
 
 <div layout:fragment="content">
 
+    <!-- A manager, delegate or administrator records a status for this person (POST /api/event/update with dn). -->
+    <div id="recordStatusModal" class="modal modal-blur fade" tabindex="-1" style="display:none" th:if="${canSetStatuses}">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Record a status for <span th:text="${user.cn}"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="recordStatusSelect">Status</label>
+                        <select id="recordStatusSelect" class="form-select">
+                            <option th:each="s : ${allStatuses}" th:value="${s.name()}" th:text="${s.friendlyName}"></option>
+                        </select>
+                        <small class="form-hint">Takes effect at once; no approval is needed when you record it.</small>
+                    </div>
+                    <input type="text" id="record-late-time" placeholder="Expected by (HH:mm)" class="form-control"
+                           style="display: none;">
+                    <input type="hidden" id="recordStatusFrom">
+                    <input type="hidden" id="recordStatusTo">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Close</button>
+                    <button id="recordStatusButton" class="btn btn-primary ms-auto">Record</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row row-cards">
         <div class="col-lg-6">
             <div class="card">
@@ -194,6 +223,7 @@
     <script  th:inline="javascript" th:attr="nonce=${cspNonce}">
 
         const userDn = /*[[${user.dn}]]*/ "test";
+        const canSetStatuses = /*[[${canSetStatuses == true}]]*/ false;
 
         // Absent when attendance is not licensed.
         const table = document.getElementById("audit-table") && new Tabulator("#audit-table", {
@@ -236,10 +266,46 @@
                         .then(res => res.json())
                         .then(data => successCallback(data))
                         .catch(err => failureCallback(err));
+                },
+                selectable: canSetStatuses,
+                select: function (info) {
+                    document.getElementById("recordStatusFrom").value = info.startStr;
+                    document.getElementById("recordStatusTo").value = info.endStr;
+                    new bootstrap.Modal(document.getElementById("recordStatusModal")).show();
                 }
             });
 
             calendar.render();
+
+            if (canSetStatuses) {
+                const select = document.getElementById("recordStatusSelect");
+                const lateTime = document.getElementById("record-late-time");
+                select.addEventListener("change", () => {
+                    lateTime.style.display = select.value === "LATE_ARRIVAL" ? "block" : "none";
+                });
+                document.getElementById("recordStatusButton").addEventListener("click", async () => {
+                    const response = await fetch("/api/event/update", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            dn: userDn,
+                            fromDate: document.getElementById("recordStatusFrom").value,
+                            toDate: document.getElementById("recordStatusTo").value,
+                            status: select.value,
+                            lateArrivalTime: lateTime.value
+                        })
+                    });
+                    bootstrap.Modal.getInstance(document.getElementById("recordStatusModal")).hide();
+                    calendar.unselect();
+                    if (!response.ok) {
+                        const problem = await response.json().catch(() => ({}));
+                        showToast(problem.message || "The status could not be recorded", {type: "danger", delay: 6000});
+                        return;
+                    }
+                    showToast("Status recorded", {type: "success"});
+                    calendar.refetchEvents();
+                });
+            }
 
         });
 

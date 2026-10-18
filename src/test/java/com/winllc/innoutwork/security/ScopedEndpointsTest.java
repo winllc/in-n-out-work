@@ -348,6 +348,22 @@ class ScopedEndpointsTest {
         assertEquals("08:30", shown.getAverageLoginTime());
     }
 
+    /** Only someone who decides for the person (their manager, a delegate, an administrator) records statuses. */
+    @Test
+    void theCalendarRecordsStatusesOnlyForThoseWhoDecideForThePerson() throws Exception {
+        detailsPage();
+        when(accessPolicy.canViewDetails(any(), anyString())).thenReturn(true);
+
+        when(approvers.mayDecide(any(), anyString())).thenReturn(false);
+        mockMvc.perform(get("/app/user/details/{dn}", TARGET).with(x509(cert(VIEWER))))
+                .andExpect(model().attribute("canSetStatuses", false))
+                .andExpect(model().attribute("allStatuses", List.of()));
+
+        when(approvers.mayDecide(any(), anyString())).thenReturn(true);
+        mockMvc.perform(get("/app/user/details/{dn}", TARGET).with(x509(cert(VIEWER))))
+                .andExpect(model().attribute("canSetStatuses", true));
+    }
+
     /** The group page offers its managers and report only to those who may use them. */
     @Test
     void theGroupPagesManagementCardsAreForItsManagersOnly() throws Exception {

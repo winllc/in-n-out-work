@@ -102,6 +102,13 @@ class TemplateRenderingTest {
     }
 
     @Test
+    void userDetailsLetsTheirManagerRecordAnyStatus() throws Exception {
+        assertRenders("/render/userdetails", "id=\"recordStatusModal\"");
+        assertRenders("/render/userdetails", "value=\"ABSENT_UNEXCUSED\"");
+        assertRenders("/render/userdetails", "id=\"delegates-card\"");
+    }
+
+    @Test
     void myReportsRenders() throws Exception {
         assertRenders("/render/myreports", "Direct reports");
     }
@@ -360,6 +367,9 @@ class TemplateRenderingTest {
             mav.addObject("roleForm", RoleUpdateForm.buildFromStatus(user));
             mav.addObject("roles", UserRoleEnum.getVisibleRoles());
             mav.addObject("isGroupManager", true);
+            // As their manager: the calendar records statuses for them.
+            mav.addObject("canSetStatuses", true);
+            mav.addObject("allStatuses", List.of(UserStatusEnum.values()));
             return mav;
         }
 

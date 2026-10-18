@@ -211,8 +211,8 @@ directory, their delegates (alternate managers, which administrators set) and an
 their own, administrators included. An approval writes the status on each day of the request (replacing what the
 person had set there); a rejection writes nothing. The requester can cancel a pending request, or an approved one
 until its last day has passed, which takes its days from today on off the calendar (an administrator can cancel
-anyone's). Managers, delegates and administrators can also set any status directly for someone they decide for
-(`POST /api/event/update` with `dn`).
+anyone's). Managers, delegates and administrators can also record any status directly for someone they decide for: by dragging
+across days on that person's calendar (their details page), or `POST /api/event/update` with `dn`.
 
 **Where:** dragging across days on the profile calendar (a requested status says it needs approval), the
 *Approvals* page (`/app/approvals`: what waits for you, your own requests, a form to ask), and the API:
