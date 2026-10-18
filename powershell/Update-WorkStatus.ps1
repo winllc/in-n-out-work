@@ -265,7 +265,9 @@ function Resolve-Configuration {
     foreach ($key in @('BaseUrl', 'Authentication', 'CertificateThumbprint', 'CertificateSubjectContains')) {
         if ($Parameters[$key]) { $config[$key] = [string]$Parameters[$key] }
     }
-    if ($Parameters.Contains('SkipCertificateCheck')) {
+    # Keys, not Contains(): $PSBoundParameters is a generic Dictionary, whose
+    # Contains is not callable from PowerShell.
+    if (@($Parameters.Keys) -contains 'SkipCertificateCheck') {
         $config.SkipCertificateCheck = [bool]$Parameters['SkipCertificateCheck']
     }
 

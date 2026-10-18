@@ -61,6 +61,21 @@ BeforeAll {
         return $cert
     }
 
+    function Get-BoundParameter {
+        # The parameters as the script's main block passes them: a real
+        # $PSBoundParameters, not a hashtable, which has methods it lacks.
+        [CmdletBinding()]
+        param(
+            [string]$BaseUrl,
+            [string]$Authentication,
+            [string]$CertificateThumbprint,
+            [string]$CertificateSubjectContains,
+            [string]$ConfigPath,
+            [switch]$SkipCertificateCheck
+        )
+        return $PSBoundParameters
+    }
+
     function New-FakeAcl {
         # What Test-TrustedPath and Test-InstallerFolder read from Get-Acl.
         param([string]$OwnerSid, [bool]$Protected = $true)
@@ -148,7 +163,7 @@ Describe 'Resolve-Configuration' {
     }
 
     It 'uses the defaults when there is no config file and no parameter' {
-        $config = Resolve-Configuration -Parameters @{} -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter) -ScriptRoot $Root
         $config.BaseUrl | Should -Be $Defaults.BaseUrl
         $config.Authentication | Should -Be 'Certificate'
         $config.SkipCertificateCheck | Should -BeFalse
@@ -157,7 +172,7 @@ Describe 'Resolve-Configuration' {
     It 'reads the config file beside the script' {
         '{ "BaseUrl": "https://readyroom.example.com/api/check", "Authentication": "Auto",
            "CertificateThumbprint": "AB12", "SkipCertificateCheck": true }' | Set-Content -Path $BesideScript
-        $config = Resolve-Configuration -Parameters @{} -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter) -ScriptRoot $Root
         $config.BaseUrl | Should -Be 'https://readyroom.example.com/api/check'
         $config.Authentication | Should -Be 'Auto'
         $config.CertificateThumbprint | Should -Be 'AB12'
@@ -169,28 +184,28 @@ Describe 'Resolve-Configuration' {
         '{ "BaseUrl": "https://beside.example.com/api/check" }' | Set-Content -Path $BesideScript
         $explicit = Join-Path $Root 'explicit.json'
         '{ "Authentication": "Windows" }' | Set-Content -Path $explicit
-        $config = Resolve-Configuration -Parameters @{ ConfigPath = $explicit } -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter -ConfigPath $explicit) -ScriptRoot $Root
         $config.Authentication | Should -Be 'Windows'
         $config.BaseUrl | Should -Be $Defaults.BaseUrl
     }
 
     It 'falls back to the file beside the script when -ConfigPath does not exist' {
         '{ "BaseUrl": "https://beside.example.com/api/check" }' | Set-Content -Path $BesideScript
-        $config = Resolve-Configuration -Parameters @{ ConfigPath = (Join-Path $Root 'missing.json') } -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter -ConfigPath (Join-Path $Root 'missing.json')) -ScriptRoot $Root
         $config.BaseUrl | Should -Be 'https://beside.example.com/api/check'
     }
 
     It 'ignores keys it does not know' {
         '{ "BaseUrl": "https://readyroom.example.com/api/check", "SessionDir": "C:\\Users\\Public" }' |
             Set-Content -Path $BesideScript
-        $config = Resolve-Configuration -Parameters @{} -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter) -ScriptRoot $Root
         $config.ContainsKey('SessionDir') | Should -BeFalse
         @($config.Keys | Sort-Object) | Should -Be @(@($Defaults.Keys) | Sort-Object)
     }
 
     It 'warns about, and ignores, a file that is not JSON' {
         'BaseUrl = https://evil.example.com' | Set-Content -Path $BesideScript
-        $config = Resolve-Configuration -Parameters @{} -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter) -ScriptRoot $Root
         $config.BaseUrl | Should -Be $Defaults.BaseUrl
         Should -Invoke Write-StatusLog -ParameterFilter { $Level -eq 'WARN' -and $Message -like 'Ignoring unreadable config*' }
     }
@@ -198,12 +213,13 @@ Describe 'Resolve-Configuration' {
     It 'lets parameters override the file' {
         '{ "BaseUrl": "https://file.example.com/api/check", "Authentication": "Windows",
            "CertificateThumbprint": "FILE", "CertificateSubjectContains": "file" }' | Set-Content -Path $BesideScript
-        $config = Resolve-Configuration -ScriptRoot $Root -Parameters @{
+        $parameters = @{
             BaseUrl                    = 'https://param.example.com/api/check'
             Authentication             = 'Certificate'
             CertificateThumbprint      = 'PARAM'
             CertificateSubjectContains = 'param'
         }
+        $config = Resolve-Configuration -ScriptRoot $Root -Parameters (Get-BoundParameter @parameters)
         $config.BaseUrl | Should -Be 'https://param.example.com/api/check'
         $config.Authentication | Should -Be 'Certificate'
         $config.CertificateThumbprint | Should -Be 'PARAM'
@@ -212,25 +228,23 @@ Describe 'Resolve-Configuration' {
 
     It 'treats an empty parameter as not given' {
         '{ "BaseUrl": "https://file.example.com/api/check" }' | Set-Content -Path $BesideScript
-        $config = Resolve-Configuration -Parameters @{ BaseUrl = '' } -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter -BaseUrl '') -ScriptRoot $Root
         $config.BaseUrl | Should -Be 'https://file.example.com/api/check'
     }
 
     It 'turns certificate checks off with -SkipCertificateCheck' {
-        $switch = [System.Management.Automation.SwitchParameter]::new($true)
-        $config = Resolve-Configuration -Parameters @{ SkipCertificateCheck = $switch } -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter -SkipCertificateCheck) -ScriptRoot $Root
         $config.SkipCertificateCheck | Should -BeTrue
     }
 
     It 'turns them back on with -SkipCertificateCheck:$false over a file that skips them' {
         '{ "SkipCertificateCheck": true }' | Set-Content -Path $BesideScript
-        $switch = [System.Management.Automation.SwitchParameter]::new($false)
-        $config = Resolve-Configuration -Parameters @{ SkipCertificateCheck = $switch } -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter -SkipCertificateCheck:$false) -ScriptRoot $Root
         $config.SkipCertificateCheck | Should -BeFalse
     }
 
     It 'drops trailing slashes from BaseUrl' {
-        $config = Resolve-Configuration -Parameters @{ BaseUrl = 'https://readyroom.example.com/api/check//' } -ScriptRoot $Root
+        $config = Resolve-Configuration -Parameters (Get-BoundParameter -BaseUrl 'https://readyroom.example.com/api/check//') -ScriptRoot $Root
         $config.BaseUrl | Should -Be 'https://readyroom.example.com/api/check'
     }
 
@@ -239,35 +253,32 @@ Describe 'Resolve-Configuration' {
         @{ Url = 'readyroom.example.com/api/check' }
         @{ Url = 'file:///C:/Windows/win.ini' }
     ) {
-        { Resolve-Configuration -Parameters @{ BaseUrl = $Url } -ScriptRoot $Root } | Should -Throw '*is not a valid URL*'
+        { Resolve-Configuration -Parameters (Get-BoundParameter -BaseUrl $Url) -ScriptRoot $Root } | Should -Throw '*is not a valid URL*'
     }
 
     It 'refuses a blank BaseUrl from the file' {
         '{ "BaseUrl": "  " }' | Set-Content -Path $BesideScript
-        { Resolve-Configuration -Parameters @{} -ScriptRoot $Root } | Should -Throw 'BaseUrl is not configured.'
+        { Resolve-Configuration -Parameters (Get-BoundParameter) -ScriptRoot $Root } | Should -Throw 'BaseUrl is not configured.'
     }
 
     It 'normalises the case of Authentication from the file' {
         '{ "Authentication": "windows" }' | Set-Content -Path $BesideScript
-        (Resolve-Configuration -Parameters @{} -ScriptRoot $Root).Authentication | Should -BeExactly 'Windows'
+        (Resolve-Configuration -Parameters (Get-BoundParameter) -ScriptRoot $Root).Authentication | Should -BeExactly 'Windows'
     }
 
     It 'refuses an Authentication it does not know' {
         '{ "Authentication": "Basic" }' | Set-Content -Path $BesideScript
-        { Resolve-Configuration -Parameters @{} -ScriptRoot $Root } | Should -Throw "Authentication 'Basic' is not one of*"
+        { Resolve-Configuration -Parameters (Get-BoundParameter) -ScriptRoot $Root } | Should -Throw "Authentication 'Basic' is not one of*"
     }
 
     It 'warns that Windows sign-in needs a host name, not an IP address' {
-        $null = Resolve-Configuration -ScriptRoot $Root -Parameters @{
-            BaseUrl = 'https://192.0.2.10:8444/api/check'; Authentication = 'Auto' }
+        $null = Resolve-Configuration -ScriptRoot $Root -Parameters (Get-BoundParameter -BaseUrl 'https://192.0.2.10:8444/api/check' -Authentication 'Auto')
         Should -Invoke Write-StatusLog -Times 1 -ParameterFilter { $Level -eq 'WARN' -and $Message -like '*IP address*' }
     }
 
     It 'does not warn for a host name, or for certificate sign-in' {
-        $null = Resolve-Configuration -ScriptRoot $Root -Parameters @{
-            BaseUrl = 'https://readyroom.example.com/api/check'; Authentication = 'Windows' }
-        $null = Resolve-Configuration -ScriptRoot $Root -Parameters @{
-            BaseUrl = 'https://192.0.2.10:8444/api/check'; Authentication = 'Certificate' }
+        $null = Resolve-Configuration -ScriptRoot $Root -Parameters (Get-BoundParameter -BaseUrl 'https://readyroom.example.com/api/check' -Authentication 'Windows')
+        $null = Resolve-Configuration -ScriptRoot $Root -Parameters (Get-BoundParameter -BaseUrl 'https://192.0.2.10:8444/api/check' -Authentication 'Certificate')
         Should -Invoke Write-StatusLog -Times 0 -ParameterFilter { $Message -like '*IP address*' }
     }
 }
