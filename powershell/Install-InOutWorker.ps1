@@ -46,6 +46,9 @@
   .\Install-InOutWorker.ps1 -Uninstall
 #>
 
+# An administrator runs this by hand, at a console, and reads what it did.
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '',
+    Justification = 'Interactive installer; its output is for the administrator at the console.')]
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
     [string]$InstallDir = "$env:ProgramFiles\InOutWorker",
@@ -66,6 +69,138 @@ $TaskNames = @('InOutWork - Login', 'InOutWork - Logout', 'InOutWork - Disconnec
 $DataDir    = Join-Path $env:ProgramData 'InOutWorker'
 $LogDir     = Join-Path $DataDir 'logs'
 $SessionDir = Join-Path $DataDir 'sessions'
+
+function Get-ItemAttribute {
+    # The item's own attributes - a link's, not its target's - or $null when
+    # nothing is there.
+    param([string]$Path)
+    try {
+        return [System.IO.File]::GetAttributes($Path)
+    } catch {
+        return $null
+    }
+}
+
+function Test-ReparsePoint {
+    param($Attributes)
+    return ($null -ne $Attributes -and ($Attributes -band [System.IO.FileAttributes]::ReparsePoint))
+}
+
+function Remove-Link {
+    # Deletes a junction or symbolic link itself, never what it points to.
+    # Every caller runs inside a $PSCmdlet.ShouldProcess block of its own.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Only called inside the script''s own ShouldProcess blocks.')]
+    param([string]$Path)
+    if ((Get-ItemAttribute $Path) -band [System.IO.FileAttributes]::Directory) {
+        [System.IO.Directory]::Delete($Path)
+    } else {
+        [System.IO.File]::Delete($Path)
+    }
+    Write-Host "Removed link $Path"
+}
+
+function Test-InstallerFolder {
+    # A real folder, owned by Administrators or SYSTEM, that does not inherit
+    # from its parent: what this installer leaves behind, and nothing an
+    # ordinary user can make.
+    param([string]$Path)
+    $attributes = Get-ItemAttribute $Path
+    if ($null -eq $attributes -or (Test-ReparsePoint $attributes) -or
+        -not ($attributes -band [System.IO.FileAttributes]::Directory)) {
+        return $false
+    }
+    $acl   = Get-Acl -LiteralPath $Path
+    $owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier])
+    return ($acl.AreAccessRulesProtected -and ($owner -eq $AdminsSid -or $owner -eq $SystemSid))
+}
+
+function Set-FolderAcl {
+    # Replaces the folder's owner and DACL outright: Administrators own it,
+    # nothing is inherited from the parent, and only $Grants apply. Each grant
+    # is @(SID, rights, inheritance[, propagation]). Every caller runs inside a
+    # $PSCmdlet.ShouldProcess block of its own.
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '',
+        Justification = 'Only called inside the script''s own ShouldProcess blocks.')]
+    param([string]$Path, [object[]]$Grants)
+
+    # A folder an ordinary user created is theirs, and its owner can always
+    # rewrite its DACL; take it over first.
+    & takeown.exe /F $Path /A | Out-Null
+
+    $acl = New-Object System.Security.AccessControl.DirectorySecurity
+    $acl.SetOwner($AdminsSid)
+    $acl.SetAccessRuleProtection($true, $false)
+    foreach ($grant in $Grants) {
+        $propagation = [System.Security.AccessControl.PropagationFlags]::None
+        if ($grant.Count -gt 3) { $propagation = $grant[3] }
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                    $grant[0], [System.Security.AccessControl.FileSystemRights]$grant[1], $grant[2],
+                    $propagation, 'Allow')))
+    }
+    Set-Acl -LiteralPath $Path -AclObject $acl
+}
+
+function Initialize-ProtectedFolder {
+    param([string]$Path, [object[]]$Grants)
+
+    $attributes = Get-ItemAttribute $Path
+    if (Test-ReparsePoint $attributes) {
+        Remove-Link $Path
+        $attributes = $null
+    } elseif ($null -ne $attributes -and -not (Test-InstallerFolder $Path)) {
+        # Left from a version that let any user write here, so it may hold
+        # anything. Rename it aside unopened rather than walk into it.
+        $aside = '{0}.old-{1}' -f $Path, (Get-Date -Format 'yyyyMMddHHmmss')
+        if ($attributes -band [System.IO.FileAttributes]::Directory) {
+            [System.IO.Directory]::Move($Path, $aside)
+        } else {
+            [System.IO.File]::Move($Path, $aside)
+        }
+        Write-Host "Moved the old $Path aside to $aside"
+        $attributes = $null
+    }
+    if ($null -eq $attributes) {
+        New-Item -ItemType Directory -Path $Path -Force | Out-Null
+    }
+    Set-FolderAcl -Path $Path -Grants $Grants
+}
+
+function Get-TaskDefinition {
+    # A task XML from .\tasks, ready to register: its name, taken from the <URI>
+    # so the two cannot drift apart, and the XML with the script path pointed at
+    # $InstallDir. $null when the file has no <URI>.
+    param([string]$Path, [string]$InstallDir)
+
+    # The XMLs are UTF-16; read them as such so the declaration matches the bytes.
+    $xml = [System.IO.File]::ReadAllText($Path, [System.Text.Encoding]::Unicode)
+
+    $doc = New-Object System.Xml.XmlDocument
+    $doc.LoadXml($xml)
+    $ns = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
+    $ns.AddNamespace('t', 'http://schemas.microsoft.com/windows/2004/02/mit/task')
+    $uriNode = $doc.SelectSingleNode('//t:URI', $ns)
+    if (-not $uriNode) { return $null }
+
+    # Point the action at wherever we actually installed the script.
+    $xml = $xml.Replace('C:\Program Files\InOutWorker\Update-WorkStatus.ps1',
+                        (Join-Path $InstallDir 'Update-WorkStatus.ps1'))
+
+    return [pscustomobject]@{
+        Name = Split-Path $uriNode.InnerText -Leaf
+        Xml  = $xml
+    }
+}
+
+function Test-Elevated {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    return (New-Object Security.Principal.WindowsPrincipal $id).IsInRole(
+        [Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
+# Dot-sourced (". .\Install-InOutWorker.ps1", as the Pester tests do): stop
+# here, with the functions defined and nothing run.
+if ($MyInvocation.InvocationName -eq '.') { return }
 
 $SystemSid = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-18'
 $AdminsSid = New-Object System.Security.Principal.SecurityIdentifier 'S-1-5-32-544'
@@ -91,102 +226,6 @@ $SessionGrants = $AdminGrants + @(
     @($UsersSid, 'CreateFiles, Traverse, ReadAttributes, ReadPermissions, Synchronize', $FolderOnly),
     @($OwnerSid, 'Read, Write', $FilesOnly, [System.Security.AccessControl.PropagationFlags]::InheritOnly)
 )
-
-function Get-ItemAttributes {
-    # The item's own attributes - a link's, not its target's - or $null when
-    # nothing is there.
-    param([string]$Path)
-    try {
-        return [System.IO.File]::GetAttributes($Path)
-    } catch {
-        return $null
-    }
-}
-
-function Test-ReparsePoint {
-    param($Attributes)
-    return ($null -ne $Attributes -and ($Attributes -band [System.IO.FileAttributes]::ReparsePoint))
-}
-
-function Remove-Link {
-    # Deletes a junction or symbolic link itself, never what it points to.
-    param([string]$Path)
-    if ((Get-ItemAttributes $Path) -band [System.IO.FileAttributes]::Directory) {
-        [System.IO.Directory]::Delete($Path)
-    } else {
-        [System.IO.File]::Delete($Path)
-    }
-    Write-Host "Removed link $Path"
-}
-
-function Test-InstallerFolder {
-    # A real folder, owned by Administrators or SYSTEM, that does not inherit
-    # from its parent: what this installer leaves behind, and nothing an
-    # ordinary user can make.
-    param([string]$Path)
-    $attributes = Get-ItemAttributes $Path
-    if ($null -eq $attributes -or (Test-ReparsePoint $attributes) -or
-        -not ($attributes -band [System.IO.FileAttributes]::Directory)) {
-        return $false
-    }
-    $acl   = Get-Acl -LiteralPath $Path
-    $owner = $acl.GetOwner([System.Security.Principal.SecurityIdentifier])
-    return ($acl.AreAccessRulesProtected -and ($owner -eq $AdminsSid -or $owner -eq $SystemSid))
-}
-
-function Set-FolderAcl {
-    # Replaces the folder's owner and DACL outright: Administrators own it,
-    # nothing is inherited from the parent, and only $Grants apply. Each grant
-    # is @(SID, rights, inheritance[, propagation]).
-    param([string]$Path, [object[]]$Grants)
-
-    # A folder an ordinary user created is theirs, and its owner can always
-    # rewrite its DACL; take it over first.
-    & takeown.exe /F $Path /A | Out-Null
-
-    $acl = New-Object System.Security.AccessControl.DirectorySecurity
-    $acl.SetOwner($AdminsSid)
-    $acl.SetAccessRuleProtection($true, $false)
-    foreach ($grant in $Grants) {
-        $propagation = [System.Security.AccessControl.PropagationFlags]::None
-        if ($grant.Count -gt 3) { $propagation = $grant[3] }
-        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
-                    $grant[0], [System.Security.AccessControl.FileSystemRights]$grant[1], $grant[2],
-                    $propagation, 'Allow')))
-    }
-    Set-Acl -LiteralPath $Path -AclObject $acl
-}
-
-function Initialize-ProtectedFolder {
-    param([string]$Path, [object[]]$Grants)
-
-    $attributes = Get-ItemAttributes $Path
-    if (Test-ReparsePoint $attributes) {
-        Remove-Link $Path
-        $attributes = $null
-    } elseif ($null -ne $attributes -and -not (Test-InstallerFolder $Path)) {
-        # Left from a version that let any user write here, so it may hold
-        # anything. Rename it aside unopened rather than walk into it.
-        $aside = '{0}.old-{1}' -f $Path, (Get-Date -Format 'yyyyMMddHHmmss')
-        if ($attributes -band [System.IO.FileAttributes]::Directory) {
-            [System.IO.Directory]::Move($Path, $aside)
-        } else {
-            [System.IO.File]::Move($Path, $aside)
-        }
-        Write-Host "Moved the old $Path aside to $aside"
-        $attributes = $null
-    }
-    if ($null -eq $attributes) {
-        New-Item -ItemType Directory -Path $Path -Force | Out-Null
-    }
-    Set-FolderAcl -Path $Path -Grants $Grants
-}
-
-function Test-Elevated {
-    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    return (New-Object Security.Principal.WindowsPrincipal $id).IsInRole(
-        [Security.Principal.WindowsBuiltInRole]::Administrator)
-}
 
 if (-not (Test-Elevated)) {
     Write-Error 'This script must be run from an elevated PowerShell session.'
@@ -215,7 +254,7 @@ if ($Uninstall) {
 
     # Each user's last sessionId. Users can only have added files here, so
     # delete entry by entry - a link as a link - and never recurse.
-    $attributes = Get-ItemAttributes $SessionDir
+    $attributes = Get-ItemAttribute $SessionDir
     if ($null -ne $attributes -and $PSCmdlet.ShouldProcess($SessionDir, 'Remove session files')) {
         if (Test-ReparsePoint $attributes) {
             Remove-Link $SessionDir
@@ -252,7 +291,7 @@ if (-not (Test-Path $source)) {
     exit 1
 }
 
-if (Test-ReparsePoint (Get-ItemAttributes $InstallDir)) {
+if (Test-ReparsePoint (Get-ItemAttribute $InstallDir)) {
     Write-Error "$InstallDir is a junction or symbolic link; choose a real folder."
     exit 1
 }
@@ -309,7 +348,7 @@ if (Test-Path $configPath) {
 #    file. See the description at the top for the layout.
 # ---------------------------------------------------------------------------
 if ($PSCmdlet.ShouldProcess($DataDir, 'Restrict to SYSTEM and Administrators; set up logs and sessions')) {
-    $attributes = Get-ItemAttributes $DataDir
+    $attributes = Get-ItemAttribute $DataDir
     if (Test-ReparsePoint $attributes) {
         Remove-Link $DataDir
         $attributes = $null
@@ -332,13 +371,13 @@ if ($PSCmdlet.ShouldProcess($DataDir, 'Restrict to SYSTEM and Administrators; se
     # The shared session file of earlier versions, readable by every user. Its
     # sessionId is stale: each user's next login writes sessions\<SID>.json.
     $oldSession = Join-Path $DataDir 'session.json'
-    if ($null -ne (Get-ItemAttributes $oldSession)) {
+    if ($null -ne (Get-ItemAttribute $oldSession)) {
         [System.IO.File]::Delete($oldSession)
         Write-Host "Removed the old shared $oldSession"
     }
 
     $oldConfig = Join-Path $DataDir 'inoutworker.config.json'
-    if ($null -ne (Get-ItemAttributes $oldConfig)) {
+    if ($null -ne (Get-ItemAttribute $oldConfig)) {
         Write-Warning "$oldConfig is no longer read: any user could change it. Review it and pass its settings to this installer, which writes them to $InstallDir."
     }
 
@@ -357,24 +396,13 @@ if (-not (Test-Path $taskDir)) {
 }
 
 foreach ($file in Get-ChildItem $taskDir -Filter '*.xml' | Sort-Object Name) {
-    # The XMLs are UTF-16; read them as such so the declaration matches the bytes.
-    $xml = [System.IO.File]::ReadAllText($file.FullName, [System.Text.Encoding]::Unicode)
-
-    # Task name comes from the URI in the XML so the two cannot drift apart.
-    $doc = New-Object System.Xml.XmlDocument
-    $doc.LoadXml($xml)
-    $ns = New-Object System.Xml.XmlNamespaceManager($doc.NameTable)
-    $ns.AddNamespace('t', 'http://schemas.microsoft.com/windows/2004/02/mit/task')
-    $uriNode = $doc.SelectSingleNode('//t:URI', $ns)
-    if (-not $uriNode) {
+    $task = Get-TaskDefinition -Path $file.FullName -InstallDir $InstallDir
+    if (-not $task) {
         Write-Warning "$($file.Name) has no <URI>; skipping."
         continue
     }
-    $taskName = Split-Path $uriNode.InnerText -Leaf
-
-    # Point the action at wherever we actually installed the script.
-    $xml = $xml.Replace('C:\Program Files\InOutWorker\Update-WorkStatus.ps1',
-                        (Join-Path $InstallDir 'Update-WorkStatus.ps1'))
+    $taskName = $task.Name
+    $xml      = $task.Xml
 
     if ($PSCmdlet.ShouldProcess("$TaskPath$taskName", 'Register scheduled task')) {
         $existing = Get-ScheduledTask -TaskName $taskName -TaskPath $TaskPath -ErrorAction SilentlyContinue
