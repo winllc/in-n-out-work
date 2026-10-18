@@ -18,6 +18,7 @@ import com.winllc.innoutwork.repository.PermissionRecordRepository;
 import com.winllc.innoutwork.repository.StatusRequestRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.util.LogSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -124,7 +125,7 @@ public class PersonalDataService {
         try {
             return ldapService.lookupUser(new LdapDn(dn)).isPresent();
         } catch (RuntimeException e) {
-            log.warn("Could not look {} up in the directory: {}", dn, e.getMessage());
+            log.warn("Could not look {} up in the directory: {}", LogSafe.of(dn), e.getMessage());
             return false;
         }
     }

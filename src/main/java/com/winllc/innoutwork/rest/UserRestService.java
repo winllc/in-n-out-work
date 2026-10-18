@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.audit.AuditLog;
+import com.winllc.innoutwork.util.LogSafe;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
@@ -193,7 +194,7 @@ public class UserRestService {
     @PostMapping("/managers/update/{dn}")
     @PreAuthorize("hasAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN)")
     public List<String> updateManagersForUser(@PathVariable String dn, @RequestBody List<String> managerDns) {
-        log.info("Updating delegates of {} to {}", dn, managerDns);
+        log.info("Updating the delegates of {}: {} given", LogSafe.of(dn), managerDns == null ? 0 : managerDns.size());
         return delegateService.setDelegates(dn, managerDns).getAltManagerList();
     }
 
