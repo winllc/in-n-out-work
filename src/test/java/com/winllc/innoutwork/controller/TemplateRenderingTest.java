@@ -102,6 +102,13 @@ class TemplateRenderingTest {
     }
 
     @Test
+    void userDetailsLetsTheirManagerRecordAnyStatus() throws Exception {
+        assertRenders("/render/userdetails", "id=\"recordStatusModal\"");
+        assertRenders("/render/userdetails", "value=\"ABSENT_UNEXCUSED\"");
+        assertRenders("/render/userdetails", "id=\"delegates-card\"");
+    }
+
+    @Test
     void myReportsRenders() throws Exception {
         assertRenders("/render/myreports", "Direct reports");
     }
@@ -168,6 +175,14 @@ class TemplateRenderingTest {
     @Test
     void groupReportRenders() throws Exception {
         assertRenders("/render/groupreport", "User Reports");
+    }
+
+    @Test
+    void groupReportShowsTheMonthlySummariesOfAPurgedPeriod() throws Exception {
+        assertRenders("/render/groupreport", "id=\"purged-period\"");
+        assertRenders("/render/groupreport", "2025-03");
+        assertRenders("/render/groupreport", "144 h 05 min");
+        assertRenders("/render/groupreport", "Scheduled Leave 3");
     }
 
     /** The layout puts the help button and overview on every page; an admin sees every section. */
@@ -352,6 +367,9 @@ class TemplateRenderingTest {
             mav.addObject("roleForm", RoleUpdateForm.buildFromStatus(user));
             mav.addObject("roles", UserRoleEnum.getVisibleRoles());
             mav.addObject("isGroupManager", true);
+            // As their manager: the calendar records statuses for them.
+            mav.addObject("canSetStatuses", true);
+            mav.addObject("allStatuses", List.of(UserStatusEnum.values()));
             return mav;
         }
 
@@ -407,6 +425,14 @@ class TemplateRenderingTest {
             DayReport dayReport = new DayReport(today);
             dayReport.addUserReport(userReport);
             report.getDayReports().add(dayReport);
+
+            // A range reaching back before the retention purge: the summarised month comes with it.
+            com.winllc.innoutwork.model.AttendanceSummary summary =
+                    new com.winllc.innoutwork.model.AttendanceSummary(USER_DN, LocalDate.of(2025, 3, 1));
+            summary.setDaysCheckedIn(18);
+            summary.setMinutesIn(18 * 480 + 5);
+            summary.getStatusDays().put(UserStatusEnum.SCHEDULED_LEAVE, 3);
+            report.addPurgedPeriod(LocalDate.of(2025, 4, 1), List.of(summary));
 
             ModelAndView mav = new ModelAndView("groupReport");
             mav.addObject("report", report);

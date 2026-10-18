@@ -19,6 +19,9 @@ public class OrgNodeData {
     // sum(fullTreeNodeMembers) / sum(fullTreeTotalMembers) * 100. 0 when there are no members.
     private Double fullTreePresentPercentage = 0.0;
 
+    /** Present counts left out for this viewer (application.privacy.coworker-visibility none); headcounts only. */
+    private boolean presenceHidden;
+
     /**
      * Headcount present across this node's whole subtree.
      * <p>

@@ -50,6 +50,17 @@ class FeatureMappingTest {
     void calendarIsTheEventAndOrganizationCalendarApis() {
         assertEquals(LicensedFeature.CALENDAR, onClass(UserEventRestService.class));
         assertEquals(LicensedFeature.CALENDAR, onClass(SettingsRestService.class));
+        // Status requests are calendar statuses: their API and the approvals page.
+        assertEquals(LicensedFeature.CALENDAR, onClass(com.winllc.innoutwork.rest.StatusRequestRestService.class));
+        assertEquals(LicensedFeature.CALENDAR, onClass(com.winllc.innoutwork.controller.ApprovalsController.class));
+    }
+
+    @Test
+    void privacyAndDelegatesAreNotGated() {
+        // A person's rights over their data, and who receives their alerts, do not depend on the license.
+        assertNull(onClass(com.winllc.innoutwork.controller.PrivacyController.class));
+        assertNull(onClass(com.winllc.innoutwork.controller.AdminPrivacyController.class));
+        assertNull(onClass(com.winllc.innoutwork.controller.DelegatesController.class));
     }
 
     @Test

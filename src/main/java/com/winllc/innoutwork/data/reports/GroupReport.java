@@ -17,6 +17,22 @@ public class GroupReport {
     private LocalDate fromDate;
     private LocalDate toDate;
     private List<DayReport> dayReports = new ArrayList<>();
+    /**
+     * Set when the report reaches back before what the retention purge kept: check-ins and statuses before this day
+     * are gone, and {@link #monthlySummaries} stand in for them, one per member and month.
+     */
+    private LocalDate purgedBefore;
+    private List<com.winllc.innoutwork.model.AttendanceSummary> monthlySummaries = new ArrayList<>();
+
+    /** The report covers days the retention purge has summarised; their per-day rows are empty. */
+    public void addPurgedPeriod(LocalDate purgedBefore, List<com.winllc.innoutwork.model.AttendanceSummary> summaries) {
+        this.purgedBefore = purgedBefore;
+        this.monthlySummaries = new ArrayList<>(summaries);
+    }
+
+    public String getFormattedPurgedBefore() {
+        return purgedBefore == null ? null : DATE_FORMATTER.format(purgedBefore);
+    }
 
     public static GroupReport build(LdapGroup ldapGroup, LocalDate fromDate, LocalDate toDate) {
         GroupReport report = new GroupReport();

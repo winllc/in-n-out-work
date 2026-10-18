@@ -168,17 +168,148 @@ group reports need `MANAGER` or `ADMIN`); whose data a page shows is decided by
   login time, check-in history, calendar, alternate managers): themselves; `ADMIN`;
   and the people the viewer is responsible for, whatever their role: members of the
   groups they manage (the group's directory `owner` or an alternate manager set in
-  ReadyRoom), their direct reports in the directory, and people who named them as an
-  alternate manager. Indirect reports are not included.
+  ReadyRoom), their direct reports in the directory, and the people they are a delegate of
+  (see [Delegates](#delegates)). Indirect reports are not included.
 - Everyone else, as a coworker: found by search, a group or the org chart, with their
-  directory details and whether they are in, never their times, notes or history. A
-  status a manager recorded (absent, unscheduled leave) shows as `OUT_OF_OFFICE`.
+  directory details, never their times, notes or history. How much of their day a coworker
+  sees is `application.privacy.coworker-visibility` (see [Privacy and retention](#privacy-and-retention)):
+  by default whether they are in and the day's status, a status a manager recorded (absent,
+  unscheduled leave) showing as `OUT_OF_OFFICE`.
 - Groups: opened by their members, their managers and `ADMIN`; managed (managers,
   report, access) only by `ADMIN` and their current managers.
 - Absence notifications: the manager they were sent to, and `ADMIN`.
 
 A principal with no directory user (a machine certificate, say) does not sign in.
 
+### Delegates
+
+A person's delegates (alternate managers) are, besides their manager in the directory, who receives their absence
+alerts, may answer them, decides their status requests and sees their details. **Only administrators set them**: on
+the person's details page, or with `POST /api/users/managers/update/{dn}` (a JSON list of DNs; each must be someone
+else in the directory). People used to pick their own on their profile; the profile now only lists them.
+
+*Administration &rarr; Delegates* (`/app/admin/delegates`) lists everyone with delegates. Delegates people chose for
+themselves before this release are kept, so an upgrade does not silently change who receives anyone's alerts, but
+are marked "to review": an administrator keeps them, changes them on the details page, or removes them. While any
+wait, startup logs at INFO how many (`N people have delegates (alternate managers) chosen before administrators
+managed them ...`). Changes are audited as `person.updated` with `details.via` `alternate-managers` (old and new
+list) or `alternate-managers-reviewed`.
+
+### Statuses and approvals
+
+People mark days on their calendar (the profile page) with a status. Each status is in one of three classes
+(`service.StatusPolicy`), enforced by the server on every API that sets one, whatever a page offers:
+
+| Class | Statuses (default) | Who, and how |
+|---|---|---|
+| Set by the person | Normal, Early Leave, Late Arrival | The person, on their own calendar; takes effect at once and excuses nothing (a late arrival only moves the time they are expected by) |
+| Requested | Out of Office, Work From Home, TDY, Scheduled Leave, Absent Excused (`application.events.request-statuses`) | The person asks; their manager approves or rejects. Until approved it is not on the calendar, so the absence alerts treat the day as not excused |
+| Recorded by managers | Absent, Absent Unexcused, Unscheduled Leave | Only an administrator, or the person's manager or delegate, for someone else (also by answering an absence alert) |
+
+A request is `requested`, then `approved`, `rejected` or `cancelled`. **Who decides:** the person's manager in the
+directory, their delegates (alternate managers, which administrators set) and any administrator; nobody decides
+their own, administrators included. An approval writes the status on each day of the request (replacing what the
+person had set there); a rejection writes nothing. The requester can cancel a pending request, or an approved one
+until its last day has passed, which takes its days from today on off the calendar (an administrator can cancel
+anyone's). Managers, delegates and administrators can also record any status directly for someone they decide for: by dragging
+across days on that person's calendar (their details page), or `POST /api/event/update` with `dn`.
+
+**Where:** dragging across days on the profile calendar (a requested status says it needs approval), the
+*Approvals* page (`/app/approvals`: what waits for you, your own requests, a form to ask), and the API:
+
+| Call | What |
+|---|---|
+| `POST /api/requests` | Ask: `status`, `fromDate`, `toDate` (the day after the last), optional `note` (500 characters, shown to approvers); 201 with the request |
+| `GET /api/requests/mine`, `/pending` | Your requests; the pending ones you may decide |
+| `POST /api/requests/{id}/approve`, `/reject` | Optional `{"comment": "..."}`; 403 unless you decide for the requester, 409 once decided |
+| `POST /api/requests/{id}/cancel` | The requester or an administrator |
+| `GET /api/event/statuses` | The statuses you may put on your own calendar, and which need approval |
+
+**Mail.** With a mail server configured, a new request is e-mailed to the requester's manager and delegates, a
+decision to the requester, and a cancellation to the approvers, once the change is committed and from a background
+thread, through the same mail settings as absence alerts. The mails carry the status and dates, not the notes.
+
+**Audit.** `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected` and
+`calendar.request-cancelled`, with the request id, status, dates, day count and state (never the notes); a status
+set directly stays `calendar.status-set` (`details.via` `manager` when set for someone else).
+
+**Upgrading.** Statuses already on calendars keep their effect. From the upgrade on, people can no longer set
+Out of Office, Work From Home, TDY or Scheduled Leave themselves (or Absent Excused through the API): the calendar
+sends them as requests. To let people set one of them without approval again, leave it out of
+`APPLICATION_EVENTS_REQUESTSTATUSES` (startup then warns that it excuses absences unapproved).
+
+### Privacy and retention
+
+**What coworkers see.** `application.privacy.coworker-visibility` (`APPLICATION_PRIVACY_COWORKERVISIBILITY`) sets what
+someone sees of the people whose details they may not see (see [Roles](#roles)), on every page and API that lists
+people: user search (`/api/users/search`), a group's members (`/api/users/group/{group}`, `/app/users/{group}`), an
+organization's members (`/api/orgnodes/users/{org}`), a person's page (`/app/user/details/{dn}`) and the org chart
+(`/app/orgchart`, `/api/orgnodes/hierarchy`). Who a person is (name, directory details, groups) is shown in every mode;
+times, notes, average login time and history never are.
+
+| Value | A coworker's status shows |
+|---|---|
+| `full` (default) | As before: in, away, out, or the day's calendar status (telework, leave, TDY ...), a manager-recorded status reading `OUT_OF_OFFICE` |
+| `status` | `IN` (checked in or unlocked today, screen locked included) or `OUT`; no calendar status |
+| `none` | Nothing: no status, and the org chart shows headcounts but not how many are present, except to the `ADMIN` and `MANAGER` roles (who see organization-wide counts on the metrics page anyway) |
+
+Whatever the setting, people see themselves in full, managers the people they are responsible for (their reports,
+their groups' members, the people they are a delegate of) and administrators everyone. Any other value stops startup
+naming the setting.
+
+**Retention.** ReadyRoom keeps everything by default, as it always has. Set `application.retention.events-days`
+(`APPLICATION_RETENTION_EVENTSDAYS`) to keep check-in records, calendar statuses, status requests and absence alerts
+for that many days (0, the default, keeps them forever; otherwise at least 31, since the home page, My Reports and
+the average login time read the last 30 days). A job (`service.RetentionService`, on `application.retention.cron`,
+`APPLICATION_RETENTION_CRON`, default `0 17 2 * * *`, 02:17 daily) then deletes what is older:
+
+- check-in records and calendar statuses, after rolling them up into one summary per person per month
+  (`attendance_summaries`): days checked in, time in (first check-in to last check-out each day, as the reports count
+  it) and days per status. A later run adds to a month already summarised; nothing is counted twice;
+- absence alerts (by the day they were raised) and status requests (once their last day is past), without a summary.
+
+It works a day at a time, oldest first, 500 people per transaction, so it never holds a table for long; several
+instances take turns (each batch locks the one row of `retention_state`). Each run is audited as `data.purged`
+(category `data`, actor `system`) with its counts (`checkIns`, `unattributedCheckIns`, `statuses`, `notifications`,
+`requests`, `summariesWritten`, `days`), the cutoff (`purgedBefore`) and `retentionDays`, and counted in
+`ens_readyroom_retention_purged_total{kind}`; a failure is `job.failed` and the next run carries on.
+**Audit events are not purged by this**: they have their own retention, `ENS_AUDIT_RETENTION_DAYS`.
+
+*What reports show for purged periods.* Before the cutoff there are no per-day records: the group report's days show
+no check-in times, durations or statuses there, and it adds a "Before <date>: monthly summaries" table with each
+member's days checked in, time in and days per status for the months it covers. Calendars (profile, user details)
+show nothing for purged days. The home page, My Reports and metrics read at most the last 30 days, which retention
+never reaches. A person's summaries are in their export (below).
+
+
+**Export.** Any signed-in user downloads everything ReadyRoom holds about them from *My data* (`/app/privacy`, in the
+user menu): `GET /app/privacy/export`, a JSON file (`readyroom-personal-data/1`) with their profile (notes, preferred
+and average login time, role, favourite groups, delegates and the directory fields copied at sign-in), group access
+granted in ReadyRoom, whose delegate and which groups' alternate manager they are, every check-in record (without the
+logoff session id, a credential), calendar status, status request (with notes and comments), absence alert about
+them, and monthly summary; times in ISO 8601. The page also says who sees what and for how long. Each download is
+audited as `data.exported` (`details.report` `personal-data`, `requestedBy` `self`, with counts). Administrators can
+download anyone's from *Administration &rarr; Privacy* (`/app/admin/privacy/export?dn=...`, `requestedBy` the
+administrator). The audit trail is not in the export; an administrator exports a person's events from the audit log
+page (filter by actor or target).
+
+**Erasure.** On request, an administrator erases a person's data from *Administration &rarr; Privacy*
+(`/app/admin/privacy`, or *Export or erase data* on their details page), in two steps: choosing the person shows
+what is held about them and whether they are still in the directory, with a form carrying a one-time token (10
+minutes, that person only, in the administrator's session); erasing needs that token and the person's name typed
+again, and the browser asks once more. Nobody erases themselves. It deletes, in one transaction, their user record
+and group access, check-ins, calendar statuses, status requests, absence alerts about them or sent to them, and
+monthly summaries, and takes them off other people's delegates and groups' alternate managers. It is audited as
+`person.erased` (category `account`) with the counts and `inDirectory`. **Kept:** the audit trail (append-only and
+hash-chained; its events name people by DN but hold no notes: profile notes changes are recorded as `notesChanged`
+from this release, though events from earlier releases still carry the old and new text until audit retention
+prunes them), and the person's DN where it stands in others' records as the one who decided a request or answered an
+alert. **If the person is still in the directory** the page says so: ReadyRoom creates their account again (an empty
+user record) at their next sign-in, and the hourly directory refresh does too, so remove or disable them in the
+directory first.
+
+Export and erasure are not licensed features and work in every license state, as the audit log does (erasure too
+while read-only); demo mode refuses erasure like every other change.
 ---
 
 ## Windows client
@@ -281,7 +412,7 @@ air-gapped enclave.
 |---|---|---|
 | `VALID`, `GRACE` (expired, within its grace days) | full | Everything the license's features include. In grace, and in the last 30 days before expiry, administrators see a renewal warning. |
 | `EXPIRED` (past grace), `RELEASE_NOT_COVERED` (perpetual license, build newer than its maintenance) | read-only | Pages and GET calls work; anything else is refused with 403 (`license_read_only`), the Windows client's check-ins included. Scheduled jobs pause: directory sync, auto check-out, absence e-mails. |
-| `MISSING`, `INVALID`, `WRONG_PRODUCT`, `WRONG_INSTALLATION`, `SUPERSEDED`, `NOT_YET_VALID` | unlicensed | Only sign-in/out, the license screen, `GET /api/license`, the audit log (`/app/admin/audit`) and its pull API (`/api/audit/events`), static assets, actuator and the error page. Browsers are sent to the license screen; API callers get 403 JSON. |
+| `MISSING`, `INVALID`, `WRONG_PRODUCT`, `WRONG_INSTALLATION`, `SUPERSEDED`, `NOT_YET_VALID` | unlicensed | Only sign-in/out, the license screen, `GET /api/license`, the audit log (`/app/admin/audit`) and its pull API (`/api/audit/events`), a person's data export and erasure (`/app/privacy/**`, `/app/admin/privacy/**`), static assets, actuator and the error page. Browsers are sent to the license screen; API callers get 403 JSON. |
 
 An evaluation license shows an "Evaluation license" banner on every page.
 
@@ -291,7 +422,7 @@ feature can move tier on the portal alone:
 | Feature | License id | What it gates |
 |---|---|---|
 | Attendance tracking | `readyroom.attendance` | The Windows client's API (`/api/check/**`), a user's check-in/out audit log (`/api/users/checkinoutrecords/**`), the home dashboard's status, attendance and agent cards, auto check-out (`MarkInactiveCron`) and the directory sync (`RefreshUserRecordsCron`) |
-| Calendar | `readyroom.calendar` | The profile and user-details calendars, `/api/event/**`, the organization calendar (`/api/settings/calendar/**`), the dashboard's "Coming up" cards |
+| Calendar | `readyroom.calendar` | The profile and user-details calendars, `/api/event/**`, status requests (`/api/requests/**`, the Approvals page `/app/approvals`), the organization calendar (`/api/settings/calendar/**`), the dashboard's "Coming up" cards |
 | Absence alerts | `readyroom.absence-alerts` | `SendAbsentNotificationsCron` |
 | Metrics and reports | `readyroom.metrics` | `/app/metrics`, My Reports (`/app/user/reports`, `/api/users/reports`), the group report and its PDF export (`POST /app/group/report`), and the menu entries, buttons and links to them |
 | Org chart | `readyroom.org-chart` | `/app/orgchart/**`, `/api/orgnodes/**`, the organization parse rules in Settings, the menu entry |
@@ -417,6 +548,11 @@ values that most often need changing per deployment:
 | `duty-sub-org-groups-base-dn` | Enables the org chart; blank disables it |
 | `ldap.max-pages` | Most pages one paged search reads before returning what it has (default 1000). Bounds a directory that keeps returning a paging cookie, which would otherwise hold the request open indefinitely. |
 | `checkOutAfterMinutes` | Minutes a session may stay locked before `MarkInactiveCron` checks it out (default 240; the packaged configuration used to say 2) |
+| `retention.events-days` | Days to keep check-in records, statuses, requests and absence alerts (`APPLICATION_RETENTION_EVENTSDAYS`); `0` (default) keeps them forever, otherwise at least 31. See [Privacy and retention](#privacy-and-retention). |
+| `retention.cron` | When the retention purge runs (`APPLICATION_RETENTION_CRON`, a six-field Spring cron, default `0 17 2 * * *`) |
+| `privacy.coworker-visibility` | `full` (default), `status` or `none`: what people see of coworkers (`APPLICATION_PRIVACY_COWORKERVISIBILITY`); see [Privacy and retention](#privacy-and-retention) |
+| `events.request-statuses` | The statuses people request rather than set (`APPLICATION_EVENTS_REQUESTSTATUSES`, comma-separated; default `OUT_OF_OFFICE,WORK_FROM_HOME,TDY,SCHEDULED_LEAVE,ABSENT_EXCUSED`, every status that excuses an absence). `STANDARD` is refused at startup. See [Statuses and approvals](#statuses-and-approvals). |
+| `events.max-range-days` | The most days one call may set a status, a status request or an organization calendar event on (`APPLICATION_EVENTS_MAXRANGEDAYS`, default 366). Every API that creates events checks it and refuses a longer range with 400 (`range_too_long`) before writing anything. |
 | `notification-sender-email` | The From address of absence alerts; required once `SPRING_MAIL_HOST` is set (startup stops without it) |
 | `application-base-url` | Used in notification emails |
 
@@ -716,9 +852,9 @@ append-only in the database itself: a trigger refuses every UPDATE (see [Databas
 |---|---|
 | authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout`, `auth.consent-acknowledged` (the notice-and-consent banner, with the client address), `auth.session-expired` (`reason` `idle`, `absolute` or `concurrent`) |
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
-| account | `person.created` (a new tracked person, at first sign-in or lookup), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
+| account | `person.created` (a new tracked person, at first sign-in or lookup), `person.erased` (an administrator's erasure of their data, with counts), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
 | configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |
-| data | `person.updated` (profile notes and expected login time, alternate managers), `calendar.status-set` (leave, telework, late arrival), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download) |
+| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes changed, never their text, and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download, a person's data export) |
 | license | `license.installed`, `license.rejected`, `license.mode-changed` (also across restarts), `license.limit-exceeded` |
 | system | `system.started`, `system.stopped`, `job.completed` / `job.failed` (one per run, with counts and duration), `job.skipped` (once per license mode change) |
 | audit | `audit.exported`, `audit.verified`, `audit.token-created`, `audit.token-revoked`, `audit.pruned`, `audit.delivery-failed`, `audit.delivery-recovered` |
@@ -802,6 +938,14 @@ created it adds only what is missing. That covers what the old psql scripts did
 merged before the unique index is built (the lowest id is kept, the first non-empty value of each field
 wins, the highest role wins, and favourite groups, alternate managers and permissions are combined), and an
 index an interrupted script left invalid is rebuilt.
+
+**After the baseline:**
+
+| Migration | What |
+|---|---|
+| `V2__status_requests.sql` | The `status_requests` table, and `user_event_records.request_id`, the approved request a calendar day comes from (see [Statuses and approvals](#statuses-and-approvals)). Existing rows are untouched. |
+| `V3__admin_managed_delegates.sql` | `user_records.alternate_managers` widened to 2000 characters, and `alternate_managers_review_pending`, set on every person who had delegates they chose themselves (see [Delegates](#delegates)). |
+| `V4__retention_summaries.sql` | `attendance_summaries` and `attendance_summary_statuses` (monthly roll-ups the retention purge writes), `retention_state` (one row: how far it has purged), and an index on `notification_records.notification_date` |
 
 **Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
 Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the
@@ -900,6 +1044,8 @@ the management port (the image's `HEALTHCHECK` does). The Helm chart does all th
 | `ens_readyroom_people_in` | gauge | People whose latest event today is a check-in or unlock (refreshed at most once a minute) |
 | `ens_readyroom_alerts_sent_total` | counter | Absence alert e-mails sent |
 | `ens_readyroom_logoffs_refused_total{reason}` | counter | Logoffs refused: `unknown_session`, `rate_limited` |
+| `ens_readyroom_requests_total{outcome}` | counter | Status requests `created`, `approved`, `rejected`, `cancelled` |
+| `ens_readyroom_retention_purged_total{kind}` | counter | Records the retention purge deleted: `checkin`, `status`, `notification`, `request` |
 
 Spring Boot's own JVM, HTTP, database pool and Tomcat metrics are there too, tagged `application="readyroom"`.
 

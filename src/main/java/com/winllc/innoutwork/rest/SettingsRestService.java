@@ -2,18 +2,22 @@ package com.winllc.innoutwork.rest;
 
 import com.winllc.innoutwork.audit.AuditEntry;
 import com.winllc.innoutwork.audit.AuditLog;
+import com.winllc.innoutwork.util.LogSafe;
 import org.springframework.beans.factory.annotation.Autowired;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.data.CalendarEvent;
 import com.winllc.innoutwork.data.CalendarEventData;
+import com.winllc.innoutwork.data.EventRange;
 import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.GlobalCalendarRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
+import com.winllc.innoutwork.service.InvalidRequestException;
 import com.winllc.innoutwork.service.ReportService;
+import org.springframework.http.ResponseEntity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -24,7 +28,6 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -76,13 +79,13 @@ public class SettingsRestService {
     public CalendarEventData updateCalendar(Authentication authentication,
                                              @RequestBody CalendarEventData data){
 
-        log.debug("updateCalendar called by %s with data: %s".formatted(authentication.getName(), data));
+        log.debug("updateCalendar called by {} with data: {}", authentication.getName(), LogSafe.of(String.valueOf(data)));
 
-        String userDn = authentication.getName();
-        LocalDate fromLocalDate = LocalDate.parse(data.getFromDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
-        LocalDate toLocalDate = LocalDate.parse(data.getToDate(), DateTimeFormatter.ISO_ZONED_DATE_TIME);
-        LocalDate firstDay = fromLocalDate;
-        LocalDate endDay = toLocalDate;
+        // At most application.events.max-range-days, like every API that creates events; refused with 400 otherwise.
+        EventRange range = EventRange.parse(data.getFromDate(), data.getToDate(),
+                properties.getEvents().getMaxRangeDays());
+        LocalDate firstDay = range.from();
+        LocalDate endDay = range.toExclusive();
 
         // The organization calendar is configuration everyone's absence checks read: saved and audited together.
         audit.inTransaction(() -> {
@@ -110,6 +113,11 @@ public class SettingsRestService {
         });
 
         return data;
+    }
+
+    @ExceptionHandler(InvalidRequestException.class)
+    public ResponseEntity<Map<String, String>> invalid(InvalidRequestException e) {
+        return ApiErrors.of(e);
     }
 
     @DeleteMapping("/delete/{eventId}")

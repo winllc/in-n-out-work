@@ -18,12 +18,14 @@ public final class AuditActions {
             "access.denied",
             // account
             "person.created", "account.role-changed", "account.permission-granted", "account.permission-revoked",
+            "person.erased",
             // configuration
             "settings.changed", "settings.cache-evicted", "calendar.org-event-created", "calendar.org-event-deleted",
             "group.managers-changed",
             // data
             "person.updated", "calendar.status-set", "absence.alert-responded", "absence.alerts-dismissed",
-            "data.exported",
+            "data.exported", "calendar.request-created", "calendar.request-approved", "calendar.request-rejected",
+            "calendar.request-cancelled", "data.purged",
             // license
             "license.installed", "license.rejected", "license.mode-changed", "license.limit-exceeded",
             // system

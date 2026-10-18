@@ -3,6 +3,7 @@ package com.winllc.innoutwork.controller;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.config.ApplicationProperties;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.data.OrgNode;
 import com.winllc.innoutwork.service.OrgChartService;
 import jakarta.servlet.http.HttpSession;
@@ -24,10 +25,13 @@ public class OrgChartController {
 
     private final OrgChartService orgChartService;
     private final ApplicationProperties properties;
+    private final AccessPolicy accessPolicy;
 
-    public OrgChartController(OrgChartService orgChartService, ApplicationProperties properties) {
+    public OrgChartController(OrgChartService orgChartService, ApplicationProperties properties,
+                              AccessPolicy accessPolicy) {
         this.orgChartService = orgChartService;
         this.properties = properties;
+        this.accessPolicy = accessPolicy;
     }
 
     @GetMapping
@@ -38,6 +42,10 @@ public class OrgChartController {
         // browser. /api/orgnodes/hierarchy remains available for other consumers.
         OrgNode orgTree = orgChartService.loadStatistics();
         orgTree.rollupStats();
+        // Coworker visibility "none": headcounts only, unless the viewer may see presence everywhere.
+        if (!accessPolicy.seesPresenceCounts(auth)) {
+            orgTree = orgTree.withoutPresence();
+        }
 
         ModelAndView mav = new ModelAndView("orgchart");
         mav.addObject("orgTree", orgTree);

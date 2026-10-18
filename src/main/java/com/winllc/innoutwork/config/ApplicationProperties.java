@@ -1,9 +1,14 @@
 package com.winllc.innoutwork.config;
 
+import com.winllc.innoutwork.constant.UserStatusEnum;
+import com.winllc.innoutwork.security.CoworkerVisibility;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -62,6 +67,8 @@ public class ApplicationProperties {
     private String calendarAbsentStatusEventColor = "purple";
     private String calendarActivityEventColor = "green";
     private String calendarGlobalEventColor = "orange";
+    /** Days of a status request still waiting for approval. */
+    private String calendarRequestedEventColor = "gray";
     /**
      * The From address of absence alert e-mails. No default: required (MailConfig checks it) once a mail server
      * is configured.
@@ -80,6 +87,92 @@ public class ApplicationProperties {
     private WindowsAuth windowsAuth = new WindowsAuth();
     @Valid
     private Logoff logoff = new Logoff();
+    @Valid
+    private Events events = new Events();
+    @Valid
+    private Privacy privacy = new Privacy();
+    @Valid
+    private Retention retention = new Retention();
+
+    /**
+     * How long check-in and status records are kept (service.RetentionService). Audit events have their own retention
+     * (ENS_AUDIT_RETENTION_DAYS) and are never purged by this.
+     */
+    @Data
+    public static class Retention {
+        /** The shortest retention: the home page, My Reports and the average login time read the last 30 days. */
+        public static final int MIN_EVENTS_DAYS = 31;
+
+        /**
+         * Days to keep check-in records, calendar statuses, status requests and absence alerts; older ones are rolled
+         * up into monthly summaries and deleted. 0 (the default) keeps them forever, as before.
+         */
+        @Min(value = 0, message = "application.retention.events-days (APPLICATION_RETENTION_EVENTSDAYS) must be 0"
+                + " (keep forever) or at least " + MIN_EVENTS_DAYS)
+        private int eventsDays = 0;
+
+        /** When the purge runs: a Spring cron expression (second minute hour day month weekday). Daily at 02:17. */
+        private String cron = "0 17 2 * * *";
+
+        @AssertTrue(message = "application.retention.events-days (APPLICATION_RETENTION_EVENTSDAYS) must be 0 (keep"
+                + " forever) or at least " + MIN_EVENTS_DAYS + ": the home page and reports read the last 30 days")
+        public boolean isEventsDaysValid() {
+            return eventsDays <= 0 || eventsDays >= MIN_EVENTS_DAYS;
+        }
+
+        @AssertTrue(message = "application.retention.cron (APPLICATION_RETENTION_CRON) must be a Spring cron expression"
+                + " with six fields, e.g. 0 17 2 * * *")
+        public boolean isCronValid() {
+            return cron != null && org.springframework.scheduling.support.CronExpression.isValidExpression(cron);
+        }
+    }
+
+    /** What people see of each other, and keep. See AccessPolicy and the README's "Privacy and retention". */
+    @Data
+    public static class Privacy {
+        /**
+         * What someone sees of a coworker whose details they may not see (search, a group's or an organization's
+         * members, a person's page, the org chart): {@code full} (default, as before), {@code status} (in or out only)
+         * or {@code none}. Managers see their own people and administrators everyone in full whatever this says.
+         */
+        @NotNull(message = "application.privacy.coworker-visibility (APPLICATION_PRIVACY_COWORKERVISIBILITY) must be full, status or none")
+        private CoworkerVisibility coworkerVisibility = CoworkerVisibility.FULL;
+    }
+
+    /**
+     * Statuses people put on calendars ({@code /api/event/**}, the organization calendar). See UserEventRestService.
+     */
+    @Data
+    public static class Events {
+        /**
+         * The most days one call may set a status or an organization calendar event on. A year (366, for a leap
+         * year), so a mistaken drag or a scripted call cannot fill a calendar for ever. Checked by every API that
+         * creates events.
+         */
+        @Min(value = 1, message = "application.events.max-range-days (APPLICATION_EVENTS_MAXRANGEDAYS) must be at least 1")
+        @Max(value = 3660, message = "application.events.max-range-days (APPLICATION_EVENTS_MAXRANGEDAYS) must be at most 3660")
+        private int maxRangeDays = 366;
+
+        /**
+         * The statuses a person asks for rather than sets: they take effect, and stop absence alerts, only once
+         * the person's manager, a delegate or an administrator approves them. By default every status that excuses
+         * an absence (UserStatusEnum.excusable). Any other status the person can pick (UserStatusEnum.selectable)
+         * they set themselves; the rest only managers and administrators record. See service.StatusPolicy.
+         */
+        private List<UserStatusEnum> requestStatuses = new ArrayList<>(DEFAULT_REQUEST_STATUSES);
+
+        /** STANDARD clears a day's status; there is nothing to approve. */
+        @AssertTrue(message = "application.events.request-statuses (APPLICATION_EVENTS_REQUESTSTATUSES) cannot list"
+                + " STANDARD: it clears a status, so there is nothing to approve")
+        public boolean isRequestStatusesValid() {
+            return requestStatuses == null || !requestStatuses.contains(UserStatusEnum.STANDARD);
+        }
+    }
+
+    /** Every status that excuses an absence: leave, telework, temporary duty, out of office, excused absence. */
+    public static final List<UserStatusEnum> DEFAULT_REQUEST_STATUSES = List.of(
+            UserStatusEnum.OUT_OF_OFFICE, UserStatusEnum.WORK_FROM_HOME, UserStatusEnum.TDY,
+            UserStatusEnum.SCHEDULED_LEAVE, UserStatusEnum.ABSENT_EXCUSED);
 
     /**
      * The Windows client's logoff call, {@code POST /api/check/out}. It runs after the user's profile has gone,

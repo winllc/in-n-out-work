@@ -54,4 +54,12 @@ public interface UserRecordRepository extends JpaRepository<UserRecord, Long>, P
      */
     @Query("select u from UserRecord u where lower(u.alternateManagers) like :pattern escape '!'")
     List<UserRecord> findByAlternateManagersLike(@Param("pattern") String pattern);
+
+    /** Everyone with delegates, by DN. */
+    @Query("select u from UserRecord u where u.alternateManagers is not null and u.alternateManagers <> ''"
+            + " order by lower(u.dn)")
+    List<UserRecord> findWithAlternateManagers();
+
+    /** People whose self-chosen delegates still wait for an administrator's review. */
+    long countByAlternateManagersReviewPendingTrue();
 }

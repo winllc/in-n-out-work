@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+</head>
+<body>
+
+<p th:text="'Hello ' + ${to} + ','"></p>
+
+<p th:switch="${what}">
+    <span th:case="'requested'"><span th:text="${requester}"></span> asks for a status that needs your approval:</span>
+    <span th:case="'cancelled'"><span th:text="${requester}"></span> cancelled this request:</span>
+    <span th:case="*">Your request was <strong th:text="${what}"></strong><span th:if="${decidedBy != null}"
+            th:text="' by ' + ${decidedBy}"></span>:</span>
+</p>
+
+<table>
+    <tr>
+        <td><strong>Person:</strong></td>
+        <td th:text="${requester}"></td>
+    </tr>
+    <tr>
+        <td><strong>Status:</strong></td>
+        <td th:text="${status}"></td>
+    </tr>
+    <tr>
+        <td><strong>From:</strong></td>
+        <td th:text="${from}"></td>
+    </tr>
+    <tr>
+        <td><strong>Until:</strong></td>
+        <td th:text="${until} + ' (' + ${days} + (${days} == 1 ? ' day)' : ' days)')"></td>
+    </tr>
+</table>
+
+<br/>
+
+<p th:if="${what == 'requested'}">
+    Until it is approved it does not excuse an absence. To approve or reject it: <a th:href="${url}">Approvals</a>
+</p>
+<p th:unless="${what == 'requested'}">
+    Your requests and their state: <a th:href="${url}">Approvals</a>
+</p>
+
+</body>
+</html>

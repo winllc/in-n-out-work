@@ -3,11 +3,13 @@ package com.winllc.innoutwork.controller;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.license.RequiresFeature;
 import com.winllc.innoutwork.constant.UserRoleEnum;
+import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
 import com.winllc.innoutwork.data.RoleUpdateForm;
 import com.winllc.innoutwork.data.UserStatus;
 import com.winllc.innoutwork.data.team.DirectReportsSummary;
 import com.winllc.innoutwork.security.AccessPolicy;
+import com.winllc.innoutwork.service.Approvers;
 import com.winllc.innoutwork.service.DirectReportsService;
 import com.winllc.innoutwork.service.UserService;
 import jakarta.servlet.http.HttpSession;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.ModelAndView;
 
+import java.util.List;
 import java.util.stream.Stream;
 
 @Controller
@@ -30,12 +33,14 @@ public class UserController {
     private final UserService userRecordService;
     private final AccessPolicy accessPolicy;
     private final DirectReportsService directReportsService;
+    private final Approvers approvers;
 
     public UserController(UserService userRecordService, AccessPolicy accessPolicy,
-                          DirectReportsService directReportsService) {
+                          DirectReportsService directReportsService, Approvers approvers) {
         this.userRecordService = userRecordService;
         this.accessPolicy = accessPolicy;
         this.directReportsService = directReportsService;
+        this.approvers = approvers;
     }
 
     @GetMapping("/details/{dn}")
@@ -51,10 +56,13 @@ public class UserController {
         // the details of (AccessPolicy). The page shows the history and calendar when isGroupManager is set.
         boolean isGroupManager = accessPolicy.canViewDetails(auth, userDetails.getDn());
         if (!isGroupManager) {
-            userDetails = AccessPolicy.presenceOnly(userDetails);
+            // As application.privacy.coworker-visibility says: their presence, in or out only, or nothing of it.
+            userDetails = AccessPolicy.coworkerView(userDetails, accessPolicy.coworkerVisibility());
         }
 
         boolean isSelf = accessPolicy.isSelf(auth, userDetails.getDn());
+        // Their manager, a delegate or an administrator records statuses on this calendar (not on their own).
+        boolean canSetStatuses = approvers.mayDecide(auth, userDetails.getDn());
 
         ModelAndView mav = new ModelAndView("userdetails");
         mav.addObject("user", userDetails);
@@ -62,6 +70,8 @@ public class UserController {
         mav.addObject("roles", UserRoleEnum.getVisibleRoles());
         mav.addObject("isGroupManager", isGroupManager);
         mav.addObject("isSelf", isSelf);
+        mav.addObject("canSetStatuses", canSetStatuses);
+        mav.addObject("allStatuses", canSetStatuses ? List.of(UserStatusEnum.values()) : List.of());
 
         return mav;
     }

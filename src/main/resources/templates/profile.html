@@ -5,10 +5,8 @@
 <head>
     <meta charset="UTF-8">
     <title>My Profile</title>
-    <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
 
     <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
-    <script th:src="@{/libs/autoComplete/autoComplete.min.js}"></script>
 
 </head>
 <body>
@@ -29,15 +27,22 @@
 
                     <div class="mb-3">
                         <label class="form-label" for="statusSelect">Status</label>
+                        <!-- What StatusPolicy lets a person put on their own calendar; the server checks it again. -->
                         <select id="statusSelect" class="form-select">
-                            <option value="STANDARD">Standard</option>
-                            <option value="OUT_OF_OFFICE">Out of Office</option>
-                            <option value="WORK_FROM_HOME">WFH</option>
-                            <option value="TDY">TDY</option>
-                            <option value="SCHEDULED_LEAVE">Scheduled Leave</option>
-                            <option value="EARLY_LEAVE">Early Leave</option>
-                            <option value="LATE_ARRIVAL">Late Arrival</option>
+                            <option th:each="option : ${statusOptions}" th:value="${option.status}"
+                                    th:text="${option.needsApproval} ? ${option.name} + ' (needs approval)' : ${option.name}"
+                                    th:attr="data-needs-approval=${option.needsApproval}"></option>
                         </select>
+                    </div>
+
+                    <div id="approvalHint" class="mb-3" hidden>
+                        <div class="alert alert-info mb-2" role="status">
+                            This status needs your manager's approval. It is sent to them as a request and does not
+                            excuse an absence until it is approved. Follow it under
+                            <a th:href="@{/app/approvals}">Approvals</a>.
+                        </div>
+                        <label class="form-label" for="requestNote">Note for your manager (optional)</label>
+                        <input type="text" id="requestNote" class="form-control" maxlength="500">
                     </div>
 
                     <input type="text" id="late-arrival-time-picker" placeholder="Select Time.."
@@ -164,45 +169,18 @@
                 </div>
             </div>
 
-            <div class="card mt-3" th:if="${user}">
+            <div class="card mt-3" th:if="${user}" id="my-delegates">
                 <div class="card-header">
-                    <h3 class="card-title">Additional Managers</h3>
+                    <h3 class="card-title">Delegates</h3>
                 </div>
                 <div class="card-body">
-
-                    <div class="alert alert-warning" role="alert">
-                        <div class="d-flex">
-                            <div class="me-2">
-                                <i class="ti ti-alert-triangle"></i>
-                            </div>
-                            <div class="text-secondary">
-                                Add additional managers that will be notified if you are not available
-                                within your normal login window.
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="mb-3">
-                        <label class="form-label" for="search">Add a manager</label>
-                        <input
-                                id="search"
-                                class="form-control"
-                                type="text"
-                                placeholder="Search..."
-                                autocomplete="off"
-                        />
-                    </div>
-
-                    <ul id="selectedList" class="list-group list-group-flush mb-3">
-                        <!-- Selected items will appear here -->
+                    <p class="text-secondary">
+                        Besides your manager, these people receive your absence alerts and approve your requests.
+                        Only an administrator can change them: ask yours if they are wrong.
+                    </p>
+                    <ul id="selectedList" class="list-group list-group-flush mb-0">
+                        <!-- Filled from /api/users/managers -->
                     </ul>
-
-                    <div class="btn-list justify-content-end">
-                        <button type="button" class="btn btn-primary" id="updateManagers">
-                            <i class="ti ti-device-floppy me-1"></i>Update
-                        </button>
-                    </div>
-
                 </div>
             </div>
 
@@ -250,8 +228,9 @@
                 },
                 selectable: true,
                 select: function (info) {
-                    const start = info.start.toISOString();
-                    const end = info.end.toISOString();
+                    // All-day selections: plain dates, the end being the day after the last one.
+                    const start = info.startStr;
+                    const end = info.endStr;
 
                     document.getElementById("statusUpdateDateFrom").value = start;
                     document.getElementById("statusUpdateDateTo").value = end;
@@ -274,6 +253,7 @@
                 const toDate = document.getElementById("statusUpdateDateTo").value;
                 const selectedStatus = document.getElementById("statusSelect").value;
                 const lateArrivalTime = document.getElementById("late-arrival-time-picker").value;
+                const note = document.getElementById("requestNote").value;
 
                 fetch("/api/event/update", {
                     method: "POST",
@@ -284,16 +264,26 @@
                         fromDate: fromDate,
                         toDate: toDate,
                         status: selectedStatus,
-                        lateArrivalTime: lateArrivalTime
-
+                        lateArrivalTime: lateArrivalTime,
+                        note: note
                     })
-                }).then(() => {
-                    // Optionally, refresh the calendar to show updated events
+                }).then(async (response) => {
                     bootstrap.Modal.getInstance(
                         document.getElementById("selectionModal")
                     ).hide();
-
                     calendar.unselect();
+
+                    if (!response.ok) {
+                        // The server says why: too long a range, a status that is not yours to set, ...
+                        const problem = await response.json().catch(() => ({}));
+                        showToast(problem.message || "The status could not be set", {type: "danger", delay: 6000});
+                        return;
+                    }
+                    const result = await response.json().catch(() => ({}));
+                    if (result.outcome === "requested") {
+                        showToast(result.message || "Sent to your manager for approval", {type: "info", delay: 6000});
+                    }
+                    document.getElementById("requestNote").value = "";
                     calendar.refetchEvents();
                 });
 
@@ -308,109 +298,38 @@
 
         const selectedListEl = document.getElementById("selectedList");
 
-        // Keep track of selected items
-        const selectedItems = new Map();
-
-        new autoComplete({
-            selector: "#search",
-            threshold: 3,
-            debounce: 300,
-            searchEngine: "strict",
-
-            data: {
-                src: async (query) => {
-                    if (!query) return [];
-                    const response = await fetch(`/api/users/usersearch?search=${encodeURIComponent(query)}`);
-                    return await response.json();
-                },
-                keys: ["dn"]
-            },
-
-            resultsList: {
-                maxResults: 10,
-                noResults: true
-            },
-
-            resultItem: {
-                highlight: true
-            },
-
-            events: {
-                input: {
-                    selection: (event) => {
-                        const item = event.detail.selection.value;
-
-                        // prevent duplicates
-                        if (!selectedItems.has(item.dn)) {
-                            addItemToSelectedList(item);
-                        }
-
-                        // clear input for next selection
-                        document.querySelector("#search").value = "";
-                    }
-                }
-            }
-        });
-
         document.addEventListener("DOMContentLoaded", loadItems);
 
-        /* ---------- LOAD ---------- */
+        /* ---------- LOAD: read only; administrators set delegates ---------- */
         async function loadItems() {
-            const response = await fetch("/api/users/managers/" + userDn);
-            const items = await response.json();
+            if (!selectedListEl) return;
+            const response = await fetch("/api/users/managers/" + encodeURIComponent(userDn));
+            const items = response.ok ? await response.json() : [];
             selectedListEl.innerHTML = "";
-
-            items.forEach(item => addItemToSelectedList(item));
-        }
-
-        // Rendered as a Tabler list group row: label on the left, ghost icon button on the right.
-        function addItemToSelectedList(item) {
-            selectedItems.set(item.dn, item);
-
-            const li = document.createElement("li");
-            li.dataset.dn = item.dn;
-            li.className = "list-group-item d-flex align-items-center justify-content-between";
-
-            const label = document.createElement("span");
-            label.className = "text-truncate";
-            label.textContent = item.dn;
-
-            const removeBtn = document.createElement("button");
-            removeBtn.type = "button";
-            removeBtn.className = "btn btn-icon btn-ghost-danger";
-            removeBtn.title = "Remove";
-            removeBtn.innerHTML = '<i class="ti ti-x"></i>';
-            removeBtn.onclick = () => {
-                selectedItems.delete(item.dn);
-                li.remove();
-            };
-
-            li.append(label, removeBtn);
-            selectedListEl.appendChild(li);
-        }
-
-        document.getElementById("updateManagers").addEventListener("click", async function () {
-            const managers = Array.from(selectedItems.values()).map(item => item.dn);
-            await fetch("/api/users/managers/update", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify(managers)
-            })
-                .then(data => {
-                    console.log("Success:", data);
-                    showToast("Managers Updated", { type: "success" });
-                })
-        });
-
-        document.getElementById("statusSelect").addEventListener("change", function () {
-            if(this.value === "LATE_ARRIVAL") {
-                document.getElementById("late-arrival-time-picker").style.display = "block";
-            }else{
-                document.getElementById("late-arrival-time-picker").style.display = "none";
+            if (items.length === 0) {
+                const none = document.createElement("li");
+                none.className = "list-group-item text-secondary";
+                none.textContent = "None";
+                selectedListEl.appendChild(none);
             }
-        });
+            items.forEach(item => {
+                const li = document.createElement("li");
+                li.className = "list-group-item text-truncate";
+                li.textContent = item.dn;
+                selectedListEl.appendChild(li);
+            });
+        }
+
+        function statusChosen() {
+            const select = document.getElementById("statusSelect");
+            const chosen = select.options[select.selectedIndex];
+            document.getElementById("late-arrival-time-picker").style.display =
+                select.value === "LATE_ARRIVAL" ? "block" : "none";
+            document.getElementById("approvalHint").hidden =
+                !chosen || chosen.getAttribute("data-needs-approval") !== "true";
+        }
+        document.getElementById("statusSelect").addEventListener("change", statusChosen);
+        statusChosen();
 
         flatpickr("#late-arrival-time-picker", {
             enableTime: true,

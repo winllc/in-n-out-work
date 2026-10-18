@@ -7,6 +7,8 @@
     <meta charset="UTF-8">
     <title>User Details</title>
     <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
+    <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
+    <script th:src="@{/libs/autoComplete/autoComplete.min.js}"></script>
 </head>
 <body>
 
@@ -14,13 +16,43 @@
 
 <div layout:fragment="content">
 
+    <!-- A manager, delegate or administrator records a status for this person (POST /api/event/update with dn). -->
+    <div id="recordStatusModal" class="modal modal-blur fade" tabindex="-1" style="display:none" th:if="${canSetStatuses}">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Record a status for <span th:text="${user.cn}"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="recordStatusSelect">Status</label>
+                        <select id="recordStatusSelect" class="form-select">
+                            <option th:each="s : ${allStatuses}" th:value="${s.name()}" th:text="${s.friendlyName}"></option>
+                        </select>
+                        <small class="form-hint">Takes effect at once; no approval is needed when you record it.</small>
+                    </div>
+                    <input type="text" id="record-late-time" placeholder="Expected by (HH:mm)" class="form-control"
+                           style="display: none;">
+                    <input type="hidden" id="recordStatusFrom">
+                    <input type="hidden" id="recordStatusTo">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-link link-secondary" data-bs-dismiss="modal">Close</button>
+                    <button id="recordStatusButton" class="btn btn-primary ms-auto">Record</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row row-cards">
         <div class="col-lg-6">
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">User Information</h3>
                     <div class="card-actions">
-                        <span class="badge"
+                        <!-- No status at all for a coworker under application.privacy.coworker-visibility none. -->
+                        <span class="badge" th:if="${user.status != null}"
                               th:classappend="${user.status == 'IN'} ? 'bg-green-lt' : (${user.status == 'OUT'} ? 'bg-blue-lt' : (${user.status == 'AWAY'} ? 'bg-purple-lt' : 'bg-secondary-lt'))"
                               th:text="${user.status}"></span>
                     </div>
@@ -112,6 +144,11 @@
             <div class="card">
                 <div class="card-header">
                     <h3 class="card-title">Role</h3>
+                    <div class="card-actions">
+                        <a class="btn btn-sm btn-outline-secondary" th:href="@{/app/admin/privacy(dn=${user.dn})}">
+                            <i class="ti ti-shield-lock me-1"></i>Export or erase data
+                        </a>
+                    </div>
                 </div>
                 <div class="card-body">
                     <form th:action="@{/app/user/details}" method="post" th:object="${roleForm}">
@@ -136,6 +173,39 @@
 
     </div>
 
+    <!--
+      Delegates (alternate managers): with the directory manager, they receive this person's absence alerts and decide
+      their requests. Shown to whoever sees the details; changed by administrators only (the API checks it too).
+    -->
+    <div class="row row-cards mt-1" th:if="${isGroupManager or isSelf}" id="delegates-card">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header">
+                    <h3 class="card-title">Delegates</h3>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary small">
+                        Besides the manager in the directory, these people receive this person's absence alerts, may
+                        answer them and approve their requests. Only administrators change them.
+                    </p>
+                    <ul id="delegate-list" class="list-group list-group-flush mb-3"></ul>
+                    <div sec:authorize="hasAuthority('ADMIN')" id="delegate-editor">
+                        <div class="mb-3">
+                            <label class="form-label" for="delegate-search">Add a delegate</label>
+                            <input id="delegate-search" class="form-control" type="text" placeholder="Search..."
+                                   autocomplete="off"/>
+                        </div>
+                        <div class="btn-list justify-content-end">
+                            <button type="button" class="btn btn-primary" id="save-delegates">
+                                <i class="ti ti-device-floppy me-1"></i>Save delegates
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="row row-cards mt-1" th:if="${(isGroupManager or isSelf) and (licenseInfo == null or licenseInfo.isEnabled('calendar'))}">
         <div class="col-12">
             <div class="card">
@@ -153,6 +223,7 @@
     <script  th:inline="javascript" th:attr="nonce=${cspNonce}">
 
         const userDn = /*[[${user.dn}]]*/ "test";
+        const canSetStatuses = /*[[${canSetStatuses == true}]]*/ false;
 
         // Absent when attendance is not licensed.
         const table = document.getElementById("audit-table") && new Tabulator("#audit-table", {
@@ -195,12 +266,127 @@
                         .then(res => res.json())
                         .then(data => successCallback(data))
                         .catch(err => failureCallback(err));
+                },
+                selectable: canSetStatuses,
+                select: function (info) {
+                    document.getElementById("recordStatusFrom").value = info.startStr;
+                    document.getElementById("recordStatusTo").value = info.endStr;
+                    new bootstrap.Modal(document.getElementById("recordStatusModal")).show();
                 }
             });
 
             calendar.render();
 
+            if (canSetStatuses) {
+                const select = document.getElementById("recordStatusSelect");
+                const lateTime = document.getElementById("record-late-time");
+                select.addEventListener("change", () => {
+                    lateTime.style.display = select.value === "LATE_ARRIVAL" ? "block" : "none";
+                });
+                document.getElementById("recordStatusButton").addEventListener("click", async () => {
+                    const response = await fetch("/api/event/update", {
+                        method: "POST",
+                        headers: {"Content-Type": "application/json"},
+                        body: JSON.stringify({
+                            dn: userDn,
+                            fromDate: document.getElementById("recordStatusFrom").value,
+                            toDate: document.getElementById("recordStatusTo").value,
+                            status: select.value,
+                            lateArrivalTime: lateTime.value
+                        })
+                    });
+                    bootstrap.Modal.getInstance(document.getElementById("recordStatusModal")).hide();
+                    calendar.unselect();
+                    if (!response.ok) {
+                        const problem = await response.json().catch(() => ({}));
+                        showToast(problem.message || "The status could not be recorded", {type: "danger", delay: 6000});
+                        return;
+                    }
+                    showToast("Status recorded", {type: "success"});
+                    calendar.refetchEvents();
+                });
+            }
+
         });
+
+        // --- delegates: listed for whoever sees the details, edited by administrators -----------------------
+        const delegateList = document.getElementById("delegate-list");
+        const delegates = new Map();
+
+        function showDelegate(dn) {
+            delegates.set(dn, true);
+            const li = document.createElement("li");
+            li.className = "list-group-item d-flex align-items-center justify-content-between";
+            const label = document.createElement("span");
+            label.className = "text-truncate";
+            label.textContent = dn;
+            li.append(label);
+            if (document.getElementById("delegate-editor")) {
+                const remove = document.createElement("button");
+                remove.type = "button";
+                remove.className = "btn btn-icon btn-ghost-danger";
+                remove.title = "Remove";
+                const icon = document.createElement("i");
+                icon.className = "ti ti-x";
+                remove.append(icon);
+                remove.addEventListener("click", () => {
+                    delegates.delete(dn);
+                    li.remove();
+                });
+                li.append(remove);
+            }
+            delegateList.appendChild(li);
+        }
+
+        if (delegateList) {
+            fetch("/api/users/managers/" + encodeURIComponent(userDn))
+                .then(res => res.ok ? res.json() : [])
+                .then(items => items.forEach(item => showDelegate(item.dn)));
+        }
+
+        if (document.getElementById("delegate-editor")) {
+            new autoComplete({
+                selector: "#delegate-search",
+                threshold: 3,
+                debounce: 300,
+                searchEngine: "strict",
+                data: {
+                    src: async (query) => {
+                        if (!query) return [];
+                        const response = await fetch(`/api/users/usersearch?search=${encodeURIComponent(query)}`);
+                        return await response.json();
+                    },
+                    keys: ["dn"]
+                },
+                resultsList: {maxResults: 10, noResults: true},
+                resultItem: {highlight: true},
+                events: {
+                    input: {
+                        selection: (event) => {
+                            const item = event.detail.selection.value;
+                            if (!delegates.has(item.dn)) {
+                                showDelegate(item.dn);
+                            }
+                            document.querySelector("#delegate-search").value = "";
+                        }
+                    }
+                }
+            });
+
+            document.getElementById("save-delegates").addEventListener("click", async function () {
+                const response = await fetch("/api/users/managers/update/" + encodeURIComponent(userDn), {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(Array.from(delegates.keys()))
+                });
+                if (response.ok) {
+                    showToast("Delegates saved", {type: "success"});
+                } else {
+                    const problem = await response.json().catch(() => ({}));
+                    showToast(problem.message || "The delegates could not be saved", {type: "danger", delay: 6000});
+                }
+            });
+        }
 
     </script>
 </div>

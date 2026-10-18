@@ -102,7 +102,7 @@ class AccessPolicyTest {
     @BeforeEach
     void setUp() {
         policy = new AccessPolicy(permissionService, ldapService, new GroupService(ldapService, groupRecords),
-                userService, userRecords, groupRecords);
+                userService, userRecords, groupRecords, new com.winllc.innoutwork.config.ApplicationProperties());
 
         LdapGroup engineering = new LdapGroup(group("ENGINEERING"), "Engineering");
         engineering.setManager(dn("OWEN"));
@@ -229,6 +229,95 @@ class AccessPolicyTest {
     })
     void aStatusAManagerRecordedReadsAsOutOfOfficeToCoworkers(String status, String shown) {
         assertEquals(shown, AccessPolicy.presenceOnly(UserStatus.builder().dn(dn("CAROL")).status(status).build()).getStatus());
+    }
+
+    // --- application.privacy.coworker-visibility -----------------------------------------------------------
+
+    private AccessPolicy policyWith(CoworkerVisibility visibility) {
+        com.winllc.innoutwork.config.ApplicationProperties properties = new com.winllc.innoutwork.config.ApplicationProperties();
+        properties.getPrivacy().setCoworkerVisibility(visibility);
+        return new AccessPolicy(permissionService, ldapService, new GroupService(ldapService, groupRecords),
+                userService, userRecords, groupRecords, properties);
+    }
+
+    private static UserStatus fullStatus(String status, String presence) {
+        return fullStatus("CAROL", status, presence);
+    }
+
+    private static UserStatus fullStatus(String who, String status, String presence) {
+        return UserStatus.builder().dn(dn(who)).status(status).presence(presence).notes("dentist")
+                .checkedInAt(java.time.ZonedDateTime.now()).averageLoginTime("08:00").role("USER")
+                .organization("Eng").email("carol@example.com").build();
+    }
+
+    @ParameterizedTest(name = "status {0} (presence {1}) shows as {2}")
+    @CsvSource({
+            "IN,             IN,   IN",
+            "AWAY,           AWAY, IN",
+            "OUT,            OUT,  OUT",
+            "NONE,           NONE, OUT",
+            "WORK_FROM_HOME, IN,   IN",
+            "WORK_FROM_HOME, NONE, OUT",
+            "ABSENT,         NONE, OUT",
+    })
+    void underStatusCoworkersSeeOnlyInOrOut(String status, String presence, String shown) {
+        UserStatus seen = AccessPolicy.coworkerView(fullStatus(status, presence), CoworkerVisibility.STATUS);
+
+        assertEquals(shown, seen.getStatus());
+        assertEquals("Eng", seen.getOrganization(), "who they are stays");
+        assertNull(seen.getNotes());
+        assertNull(seen.getCheckedInAt());
+        assertNull(seen.getAverageLoginTime());
+        assertNull(seen.getRole());
+    }
+
+    @Test
+    void underNoneCoworkersSeeNothingOfAttendance() {
+        UserStatus seen = AccessPolicy.coworkerView(fullStatus("SCHEDULED_LEAVE", "NONE"), CoworkerVisibility.NONE);
+
+        assertNull(seen.getStatus());
+        assertNull(seen.getNotes());
+        assertNull(seen.getCheckedInAt());
+        assertEquals("carol@example.com", seen.getEmail());
+    }
+
+    @Test
+    void underFullCoworkersSeeTheDaysStatusAsBefore() {
+        UserStatus seen = AccessPolicy.coworkerView(fullStatus("WORK_FROM_HOME", "NONE"), CoworkerVisibility.FULL);
+
+        assertEquals("WORK_FROM_HOME", seen.getStatus());
+        assertNull(seen.getNotes());
+        assertNull(seen.getCheckedInAt());
+    }
+
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(CoworkerVisibility.class)
+    void theScopeShowsCoworkersAsConfiguredAndTheirOwnPeopleInFull(CoworkerVisibility visibility) {
+        AccessPolicy configured = policyWith(visibility);
+        AccessPolicy.Scope owen = configured.scope(as("OWEN"));
+
+        UserStatus report = owen.show(fullStatus("BOB", "WORK_FROM_HOME", "IN"));
+        UserStatus coworker = owen.show(fullStatus("DAVE", "WORK_FROM_HOME", "IN"));
+
+        assertEquals("dentist", report.getNotes(), "Owen manages Engineering, Bob's group: details in full");
+        assertEquals("WORK_FROM_HOME", report.getStatus());
+        assertNull(coworker.getNotes());
+        assertEquals(switch (visibility) {
+            case FULL -> "WORK_FROM_HOME";
+            case STATUS -> "IN";
+            case NONE -> null;
+        }, coworker.getStatus());
+        assertEquals("dentist", configured.scope(as("ADA")).show(fullStatus("TDY", "IN")).getNotes(),
+                "administrators see everyone in full");
+    }
+
+    @Test
+    void presenceCountsAreHiddenUnderNoneFromAllButManagersAndAdministrators() {
+        assertTrue(policyWith(CoworkerVisibility.STATUS).seesPresenceCounts(as("BOB")));
+        AccessPolicy none = policyWith(CoworkerVisibility.NONE);
+        assertFalse(none.seesPresenceCounts(as("BOB")));
+        assertTrue(none.seesPresenceCounts(as("ADA")));
+        assertTrue(none.seesPresenceCounts(as("MIKE")));
     }
 
     // --- groups -------------------------------------------------------------------------------------------

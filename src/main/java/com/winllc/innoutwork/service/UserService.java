@@ -128,7 +128,9 @@ public class UserService {
                     .target("user", dn, LdapDn.cnOf(dn))
                     .detail("via", "profile");
             if (!Objects.equals(oldNotes, saved.getNotes())) {
-                entry.change("notes", oldNotes, saved.getNotes());
+                // That the notes changed, not what they say: the audit trail is kept when a person's data is erased
+                // (RR-12), so it holds no notes.
+                entry.detail("notesChanged", true);
             }
             if (!Objects.equals(oldLoginTime, saved.getChosenLoginTime())) {
                 entry.change("expectedLoginTime", Objects.toString(oldLoginTime, null),
@@ -256,6 +258,8 @@ public class UserService {
         } else {
             status.setStatus("NONE");
         }
+        // Kept before a calendar status replaces it, for coworkers who see only in or out (AccessPolicy).
+        status.setPresence(status.getStatus());
 
         if(recordOptional.isPresent()){
             UserRecord record = recordOptional.get();
@@ -300,6 +304,7 @@ public class UserService {
 
         UserStatus userStatus = getUserStatus(ldapDn, session);
         builder.status(userStatus.getStatus());
+        builder.presence(userStatus.getPresence());
         builder.organization(userStatus.getOrganization());
         builder.employeeType(userStatus.getEmployeeType());
         builder.location(userStatus.getLocation());

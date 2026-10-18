@@ -148,6 +148,29 @@ class UserServiceTest {
         assertEquals(USER_DN, saved.getDn());
     }
 
+    /** The audit trail outlives an erasure, so it records that the notes changed, never what they say. */
+    @Test
+    void aProfileChangeIsAuditedWithoutTheNotes() {
+        UserRecord existing = UserRecord.builder().dn(USER_DN).notes("old notes").build();
+        when(authentication.getName()).thenReturn(USER_DN);
+        when(userRecordRepository.findByDnIgnoreCase(USER_DN)).thenReturn(Optional.of(existing));
+        java.util.List<com.winllc.innoutwork.audit.AuditEntry> audited = new java.util.ArrayList<>();
+        userService.setAuditLog(new com.winllc.innoutwork.audit.AuditLog() {
+            @Override public void record(com.winllc.innoutwork.audit.AuditEntry entry) { audited.add(entry); }
+            @Override public void recordQuietly(com.winllc.innoutwork.audit.AuditEntry entry) { audited.add(entry); }
+            @Override public <T> T inTransaction(java.util.function.Supplier<T> change) { return change.get(); }
+            @Override public void requireAvailable() { }
+        });
+
+        userService.updateProfile(authentication, ProfileForm.builder().notes("at the dentist").build());
+
+        com.winllc.innoutwork.audit.AuditEntry entry = audited.getLast();
+        assertEquals("person.updated", entry.action());
+        assertEquals(true, entry.details().get("notesChanged"));
+        assertTrue(entry.details().values().stream().noneMatch(v -> v != null && v.toString().contains("dentist")));
+        assertTrue(entry.details().values().stream().noneMatch(v -> v != null && v.toString().contains("old notes")));
+    }
+
     /**
      * A user editing their profile before any record exists gets one created against their DN.
      */

@@ -65,6 +65,8 @@ class UserControllerTest {
     AccessPolicy accessPolicy;
     @MockitoBean
     DirectReportsService directReportsService;
+    @MockitoBean
+    com.winllc.innoutwork.service.Approvers approvers;
 
     @Configuration
     @EnableWebSecurity

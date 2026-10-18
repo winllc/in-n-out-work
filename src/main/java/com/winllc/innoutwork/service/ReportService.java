@@ -8,14 +8,17 @@ import com.winllc.innoutwork.data.reports.DayReport;
 import com.winllc.innoutwork.data.reports.GroupReport;
 import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.data.reports.UserReport;
+import com.winllc.innoutwork.model.AttendanceSummary;
 import com.winllc.innoutwork.model.CheckInOutRecord;
 import com.winllc.innoutwork.model.UserEventRecord;
+import com.winllc.innoutwork.repository.AttendanceSummaryRepository;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.util.Chunks;
 import com.github.benmanes.caffeine.cache.LoadingCache;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
@@ -35,6 +38,16 @@ public class ReportService {
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final UserEventRecordRepository userEventRecordRepository;
     private final LoadingCache<String, LdapUser> userCache;
+
+    /** Retention, when there is any: what the purge has summarised, for reports that reach back before it. */
+    private RetentionService retention;
+    private AttendanceSummaryRepository summaries;
+
+    @Autowired(required = false)
+    public void setRetention(RetentionService retention, AttendanceSummaryRepository summaries) {
+        this.retention = retention;
+        this.summaries = summaries;
+    }
 
     public ReportService(LdapService ldapService, CheckInOutRecordRepository checkInOutRecordRepository,
                          UserEventRecordRepository userEventRecordRepository,
@@ -119,6 +132,21 @@ public class ReportService {
             }
 
             groupReport.getUserReports().addAll(userReports);
+
+            // Days the retention purge has summarised have no records any more: their monthly summaries instead.
+            LocalDate purgedBefore = retention == null ? null : retention.purgedBefore();
+            if (purgedBefore != null && summaries != null && fromAtStartOfDay.toLocalDate().isBefore(purgedBefore)) {
+                LocalDate lastPurged = toAtEndOfDay.toLocalDate().isBefore(purgedBefore)
+                        ? toAtEndOfDay.toLocalDate() : purgedBefore.minusDays(1);
+                List<AttendanceSummary> monthly = new ArrayList<>();
+                for (List<String> chunk : Chunks.of(lowerDns)) {
+                    monthly.addAll(summaries.findByLowercaseDnInAndMonthBetween(chunk,
+                            fromAtStartOfDay.toLocalDate().withDayOfMonth(1), lastPurged.withDayOfMonth(1)));
+                }
+                monthly.sort(Comparator.comparing(AttendanceSummary::getMonth)
+                        .thenComparing(AttendanceSummary::getCn, String.CASE_INSENSITIVE_ORDER));
+                groupReport.addPurgedPeriod(purgedBefore, monthly);
+            }
 
             groupReport.getDayReports().addAll(createDayReportMap(userReports, from, to).values());
 

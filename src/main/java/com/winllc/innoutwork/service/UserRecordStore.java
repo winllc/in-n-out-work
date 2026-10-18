@@ -57,7 +57,7 @@ final class UserRecordStore {
             if (existing.isEmpty()) {
                 throw e;
             }
-            log.debug("User record for {} was created concurrently; using that one", dn);
+            log.debug("A user record was created concurrently; using that one");
             return new Result(existing.get(), false);
         }
     }

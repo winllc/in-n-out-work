@@ -56,7 +56,8 @@ public class OrgNodeRestService {
 
         top.rollupStats();
 
-        return top;
+        // Coworker visibility "none": headcounts only, unless the viewer may see presence everywhere.
+        return accessPolicy.seesPresenceCounts(authentication) ? top : top.withoutPresence();
     }
 
     /** An organization's people, open to everyone like the org chart: details only of those the viewer may see. */

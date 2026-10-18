@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.data;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.winllc.innoutwork.constant.DateTimeConstants;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -43,6 +44,13 @@ public class UserStatus {
     private String phoneNumber;
     private String managerDn;
     private String averageLoginTime;
+    /**
+     * The day's presence from the check-in records alone (IN, AWAY, OUT or NONE), before a calendar status replaces
+     * it in {@link #status}. Not sent anywhere: AccessPolicy reads it for coworkers who see only in or out.
+     */
+    @JsonIgnore
+    @ToString.Exclude
+    private String presence;
 
     public String getCn(){
         return LdapDn.cnOf(dn);

@@ -68,6 +68,9 @@ class ProfileControllerTest {
     @MockitoBean
     ApplicationProperties properties;
 
+    @MockitoBean
+    com.winllc.innoutwork.service.StatusPolicy statusPolicy;
+
     @Configuration
     @EnableWebSecurity
     @EnableMethodSecurity(prePostEnabled = true)
@@ -105,6 +108,32 @@ class ProfileControllerTest {
                 .andExpect(model().attributeExists("form", "statuses", "userDn", "userCn"))
                 .andExpect(model().attribute("userDn", USER_DN))
                 .andExpect(model().attribute("userCn", "alice"));
+    }
+
+    /** The calendar offers what the user may use, saying which statuses need approval; no manager's status. */
+    @Test
+    void theCalendarOffersOnlyTheUsersOwnStatusesAndMarksRequests() throws Exception {
+        when(recordRepository.findByDnIgnoreCase(anyString())).thenReturn(Optional.empty());
+        when(userRecordService.getUserDetails(any(), any()))
+                .thenReturn(UserStatus.builder().dn(USER_DN).status("NONE").build());
+        when(statusPolicy.ownCalendarStatuses()).thenReturn(java.util.List.of(
+                com.winllc.innoutwork.constant.UserStatusEnum.LATE_ARRIVAL,
+                com.winllc.innoutwork.constant.UserStatusEnum.SCHEDULED_LEAVE));
+        when(statusPolicy.classify(com.winllc.innoutwork.constant.UserStatusEnum.LATE_ARRIVAL))
+                .thenReturn(com.winllc.innoutwork.constant.StatusClass.USER_SELECTABLE);
+        when(statusPolicy.classify(com.winllc.innoutwork.constant.UserStatusEnum.SCHEDULED_LEAVE))
+                .thenReturn(com.winllc.innoutwork.constant.StatusClass.REQUEST);
+
+        String page = mockMvc.perform(get("/app/profile").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        org.junit.jupiter.api.Assertions.assertTrue(page.contains("Scheduled Leave (needs approval)"), page);
+        org.junit.jupiter.api.Assertions.assertTrue(page.contains("data-needs-approval=\"true\""));
+        org.junit.jupiter.api.Assertions.assertTrue(page.contains(">Late Arrival<"));
+        org.junit.jupiter.api.Assertions.assertFalse(page.contains("value=\"ABSENT\""));
+        org.junit.jupiter.api.Assertions.assertFalse(page.contains("id=\"updateManagers\""),
+                "delegates are no longer chosen here");
     }
 
     /**

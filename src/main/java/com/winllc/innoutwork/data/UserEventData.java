@@ -12,4 +12,6 @@ public class UserEventData {
     private String toDate;
     private String status;
     private String lateArrivalTime;
+    /** Optional, for a status that is requested: shown to the approvers. */
+    private String note;
 }

@@ -27,6 +27,12 @@ public class LicensingConfiguration implements WebMvcConfigurer {
     /** The audit log. Not a licensed feature. */
     public static final String AUDIT_SCREEN = "/app/admin/audit";
 
+    /** A person's own data: what is held, and its export. Not a licensed feature. */
+    public static final String PRIVACY_SCREEN = "/app/privacy";
+
+    /** Erasure of a person's data, by administrators. Not a licensed feature. */
+    public static final String ADMIN_PRIVACY_SCREEN = "/app/admin/privacy";
+
     static final String[] UNGATED = {
             "/login", "/logout", "/error",
             // The notice-and-consent banner comes before sign-in, so before anyone could install a license.
@@ -37,6 +43,9 @@ public class LicensingConfiguration implements WebMvcConfigurer {
             // and verify it, and SIEMs keep pulling it (token-authenticated).
             AUDIT_SCREEN, AUDIT_SCREEN + "/**",
             "/api/audit/events",
+            // A person's rights over their data do not depend on the license: their export, and an administrator's
+            // erasure, work in every license state (writes included, so erasure is possible while read-only).
+            PRIVACY_SCREEN, PRIVACY_SCREEN + "/**", ADMIN_PRIVACY_SCREEN, ADMIN_PRIVACY_SCREEN + "/**",
             "/actuator", "/actuator/**",
             "/libs/**", "/css/**", "/js/**", "/images/**", "/external/**", "/favicon.ico",
     };

@@ -30,7 +30,8 @@ migration creates stops the application at startup with the missing name.
    `LocalTime`, `text` for `@Enumerated(STRING)` with `columnDefinition = "text"`).
 4. **Enum values.** The enumerated columns have CHECK constraints listing their values
    (`check_in_out_records_action_check`, `user_records_user_role_check`, `user_event_records_status_check`,
-   `notification_records_type_check`, `notification_records_status_response_check`). Adding a value to one
+   `notification_records_type_check`, `notification_records_status_response_check`, and from V2
+   `status_requests_status_check`, `status_requests_state_check`, from V4 `attendance_summary_statuses_status_check`). Adding a value to one
    of those enums needs a migration that drops the check and adds it again with the new list, as V1 does.
    A new enumerated column should get a check the same way.
 5. **Never edit a released migration.** Flyway stores each file's checksum and refuses to start if one

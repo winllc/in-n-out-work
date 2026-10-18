@@ -38,6 +38,24 @@ class FlywayMigrationTest extends PostgresTestSupport {
     /** What Hibernate created before Flyway; see the file's header. */
     static final Path LEGACY_SCHEMA = Path.of("src/test/resources/db/legacy-hibernate-schema.sql");
     static final Path V1 = Path.of("src/main/resources/db/migration/V1__baseline.sql");
+    static final Path MIGRATIONS = Path.of("src/main/resources/db/migration");
+
+    /** Every migration file's version, in order: V1 and those after it. */
+    static List<Integer> versions() {
+        try (var files = java.nio.file.Files.list(MIGRATIONS)) {
+            return files.map(f -> f.getFileName().toString())
+                    .filter(n -> n.matches("V\\d+__.*\\.sql"))
+                    .map(n -> Integer.parseInt(n.substring(1, n.indexOf("__"))))
+                    .sorted()
+                    .toList();
+        } catch (java.io.IOException e) {
+            throw new java.io.UncheckedIOException(e);
+        }
+    }
+
+    static String latestVersion() {
+        return String.valueOf(versions().getLast());
+    }
 
     private static final Set<String> INDEXES = Set.of(
             "ux_user_records_dn_lower", "ix_check_in_out_dn_lower_ts", "ix_check_in_out_dn_ts", "ix_check_in_out_ts",
@@ -46,7 +64,12 @@ class FlywayMigrationTest extends PostgresTestSupport {
             "ix_permission_records_user_id", "ix_group_records_group_dn_lower", "ix_global_calendar_date",
             "ux_audit_events_event_id", "ix_audit_events_time", "ix_audit_events_category", "ix_audit_events_action",
             "ix_audit_events_outcome", "ix_audit_events_severity", "ix_audit_events_actor_id",
-            "ix_audit_events_target", "ix_audit_events_source_ip", "ux_audit_api_tokens_hash");
+            "ix_audit_events_target", "ix_audit_events_source_ip", "ux_audit_api_tokens_hash",
+            // V2: status requests
+            "ix_status_requests_requester_lower", "ix_status_requests_state", "ix_status_requests_to_date",
+            "ix_user_events_request_id",
+            // V4: retention
+            "ux_attendance_summaries_dn_month", "ix_notifications_date");
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -147,22 +170,23 @@ class FlywayMigrationTest extends PostgresTestSupport {
         MigrateResult result = migrate(db);
 
         assertTrue(result.success);
-        assertEquals(1, result.migrationsExecuted);
+        assertEquals(versions().size(), result.migrationsExecuted, "V1 and every migration after it");
         assertNull(result.initialSchemaVersion, "an empty database is not baselined, V1 just runs");
         JdbcTemplate fresh = jdbc(db);
         assertTrue(indexes(fresh).containsAll(INDEXES), () -> "missing: " + INDEXES.stream()
                 .filter(i -> !indexes(fresh).contains(i)).toList());
         assertEquals(1, fresh.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgname = 'audit_events_no_update'",
                 Integer.class));
-        assertEquals(List.of("fk_permission_records_user"), fresh.queryForList(
-                "SELECT conname FROM pg_constraint WHERE contype = 'f'", String.class));
+        assertEquals(List.of("attendance_summary_statuses_summary_id_fkey", "fk_permission_records_user",
+                "fk_user_event_records_request"), fresh.queryForList(
+                "SELECT conname FROM pg_constraint WHERE contype = 'f' ORDER BY conname", String.class));
         assertEquals(0, migrate(db).migrationsExecuted, "a second start has nothing to do");
     }
 
     /** The shared test database: Flyway ran at startup and Hibernate validated the result against the entities. */
     @Test
     void theApplicationDatabaseIsMigratedAndValidated() {
-        assertEquals("1", jdbc.queryForObject(
+        assertEquals(latestVersion(), jdbc.queryForObject(
                 "SELECT version FROM flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1",
                 String.class));
         assertTrue(indexes(jdbc).containsAll(INDEXES));
@@ -186,7 +210,7 @@ class FlywayMigrationTest extends PostgresTestSupport {
 
         assertTrue(result.success);
         assertEquals("0", result.initialSchemaVersion, "an existing schema is baselined at 0 ...");
-        assertEquals(1, result.migrationsExecuted, "... and V1 still runs on it");
+        assertEquals(versions().size(), result.migrationsExecuted, "... and V1 still runs on it, then the rest");
         String fresh = createDatabase("fresh_for_scripted");
         migrate(fresh);
         assertEquals(schema(fresh), schema(db));
@@ -271,6 +295,41 @@ class FlywayMigrationTest extends PostgresTestSupport {
         assertEquals(before, schema(db));
         assertEquals(1, twice.queryForObject("SELECT count(*) FROM user_records", Long.class));
         assertEquals("note", twice.queryForObject("SELECT notes FROM user_records", String.class));
+    }
+
+    // --- after the baseline ------------------------------------------------------------------------------------
+
+    /** Flyway as configured, but stopping at {@code version}: a database as an earlier release left it. */
+    private static void migrateTo(String database, String version) {
+        Flyway configured = flyway(database, POSTGRES.getUsername(), POSTGRES.getPassword());
+        assertTrue(Flyway.configure().configuration(configured.getConfiguration()).target(version).load().migrate().success);
+    }
+
+    /**
+     * V3: people no longer choose their own delegates, but those they chose before are kept, marked for an
+     * administrator to review, so an upgrade does not silently change who receives their alerts.
+     */
+    @Test
+    void delegatesPeopleChoseThemselvesAreKeptAndMarkedForReview() throws Exception {
+        String db = createDatabase("delegates");
+        migrateTo(db, "2");
+        JdbcTemplate before = jdbc(db);
+        long chose = insertUser(before, "cn=Alice,ou=Users,dc=winllc,dc=com", null, "USER", null,
+                "cn=Bob,ou=Users,dc=winllc,dc=com;cn=Carol,ou=Users,dc=winllc,dc=com");
+        long none = insertUser(before, "cn=Dan,ou=Users,dc=winllc,dc=com", null, "USER", null, null);
+        long emptied = insertUser(before, "cn=Erin,ou=Users,dc=winllc,dc=com", null, "USER", null, ";");
+
+        assertTrue(migrate(db).success);
+
+        JdbcTemplate after = jdbc(db);
+        String pending = "SELECT alternate_managers_review_pending FROM user_records WHERE id = ?";
+        assertTrue(after.queryForObject(pending, Boolean.class, chose));
+        assertFalse(after.queryForObject(pending, Boolean.class, none));
+        assertFalse(after.queryForObject(pending, Boolean.class, emptied));
+        assertEquals("cn=Bob,ou=Users,dc=winllc,dc=com;cn=Carol,ou=Users,dc=winllc,dc=com", after.queryForObject(
+                "SELECT alternate_managers FROM user_records WHERE id = ?", String.class, chose), "kept as they were");
+        assertEquals(2000, after.queryForObject("SELECT character_maximum_length FROM information_schema.columns"
+                + " WHERE table_name = 'user_records' AND column_name = 'alternate_managers'", Integer.class));
     }
 
     // --- a separate migration account -----------------------------------------------------------------------
