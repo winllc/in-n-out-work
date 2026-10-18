@@ -33,6 +33,9 @@ public class EnsProperties {
     @Valid
     private X509 x509 = new X509();
 
+    @Valid
+    private Sso sso = new Sso();
+
     /** The Content-Security-Policy header (see web.SecurityHeadersFilter). */
     @Data
     public static class Csp {
@@ -174,5 +177,96 @@ public class EnsProperties {
         /** ENS_X509_REVOCATION_CACHE: how long a good or revoked answer is kept, per issuer and serial. */
         @NotNull
         private Duration revocationCache = Duration.ofMinutes(10);
+    }
+
+    /**
+     * Single sign-on (security.sso): an OpenID Connect client and a SAML 2.0 service provider, each off until
+     * enabled. Whoever the identity provider signs in is mapped to one directory user by an LDAP filter, as client
+     * certificates are, and gets that user's roles; the IdP's groups add roles only through {@link #roleMapping}.
+     */
+    @Data
+    public static class Sso {
+
+        /**
+         * ENS_SSO_ROLE_MAPPING: IdP group to ReadyRoom role, {@code group=ROLE} pairs separated by ; or new lines
+         * (MANAGER or ADMIN; everyone signed in is a USER). Group names are matched ignoring case; the last = in a
+         * pair separates the role, so DN-style group names work. Empty: the IdP's groups grant nothing.
+         */
+        private String roleMapping = "";
+        /** ENS_SSO_CLOCK_SKEW: how far the IdP's clock may be from ours for an ID token's or assertion's times. */
+        @NotNull
+        private Duration clockSkew = Duration.ofSeconds(60);
+        @Valid
+        private Oidc oidc = new Oidc();
+        @Valid
+        private Saml saml = new Saml();
+
+        public boolean isAnyEnabled() {
+            return oidc.isEnabled() || saml.isEnabled();
+        }
+
+        @AssertTrue(message = "ENS_SSO_CLOCK_SKEW must be between 0 and 5 minutes")
+        public boolean isClockSkewSensible() {
+            return clockSkew == null || (!clockSkew.isNegative() && clockSkew.compareTo(Duration.ofMinutes(5)) <= 0);
+        }
+
+        /** OpenID Connect, authorization code flow with PKCE (Entra ID, Okta, ADFS 2016 and later, Keycloak...). */
+        @Data
+        public static class Oidc {
+            /** ENS_SSO_OIDC_ENABLED. */
+            private boolean enabled = false;
+            /** ENS_SSO_OIDC_DISPLAY_NAME: the sign-in page's button. */
+            private String displayName = "Sign in with single sign-on";
+            /**
+             * ENS_SSO_OIDC_ISSUER_URI: the issuer; its /.well-known/openid-configuration is read on first use, and
+             * ID tokens must name exactly this issuer.
+             */
+            private String issuerUri = "";
+            /** ENS_SSO_OIDC_CLIENT_ID: also the audience ID tokens must be for. */
+            private String clientId = "";
+            /** ENS_SSO_OIDC_CLIENT_SECRET; empty with no secret file: a public client (PKCE only). */
+            private String clientSecret = "";
+            /** ENS_SSO_OIDC_CLIENT_SECRET_FILE: the same, from a file (wins). */
+            private String clientSecretFile = "";
+            /** ENS_SSO_OIDC_SCOPES, separated by commas or spaces; openid is always asked for. */
+            private String scopes = "openid,profile,email";
+            /**
+             * ENS_SSO_OIDC_USER_FILTER (required when enabled): an LDAP filter finding the one directory user, with
+             * claims as placeholders: {@code (userPrincipalName={preferred_username})}, {@code (mail={email})}.
+             */
+            private String userFilter = "";
+            /** ENS_SSO_OIDC_GROUPS_CLAIM: the claim holding the user's groups (Entra ID and Okta: groups). */
+            private String groupsClaim = "groups";
+        }
+
+        /** SAML 2.0 Web SSO, SP-initiated only (Entra ID, Okta, ADFS, Shibboleth...). */
+        @Data
+        public static class Saml {
+            /** ENS_SSO_SAML_ENABLED. */
+            private boolean enabled = false;
+            /** ENS_SSO_SAML_DISPLAY_NAME: the sign-in page's button. */
+            private String displayName = "Sign in with SAML single sign-on";
+            /**
+             * ENS_SSO_SAML_IDP_METADATA: the IdP's metadata, an https:// URL (read on first use and every 12 hours)
+             * or file:/path. It names the IdP's entity id, sign-in URL and signing certificates.
+             */
+            private String idpMetadata = "";
+            /** ENS_SSO_SAML_ENTITY_ID: this service provider's entity id; empty: {baseUrl}/saml2/service-provider-metadata/saml. */
+            private String entityId = "";
+            /**
+             * ENS_SSO_SAML_USER_FILTER (required when enabled): an LDAP filter finding the one directory user, with
+             * {@code {nameid}} and attribute names as placeholders:
+             * {@code (userPrincipalName={http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn})}.
+             */
+            private String userFilter = "";
+            /** ENS_SSO_SAML_GROUPS_ATTRIBUTE: the attribute holding the user's groups. */
+            private String groupsAttribute = "http://schemas.microsoft.com/ws/2008/06/identity/claims/groups";
+            /**
+             * ENS_SSO_SAML_SP_KEY_FILE and ENS_SSO_SAML_SP_CERT_FILE: PEM, PKCS#8 key and its certificate, to sign
+             * requests and decrypt encrypted assertions. Optional unless the IdP requires either.
+             */
+            private String spKeyFile = "";
+            private String spCertFile = "";
+        }
     }
 }

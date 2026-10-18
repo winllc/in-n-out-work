@@ -36,6 +36,15 @@
                 <div th:if="${param.expired}" class="alert alert-warning" role="alert">
                     Your session has ended. Sign in again.
                 </div>
+                <div th:if="${param.sso_error}" class="alert alert-danger" role="alert">
+                    Single sign-on did not sign you in. Try again, or ask your administrator.
+                </div>
+
+                <div th:if="${ssoOptions != null and !ssoOptions.isEmpty()}" class="mb-3" id="sso-options">
+                    <a th:each="option : ${ssoOptions}" th:href="@{${option.url}}"
+                       class="btn btn-outline-primary w-100 mb-2" th:text="${option.label}">Sign in with single sign-on</a>
+                    <div class="hr-text">or</div>
+                </div>
 
                 <form th:action="@{/login}" method="post" autocomplete="off">
                     <div class="mb-3">

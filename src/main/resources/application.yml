@@ -199,6 +199,32 @@ ens:
     crl-dir: ${ENS_X509_CRL_DIR:}
     revocation-fail: ${ENS_X509_REVOCATION_FAIL:closed}
     revocation-cache: ${ENS_X509_REVOCATION_CACHE:10m}
+  # Single sign-on (security.sso; README "Single sign-on"): OpenID Connect and SAML 2.0, each off until enabled.
+  # Whoever the identity provider signs in must match exactly one directory user by the protocol's user filter, and
+  # gets that user's roles; role-mapping adds roles for the IdP's groups (group=MANAGER;other group=ADMIN), and
+  # nothing else the IdP says grants any.
+  sso:
+    role-mapping: ${ENS_SSO_ROLE_MAPPING:}
+    clock-skew: ${ENS_SSO_CLOCK_SKEW:60s}
+    oidc:
+      enabled: ${ENS_SSO_OIDC_ENABLED:false}
+      display-name: ${ENS_SSO_OIDC_DISPLAY_NAME:Sign in with single sign-on}
+      issuer-uri: ${ENS_SSO_OIDC_ISSUER_URI:}
+      client-id: ${ENS_SSO_OIDC_CLIENT_ID:}
+      client-secret: ${ENS_SSO_OIDC_CLIENT_SECRET:}
+      client-secret-file: ${ENS_SSO_OIDC_CLIENT_SECRET_FILE:}
+      scopes: ${ENS_SSO_OIDC_SCOPES:openid,profile,email}
+      user-filter: ${ENS_SSO_OIDC_USER_FILTER:}
+      groups-claim: ${ENS_SSO_OIDC_GROUPS_CLAIM:groups}
+    saml:
+      enabled: ${ENS_SSO_SAML_ENABLED:false}
+      display-name: ${ENS_SSO_SAML_DISPLAY_NAME:Sign in with SAML single sign-on}
+      idp-metadata: ${ENS_SSO_SAML_IDP_METADATA:}
+      entity-id: ${ENS_SSO_SAML_ENTITY_ID:}
+      user-filter: ${ENS_SSO_SAML_USER_FILTER:}
+      groups-attribute: ${ENS_SSO_SAML_GROUPS_ATTRIBUTE:http://schemas.microsoft.com/ws/2008/06/identity/claims/groups}
+      sp-key-file: ${ENS_SSO_SAML_SP_KEY_FILE:}
+      sp-cert-file: ${ENS_SSO_SAML_SP_CERT_FILE:}
   audit:
     # Each event as one raw JSON line on stdout, logger ens.audit (Docker logs, Splunk UF).
     stdout: ${ENS_AUDIT_STDOUT:true}
