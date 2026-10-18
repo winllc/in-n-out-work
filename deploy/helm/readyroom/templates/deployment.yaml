@@ -113,6 +113,14 @@ spec:
             {{- end }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "LDAP_PASSWORD" "value" $v.ldap.bindPassword "existingSecret" $v.ldap.existingSecret "existingSecretKey" $v.ldap.existingSecretKey "key" "ldap-password") }}{{ . | nindent 12 }}{{ end }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "SPRING_MAIL_PASSWORD" "value" $v.smtp.password "existingSecret" $v.smtp.existingSecret "existingSecretKey" $v.smtp.existingSecretKey "key" "smtp-password") }}{{ . | nindent 12 }}{{ end }}
+            {{- if $licenseSecret }}
+            # The supplied license, installed in the database when none usable is, or when it is a newer revision.
+            - name: ENS_LICENSE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $licenseSecret }}
+                  key: license.lic
+            {{- end }}
             {{- if $v.sso.oidc.enabled }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "ENS_SSO_OIDC_CLIENT_SECRET" "value" $v.sso.oidc.clientSecret "existingSecret" $v.sso.oidc.existingSecret "existingSecretKey" $v.sso.oidc.existingSecretKey "key" "oidc-client-secret") }}{{ . | nindent 12 }}{{ end }}
             {{- end }}
@@ -228,7 +236,7 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "readyroom.licenseClaimName" . }}
           {{- else }}
-          # Not persistent: the license and installation id are lost with the pod. Testing only.
+          # No license volume: the license state is in the database (nothing to import from an earlier release).
           emptyDir: {}
           {{- end }}
         {{- if and $licenseSecret $v.persistence.license.enabled }}

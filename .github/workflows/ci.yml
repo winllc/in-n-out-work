@@ -113,6 +113,17 @@ jobs:
           fi
           grep -q "x509.source header needs x509.trustedCa" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
 
+      - name: Several replicas on a ReadWriteOnce license volume do not render
+        run: |
+          # Two pods cannot share it; the license state is in the database, so the volume is turned off instead.
+          if helm template readyroom "$CHART" -f "$CHART/ci/default-values.yaml" \
+              --set replicaCount=2 > /dev/null 2> "$RUNNER_TEMP/err"; then
+            echo "rendered replicaCount=2 with a ReadWriteOnce license volume"
+            exit 1
+          fi
+          grep -q "replicaCount > 1 with persistence.license" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
+          helm template readyroom "$CHART" -f "$CHART/ci/ha-values.yaml" | grep -q "kind: PodDisruptionBudget"
+
   windows-client:
     # The Windows client (powershell/): PSScriptAnalyzer and the Pester tests, with Pester and PSScriptAnalyzer
     # pinned by version and SHA-256 in Invoke-ClientChecks.ps1. Linux runs everything that does not need Windows;

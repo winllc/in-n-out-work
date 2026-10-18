@@ -26,9 +26,9 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# Replicas. Scheduled jobs run on one replica at a time (database locks), browser sessions are in the
-# database, and a rolling update keeps one replica serving, so check-ins are not lost while it runs. More than
-# 1 also needs the license state out of the pod's volume: see persistence.license.
+# Replicas. Scheduled jobs run on one replica at a time (database locks), browser sessions and the license
+# state are in the database, and a rolling update keeps one replica serving, so check-ins are not lost while
+# it runs. More than 1 needs persistence.license off (or ReadWriteMany): see there.
 replicaCount: 1
 
 # Empty: RollingUpdate (a new pod is ready before an old one stops: maxSurge 1, maxUnavailable 0), except while
@@ -518,10 +518,12 @@ audit:
 
 persistence:
   license:
-    # The license, this installation's id (licenses can be bound to it) and the licensing state,
-    # mounted at /var/lib/ens. Keep this PVC: if it is lost the installation gets a new id and a
-    # license bound to the old one stops working. helm uninstall deletes it unless existingClaim is
-    # used, so back it up, or use an existingClaim you manage yourself.
+    # The license volume, mounted at /var/lib/ens. Since ReadyRoom keeps the license, the installation id and
+    # the licensing state in its database, this volume is only read once: on the first start of a release that
+    # does, it imports what an earlier release kept here (so the installation keeps its id and licenses bound to
+    # it keep working). After that upgrade has started once, it can be turned off, which allows replicaCount
+    # above 1 and rolling updates (a ReadWriteOnce volume would hold both back). New installations can turn it
+    # off from the start. helm uninstall deletes it unless existingClaim is used.
     enabled: true
     size: 100Mi
     storageClass: ""

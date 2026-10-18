@@ -67,6 +67,6 @@ public class LicenseRestService {
                         .toList(),
                 check.showEvaluationBanner(),
                 admin ? licenses.installationId() : null,
-                admin ? licenses.licenseFile().toString() : null);
+                admin ? licenses.licenseLocation() : null);
     }
 }

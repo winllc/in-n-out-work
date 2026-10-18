@@ -126,7 +126,7 @@ The image holds no keystore or truststore, and ReadyRoom refuses to start with T
 {{- end -}}
 {{- if gt (int $v.replicaCount) 1 -}}
 {{- if and $v.persistence.license.enabled (not (has "ReadWriteMany" $v.persistence.license.accessModes)) -}}
-{{- fail "replicaCount > 1 needs the license state off the pods' ReadWriteOnce volume: this release keeps it in persistence.license, which two pods cannot share. Keep replicaCount 1 (see \"Several replicas\" in the chart README)" -}}
+{{- fail "replicaCount > 1 with persistence.license on a ReadWriteOnce volume, which two pods cannot share: the license state is in the database now, so once this release has started with replicaCount 1 (importing the volume's license and installation id), set persistence.license.enabled=false (see \"Several replicas\" in the chart README)" -}}
 {{- end -}}
 {{- if and $v.audit.file.enabled $v.audit.file.persistence.enabled -}}
 {{- fail "replicaCount > 1 cannot share audit.file.persistence (ReadWriteOnce, one file): turn audit.file.persistence off (each pod's file is then an emptyDir) or send the audit trail to syslog/Splunk, which read it from the database" -}}
