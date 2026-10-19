@@ -98,7 +98,7 @@ public class LicenseController {
 
         model.addAttribute("check", check);
         model.addAttribute("installationId", licenses.installationId());
-        model.addAttribute("licenseFile", licenses.licenseFile().toString());
+        model.addAttribute("licenseFile", licenses.licenseLocation());
         model.addAttribute("features", features(check));
         check.license().ifPresent(l -> {
             model.addAttribute("installed", l);

@@ -45,7 +45,7 @@ public class LicenseManagerConfig {
                 LicensedFeature.PRODUCT, LicenseVerifier.trusting(EnsKeys.PUBLIC_KEYS), released);
         LicenseCheck check = licenses.current();
         log.info("License: {} ({}, {} mode). License file {}", check.message(), check.state(), check.mode(),
-                licenses.licenseFile());
+                licenses.licenseLocation());
         return licenses;
     }
 }
