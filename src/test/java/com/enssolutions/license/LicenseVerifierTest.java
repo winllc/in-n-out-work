@@ -1,4 +1,4 @@
-// Ported from the ENS products-page repository, licensing/java (ens-license); only the fixtures path differs.
+// Ported from the ENS products-page repository, licensing/java (ens-license 1.2.0); only the fixtures path differs.
 package com.enssolutions.license;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -26,7 +26,6 @@ class LicenseVerifierTest {
 
     @BeforeAll
     static void load() throws IOException {
-        // Copied from the portal's licensing/fixtures into src/test/resources/ens-license-fixtures.
         fixtures = Path.of(System.getProperty("ens.license.fixtures", "src/test/resources/ens-license-fixtures"));
         String[] key = Files.readString(fixtures.resolve("test-public-key.txt")).trim().split(" ");
         keyId = key[0];
@@ -85,6 +84,30 @@ class LicenseVerifierTest {
     void rejectsJunk() {
         assertEquals(LicenseException.Reason.MALFORMED,
                 assertThrows(LicenseException.class, () -> verifier.verify("hello")).reason());
+    }
+
+    /**
+     * Blocks are found in one pass, so text built to make a backtracking parser slow (many BEGIN lines and no
+     * END) is refused at once, and text longer than any license is refused before it is read.
+     */
+    @Test
+    void refusesHostileTextQuickly() throws Exception {
+        String begins = "-----BEGIN ENS LICENSE-----\n".repeat(LicenseVerifier.MAX_FILE_CHARS / 28);
+        assertTimeoutPreemptively(java.time.Duration.ofSeconds(1), () -> assertEquals(LicenseException.Reason.MALFORMED,
+                assertThrows(LicenseException.class, () -> verifier.verify(begins)).reason()));
+
+        String tooLong = fixture("dual-signed.lic") + "#".repeat(LicenseVerifier.MAX_FILE_CHARS);
+        LicenseException e = assertThrows(LicenseException.class, () -> verifier.verify(tooLong));
+        assertEquals(LicenseException.Reason.MALFORMED, e.reason());
+        assertTrue(e.getMessage().contains("longer than"), e.getMessage());
+    }
+
+    /** Text before, between and after the blocks is ignored, as it was when a regular expression found them. */
+    @Test
+    void readsBlocksAmongOtherText() throws Exception {
+        String file = "# summary\n" + fixture("dual-signed.lic").replace("-----END ENS LICENSE-----\n",
+                "-----END ENS LICENSE-----\n# between\n") + "trailing -----BEGIN ENS LICENSE----- with no end\n";
+        assertNotNull(verifier.verify(file));
     }
 
     @Test
