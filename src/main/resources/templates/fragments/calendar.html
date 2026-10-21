@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+
+<!--
+  A combined, read-only month calendar of the statuses a set of people set for themselves. Used by
+  the group page for a group's members and by My Reports for a manager's team; both are served by
+  /api/event/*, which decides who the people are, so this only has to know where to fetch from.
+
+  title    - the card heading
+  endpoint - the URL serving the events, without the from/to parameters
+  footer   - the line under the calendar saying whose statuses these are
+
+  The page including this must load FullCalendar. Statuses are not editable here: they belong to
+  the person who set them, and are still only settable on their own profile.
+-->
+<th:block th:fragment="combined(title, endpoint, footer)">
+    <div class="card mt-3">
+        <div class="card-header">
+            <h3 class="card-title" th:text="${title}">Calendar</h3>
+            <div class="card-actions text-secondary small" id="combined-calendar-count"></div>
+        </div>
+        <div class="card-body">
+            <!-- The endpoint travels on the element, so this script needs no Thymeleaf inlining. -->
+            <div id="combined-calendar" th:attr="data-events-url=${endpoint}"></div>
+        </div>
+        <div class="card-footer text-secondary" th:text="${footer}"></div>
+    </div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", function () {
+            const calendarEl = document.getElementById("combined-calendar");
+            if (!calendarEl) return;
+
+            const endpoint = calendarEl.dataset.eventsUrl;
+            const countEl = document.getElementById("combined-calendar-count");
+
+            const calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: "dayGridMonth",
+                themeSystem: "bootstrap5",
+                headerToolbar: {
+                    left: "prev,next today",
+                    center: "title",
+                    right: "dayGridMonth,dayGridWeek"
+                },
+                // Busy days collapse behind a "+N more" link rather than growing the card.
+                dayMaxEvents: 4,
+                events: function (fetchInfo, successCallback, failureCallback) {
+                    fetch(`${endpoint}?from=${fetchInfo.startStr}&to=${fetchInfo.endStr}`)
+                        .then(res => {
+                            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+                            return res.json();
+                        })
+                        .then(data => successCallback(data))
+                        .catch(err => {
+                            // Without this the calendar just stays blank, which reads as "nobody set
+                            // a status" rather than "the statuses could not be loaded".
+                            if (countEl) countEl.textContent = "Statuses could not be loaded";
+                            failureCallback(err);
+                        });
+                },
+                // A month cell is narrower than "Name: Status", so the full text goes on the
+                // element itself and the browser shows it on hover.
+                eventDidMount: function (info) {
+                    info.el.setAttribute("title", info.event.title);
+                },
+                eventsSet: function (events) {
+                    if (!countEl) return;
+                    countEl.textContent = events.length === 0
+                        ? "No statuses set for this period"
+                        : `${events.length} status${events.length === 1 ? "" : "es"} this period`;
+                }
+            });
+
+            calendar.render();
+        });
+    </script>
+</th:block>
+
+</body>
+</html>

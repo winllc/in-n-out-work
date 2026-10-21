@@ -12,6 +12,7 @@ import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.NotificationRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
+import com.winllc.innoutwork.rest.UserEventRestService;
 import com.winllc.innoutwork.rest.UserRestService;
 import com.winllc.innoutwork.security.PermissionEvaluator;
 import com.winllc.innoutwork.service.AccountabilityMetricsService;
@@ -66,9 +67,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * spinner. The database side is mocked empty, which is also the state a fresh install is in:
  * reports who have never used the app still have to appear.
  */
-@WebMvcTest({UserController.class, UserRestService.class})
-@Import({UserController.class, UserRestService.class, MyReportsPageDirectoryTest.RealServices.class,
-        MyReportsPageDirectoryTest.TestSecurityConfig.class})
+@WebMvcTest({UserController.class, UserRestService.class, UserEventRestService.class})
+@Import({UserController.class, UserRestService.class, UserEventRestService.class,
+        MyReportsPageDirectoryTest.RealServices.class, MyReportsPageDirectoryTest.TestSecurityConfig.class})
 class MyReportsPageDirectoryTest {
 
     private static final String BASE = InMemoryDirectory.BASE_DN;
@@ -266,6 +267,39 @@ class MyReportsPageDirectoryTest {
         // Backfilled from the directory entry, so a report who has never used the app is not blank.
         assertEquals("WinLLC", rows.get(0).get("organization").asString());
         assertEquals("PT", rows.get(0).get("employeeType").asString());
+    }
+
+    /** The calendar card is on the page, pointed at the caller's own team. */
+    @Test
+    void theTeamCalendarIsOnThePage() throws Exception {
+        String html = pageFor(ALICE);
+
+        assertTrue(html.contains("Team Calendar"), html);
+        assertTrue(html.contains("id=\"combined-calendar\""), "the calendar is missing from the page");
+        assertTrue(html.contains("data-events-url=\"/api/event/reports\""), "the calendar fetches from nowhere");
+    }
+
+    /** And what it fetches is this team's statuses, named after the people in the directory. */
+    @Test
+    void theTeamCalendarServesTheTeamsStatuses() throws Exception {
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any()))
+                .thenReturn(List.of(UserEventRecord.builder()
+                        .dn("CN=BOB BARKER,OU=USERS," + BASE.toUpperCase())
+                        .date(LocalDate.of(2026, 9, 10))
+                        .status(UserStatusEnum.WORK_FROM_HOME)
+                        .build()));
+
+        String body = mockMvc.perform(get("/api/event/reports").with(x509(cert(ALICE)))
+                        .param("from", "2026-09-01T00:00:00Z").param("to", "2026-09-30T00:00:00Z"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+
+        JsonNode rows = JsonMapper.builder().build().readTree(body);
+
+        assertEquals(1, rows.size(), body);
+        assertEquals("Bob Barker: Work From Home", rows.get(0).get("title").asString());
+        // The directory's spelling, whatever case the status was stored in.
+        assertEquals("/app/user/details/cn=Bob Barker,ou=Users," + BASE, rows.get(0).get("url").asString());
     }
 
     static X509Certificate cert(String dn) {

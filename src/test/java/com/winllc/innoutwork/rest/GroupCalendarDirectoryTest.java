@@ -8,6 +8,7 @@ import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.service.LdapService;
+import com.winllc.innoutwork.service.UserService;
 import com.winllc.innoutwork.support.InMemoryDirectory;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -70,8 +71,9 @@ class GroupCalendarDirectoryTest {
         props.setCalendarAbsentStatusEventColor("purple");
 
         userEventRecordRepository = mock(UserEventRecordRepository.class);
+        LdapService ldapService = new LdapService(directory.ldapTemplate(), props);
         service = new UserEventRestService(userEventRecordRepository, mock(CheckInOutRecordRepository.class),
-                props, mock(GlobalCalendarRecordRepository.class), new LdapService(directory.ldapTemplate(), props));
+                props, mock(GlobalCalendarRecordRepository.class), ldapService, mock(UserService.class));
     }
 
     private List<CalendarEvent> eventsFor(String groupDn) {

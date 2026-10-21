@@ -75,19 +75,11 @@
         </div>
     </div>
 
-    <div class="card mt-3">
-        <div class="card-header">
-            <h3 class="card-title">Group Calendar</h3>
-            <div class="card-actions text-secondary small" id="group-calendar-count"></div>
-        </div>
-        <div class="card-body">
-            <div id="group-calendar"></div>
-        </div>
-        <div class="card-footer text-secondary">
-            Statuses every member of this group set for themselves. Members set their own on their
-            profile; click an entry to open that member. Nobody's status can be changed from here.
-        </div>
-    </div>
+    <!-- The DN is escaped into the path: it carries spaces, and may carry anything else a
+         directory allows in a name. -->
+    <th:block th:replace="~{fragments/calendar :: combined('Group Calendar',
+        '/api/event/group/' + ${#uris.escapePathSegment(groupDn)},
+        'Statuses every member of this group set for themselves. Members set their own on their profile; click an entry to open that member. Nobody\'s status can be changed from here.')}"></th:block>
 
     <div class="card mt-3" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
         <div class="card-header">
@@ -355,55 +347,6 @@
             li.append(label, removeBtn);
             selectedListEl.appendChild(li);
         }
-
-        // Combined calendar: every group member's self-set status for the month on screen. Read-only -
-        // a member's status is theirs to set on their own profile - so the calendar is not selectable.
-        document.addEventListener("DOMContentLoaded", function () {
-            const calendarEl = document.getElementById("group-calendar");
-            if (!calendarEl) return;
-
-            const countEl = document.getElementById("group-calendar-count");
-
-            const calendar = new FullCalendar.Calendar(calendarEl, {
-                initialView: "dayGridMonth",
-                themeSystem: "bootstrap5",
-                headerToolbar: {
-                    left: "prev,next today",
-                    center: "title",
-                    right: "dayGridMonth,dayGridWeek"
-                },
-                // Busy days collapse behind a "+N more" link rather than growing the card.
-                dayMaxEvents: 4,
-                events: function (fetchInfo, successCallback, failureCallback) {
-                    fetch(`/api/event/group/${encodeURIComponent(groupDn)}`
-                        + `?from=${fetchInfo.startStr}&to=${fetchInfo.endStr}`)
-                        .then(res => {
-                            if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-                            return res.json();
-                        })
-                        .then(data => successCallback(data))
-                        .catch(err => {
-                            // Without this the calendar just stays blank, which reads as "nobody set
-                            // a status" rather than "the statuses could not be loaded".
-                            if (countEl) countEl.textContent = "Statuses could not be loaded";
-                            failureCallback(err);
-                        });
-                },
-                // A month cell is narrower than "Name: Status", so the full text goes on the
-                // element itself and the browser shows it on hover.
-                eventDidMount: function (info) {
-                    info.el.setAttribute("title", info.event.title);
-                },
-                eventsSet: function (events) {
-                    if (!countEl) return;
-                    countEl.textContent = events.length === 0
-                        ? "No statuses set for this period"
-                        : `${events.length} status${events.length === 1 ? "" : "es"} this period`;
-                }
-            });
-
-            calendar.render();
-        });
 
         document.getElementById("updateManagers").addEventListener("click", async function () {
             const managers = Array.from(selectedItems.values()).map(item => item.dn);

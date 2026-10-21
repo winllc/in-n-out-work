@@ -12,8 +12,10 @@ import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
+import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.ReportService;
+import com.winllc.innoutwork.service.UserService;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,15 +45,18 @@ public class UserEventRestService {
     private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
     private final LdapService ldapService;
+    private final UserService userService;
 
     public UserEventRestService(UserEventRecordRepository userEventRecordRepository,
                                 CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
-                                GlobalCalendarRecordRepository globalCalendarRecordRepository, LdapService ldapService) {
+                                GlobalCalendarRecordRepository globalCalendarRecordRepository, LdapService ldapService,
+                                UserService userService) {
         this.userEventRecordRepository = userEventRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
         this.globalCalendarRecordRepository = globalCalendarRecordRepository;
         this.ldapService = ldapService;
+        this.userService = userService;
     }
 
 
@@ -130,13 +135,47 @@ public class UserEventRestService {
                                               @RequestParam Instant from,
                                               @RequestParam Instant to) {
 
+        return combinedCalendar("group " + groupDn,
+                ldapService.getGroupMembers(LdapDn.builder().dn(groupDn).build()), from, to);
+    }
+
+    /**
+     * The same combined calendar for the signed-in user's direct reports, behind the My Reports page.
+     * <p>
+     * Scoped to the caller by design, like {@code /api/users/reports}: the team is derived from the
+     * authenticated principal rather than a parameter, so it cannot be pointed at somebody else's.
+     * Open to any authenticated user for the reason the page itself is - reporting lines come from
+     * the directory, so someone holding only USER can still have a team.
+     */
+    @GetMapping("/reports")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+    public List<CalendarEvent> getDirectReportEvents(Authentication authentication,
+                                                     @RequestParam Instant from,
+                                                     @RequestParam Instant to) {
+
+        List<String> reports = userService.findDirectReports(LdapDn.builder().dn(authentication.getName()).build())
+                .stream()
+                .map(LdapUser::getDn)
+                .toList();
+
+        return combinedCalendar("the reports of " + authentication.getName(), reports, from, to);
+    }
+
+    /**
+     * One calendar holding the statuses every one of {@code memberDns} set for themselves.
+     *
+     * @param subject what the members are, for the log line only
+     */
+    private List<CalendarEvent> combinedCalendar(String subject, List<String> memberDns, Instant from, Instant to) {
         LocalDate fromDate = LocalDate.ofInstant(from, ZoneId.systemDefault());
         LocalDate toDate = LocalDate.ofInstant(to, ZoneId.systemDefault());
 
         // Lower-cased DN to the directory's spelling: the repository compares lower(dn), and the
         // spelling is what labels the event and links to the member.
         Map<String, String> members = new LinkedHashMap<>();
-        for (String memberDn : ldapService.getGroupMembers(LdapDn.builder().dn(groupDn).build())) {
+        for (String memberDn : memberDns) {
             if (StringUtils.isNotBlank(memberDn)) {
                 members.putIfAbsent(memberDn.toLowerCase(), memberDn);
             }
@@ -144,15 +183,15 @@ public class UserEventRestService {
 
         if (members.isEmpty()) {
             // "in ()" is not valid SQL, so an empty membership must not reach the query.
-            log.debug("Group {} has no members, so its calendar is empty", groupDn);
+            log.debug("No members for {}, so its calendar is empty", subject);
             return List.of();
         }
 
         List<UserEventRecord> records =
                 userEventRecordRepository.findByLowercaseDnInAndDateBetween(members.keySet(), fromDate, toDate);
 
-        log.debug("Group {} calendar: {} status entries for {} member(s) between {} and {}",
-                groupDn, records.size(), members.size(), fromDate, toDate);
+        log.debug("Calendar for {}: {} status entries for {} member(s) between {} and {}",
+                subject, records.size(), members.size(), fromDate, toDate);
 
         return records.stream()
                 .map(r -> groupEvent(r, members.getOrDefault(r.getDn().toLowerCase(), r.getDn())))

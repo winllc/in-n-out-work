@@ -289,14 +289,33 @@ class TemplateRenderingTest {
         assertRenders("/render/users", "user-table");
     }
 
-    /** The combined status calendar on the group page, and the library that draws it. */
+    /** The combined status calendar on the group page, pointed at that group. */
     @Test
     void usersRendersTheGroupCalendar() throws Exception {
         String path = "/render/users";
         assertRenders(path, "Group Calendar");
-        assertRenders(path, "id=\"group-calendar\"");
+        assertRenders(path, "id=\"combined-calendar\"");
         assertRenders(path, "/libs/fullcalendar/index.global.min.js");
-        assertRenders(path, "/api/event/group/");
+        assertRenders(path, "data-events-url=\"/api/event/group/cn=group%20A,ou=groups\"");
+    }
+
+    /** The same calendar on My Reports, pointed at the caller's own team instead. */
+    @Test
+    void myReportsRendersTheTeamCalendar() throws Exception {
+        String path = "/render/myreports";
+        assertRenders(path, "Team Calendar");
+        assertRenders(path, "id=\"combined-calendar\"");
+        assertRenders(path, "/libs/fullcalendar/index.global.min.js");
+        assertRenders(path, "data-events-url=\"/api/event/reports\"");
+    }
+
+    /** Nobody to show, so no calendar: an empty month would just look broken. */
+    @Test
+    void myReportsWithNoReportsHasNoCalendar() throws Exception {
+        mockMvc.perform(get("/render/myreports-empty").with(x509(mockCert(USER_DN))))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("id=\"combined-calendar\""))));
     }
 
     @Test
@@ -556,8 +575,9 @@ class TemplateRenderingTest {
         @GetMapping("/render/users")
         ModelAndView users() {
             ModelAndView mav = new ModelAndView("users");
-            mav.addObject("group", "groupA");
-            mav.addObject("groupDn", "cn=groupA,ou=groups");
+            mav.addObject("group", "group A");
+            // A space in the name, because the DN goes into the calendar's URL.
+            mav.addObject("groupDn", "cn=group A,ou=groups");
             mav.addObject("isFavorite", true);
             return mav;
         }

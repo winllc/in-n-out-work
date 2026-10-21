@@ -4,12 +4,14 @@ import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.security.PermissionEvaluator;
 import com.winllc.innoutwork.service.LdapService;
+import com.winllc.innoutwork.service.UserService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -35,6 +37,7 @@ import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -55,8 +58,9 @@ import javax.security.auth.x500.X500Principal;
 import java.security.cert.X509Certificate;
 
 /**
- * The combined group calendar behind the card on the group page: over HTTP, through method
- * security, serialised by the real message converters.
+ * The combined calendars: the group page's, over the members of a group, and My Reports', over the
+ * caller's own team. Both over HTTP, through method security, serialised by the real message
+ * converters.
  * <p>
  * The controller is imported explicitly for the usual reason in this suite: the
  * {@code @SpringBootApplication} is not in a parent package of the tests, so a {@code @WebMvcTest}
@@ -69,6 +73,7 @@ class GroupCalendarRestServiceTest {
     private static final String GROUP_DN = "cn=groupA,ou=Groups,dc=winllc,dc=com";
     private static final String ADMIN_DN = "CN=admin,OU=Users,DC=winllc,DC=com";
     private static final String MEMBER_DN = "CN=user1,OU=Users,DC=winllc,DC=com";
+    private static final String NOBODY_DN = "CN=nobody,OU=Users,DC=winllc,DC=com";
     private static final String BOB = "CN=Bob Barker,OU=Users,DC=winllc,DC=com";
     private static final String ALICE = "CN=Alice Anders,OU=Users,DC=winllc,DC=com";
 
@@ -88,6 +93,8 @@ class GroupCalendarRestServiceTest {
     ApplicationProperties properties;
     @MockitoBean
     LdapService ldapService;
+    @MockitoBean
+    UserService userService;
     // Named, because the @PreAuthorize expression resolves it as @permissionEvaluator by bean name.
     @MockitoBean(name = "permissionEvaluator")
     PermissionEvaluator permissionEvaluator;
@@ -104,12 +111,16 @@ class GroupCalendarRestServiceTest {
             return http.build();
         }
 
-        /** Only "CN=admin" carries the role that opens any group; everyone else is a plain USER. */
+        /**
+         * Only "CN=admin" carries the role that opens any group, "CN=nobody" holds no application
+         * role at all, and everyone else is a plain USER.
+         */
         @Bean
         public UserDetailsService userDetailsService() {
             return username -> User.withUsername(username).password("")
                     .authorities(username.startsWith("CN=admin") ? UserRoleEnum.ADMIN.name()
-                                                                 : UserRoleEnum.USER.name())
+                            : username.startsWith("CN=nobody") ? "NONE"
+                            : UserRoleEnum.USER.name())
                     .build();
         }
     }
@@ -304,6 +315,90 @@ class GroupCalendarRestServiceTest {
 
         assertEquals("not a dn: TDY", row.get("title").asString());
         assertFalse(row.get("id").asString().isBlank());
+    }
+
+    // --- My Reports' calendar: the same events, over the caller's own team ----------------
+
+    private JsonNode reportsCalendarFor(String callerDn) throws Exception {
+        String body = mockMvc.perform(get("/api/event/reports")
+                        .param("from", FROM).param("to", TO)
+                        .with(x509(cert(callerDn))))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        return JsonMapper.builder().build().readTree(body);
+    }
+
+    private void reportsAre(String... dns) {
+        when(userService.findDirectReports(any()))
+                .thenReturn(Stream.of(dns).map(dn -> {
+                    LdapUser user = new LdapUser();
+                    user.setDn(dn);
+                    return user;
+                }).toList());
+    }
+
+    @Test
+    void theReportsCalendarCarriesEveryReportsStatus() throws Exception {
+        reportsAre(BOB, ALICE);
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any()))
+                .thenReturn(List.of(
+                        event(BOB, LocalDate.of(2026, 9, 10), UserStatusEnum.WORK_FROM_HOME),
+                        event(ALICE, LocalDate.of(2026, 9, 11), UserStatusEnum.ABSENT_UNEXCUSED)));
+
+        List<JsonNode> rows = rows(reportsCalendarFor(MEMBER_DN));
+
+        assertEquals(2, rows.size(), rows.toString());
+        assertEquals("Bob Barker: Work From Home", rows.get(0).get("title").asString());
+        assertEquals("blue", rows.get(0).get("backgroundColor").asString());
+        assertEquals("Alice Anders: Absent Unexcused", rows.get(1).get("title").asString());
+        assertEquals("/app/user/details/" + ALICE, rows.get(1).get("url").asString());
+    }
+
+    /**
+     * Scoped to the caller, like the table on the same page: the team comes from the authenticated
+     * principal, and there is no parameter to point it at anybody else's.
+     */
+    @Test
+    void theReportsCalendarIsTheCallersOwnTeam() throws Exception {
+        reportsAre(BOB);
+        when(userEventRecordRepository.findByLowercaseDnInAndDateBetween(any(), any(), any()))
+                .thenReturn(List.of());
+
+        reportsCalendarFor(MEMBER_DN);
+
+        ArgumentCaptor<LdapDn> manager = ArgumentCaptor.forClass(LdapDn.class);
+        verify(userService).findDirectReports(manager.capture());
+        assertEquals(MEMBER_DN, manager.getValue().dn());
+    }
+
+    /** Nobody reporting to the caller is an empty calendar, and no query at all. */
+    @Test
+    void aCallerWithNoReportsGetsAnEmptyCalendar() throws Exception {
+        reportsAre();
+
+        assertTrue(rows(reportsCalendarFor(MEMBER_DN)).isEmpty());
+        verify(userEventRecordRepository, never()).findByLowercaseDnInAndDateBetween(any(), any(), any());
+    }
+
+    /**
+     * Open to a plain USER, like the page it is on: reporting lines come from the directory, so
+     * somebody holding only USER can still have a team. Holding no application role is still a no.
+     */
+    @Test
+    void theReportsCalendarNeedsAnApplicationRole() throws Exception {
+        mockMvc.perform(get("/api/event/reports").param("from", FROM).param("to", TO)
+                        .with(x509(cert(NOBODY_DN))))
+                .andExpect(status().isForbidden());
+
+        verify(userService, never()).findDirectReports(any());
+    }
+
+    @Test
+    void theReportsCalendarRequiresAuthentication() throws Exception {
+        mockMvc.perform(get("/api/event/reports").param("from", FROM).param("to", TO))
+                .andExpect(status().is4xxClientError());
+
+        verify(userService, never()).findDirectReports(any());
     }
 
     static X509Certificate cert(String dn) {
