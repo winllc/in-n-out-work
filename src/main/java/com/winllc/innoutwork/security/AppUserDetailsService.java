@@ -9,6 +9,7 @@ import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.service.TrackedPeopleLimitException;
 import com.winllc.innoutwork.service.UserService;
+import com.winllc.innoutwork.util.LogSafe;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -62,7 +63,7 @@ public class AppUserDetailsService implements UserDetailsService {
         if (ldapUser != null) {
             return detailsFor(dn, ldapUser);
         } else {
-            log.debug("Refused sign-in for {}: no such user in the directory", dn);
+            log.debug("Refused sign-in for {}: no such user in the directory", LogSafe.of(String.valueOf(dn)));
             throw new UsernameNotFoundException("No directory user " + dn);
         }
     }

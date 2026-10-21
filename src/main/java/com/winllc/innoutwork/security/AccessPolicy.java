@@ -16,6 +16,7 @@ import com.winllc.innoutwork.service.GroupService;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.PermissionService;
 import com.winllc.innoutwork.service.UserService;
+import com.winllc.innoutwork.util.LogSafe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.authentication.AnonymousAuthenticationToken;
@@ -126,7 +127,8 @@ public class AccessPolicy {
     /** Whether {@code viewer} may see {@code dn}'s details; see the class comment. */
     public boolean canViewDetails(Authentication viewer, String dn) {
         boolean allowed = scope(viewer).canViewDetails(dn);
-        log.debug("Details of {} {} for {}", dn, allowed ? "granted" : "denied", viewer != null ? viewer.getName() : null);
+        log.debug("Details of {} {} for {}", LogSafe.of(dn), allowed ? "granted" : "denied",
+                viewer != null ? LogSafe.of(viewer.getName()) : null);
         return allowed;
     }
 
@@ -176,7 +178,7 @@ public class AccessPolicy {
     private Set<String> responsibleFor(String me) {
         Set<String> people = new LinkedHashSet<>();
         responsiblePeople(me).forEach(dn -> people.add(key(dn)));
-        log.debug("{} is responsible for {} people", me, people.size());
+        log.debug("{} is responsible for {} people", LogSafe.of(me), people.size());
         return people;
     }
 
@@ -264,7 +266,7 @@ public class AccessPolicy {
         boolean allowed = isAdmin(viewer)
                 || memberGroupDns(viewer.getName()).stream().anyMatch(g -> sameDn(g, groupDn))
                 || managesGroup(viewer.getName(), groupDn);
-        log.debug("Group {} {} for {}", groupDn, allowed ? "granted" : "denied", viewer.getName());
+        log.debug("Group {} {} for {}", LogSafe.of(groupDn), allowed ? "granted" : "denied", LogSafe.of(viewer.getName()));
         return allowed;
     }
 
@@ -274,7 +276,8 @@ public class AccessPolicy {
             return false;
         }
         boolean allowed = isAdmin(viewer) || managesGroup(viewer.getName(), groupDn);
-        log.debug("Managing group {} {} for {}", groupDn, allowed ? "granted" : "denied", viewer.getName());
+        log.debug("Managing group {} {} for {}", LogSafe.of(groupDn), allowed ? "granted" : "denied",
+                LogSafe.of(viewer.getName()));
         return allowed;
     }
 

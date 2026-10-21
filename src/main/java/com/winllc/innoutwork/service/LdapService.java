@@ -152,7 +152,7 @@ public class LdapService {
                 PagedResultsCookie cookie = processor.getCookie();
                 if (previousCookie != null && previousCookie.equals(cookie)) {
                     log.warn("Search under {} for {} stopped after {} page(s): the directory returned the "
-                            + "same paging cookie twice, so results may be incomplete", base, filter, pages);
+                            + "same paging cookie twice, so results may be incomplete", LogSafe.of(base), LogSafe.of(filter), pages);
                     break;
                 }
                 previousCookie = cookie;
@@ -162,12 +162,13 @@ public class LdapService {
                     // than returning a truncated answer and saying so.
                     log.warn("Search under {} for {} hit the {}-page limit after {} entries; returning what "
                             + "was read. Raise application.ldap.max-pages if this result set is genuinely "
-                            + "this large", base, filter, maxPages, results.size());
+                            + "this large", LogSafe.of(base), LogSafe.of(filter), maxPages, results.size());
                     break;
                 }
             } while (true);
 
-            log.trace("Search under {} for {} read {} entries in {} page(s)", base, filter, results.size(), pages);
+            log.trace("Search under {} for {} read {} entries in {} page(s)", LogSafe.of(base), LogSafe.of(filter),
+                    results.size(), pages);
             return results;
         }, true, false, false); // read-only context, like the template's own searches; errors propagate as they do there
     }
@@ -497,7 +498,8 @@ public class LdapService {
 
         List<LdapUser> users = ldapTemplate.search(query, new LdapUserContextMapper(properties));
         if (users.size() > 1) {
-            log.warn("More than one directory user has {}={}; not choosing between them", attribute, value);
+            log.warn("More than one directory user has {}={}; not choosing between them", LogSafe.of(attribute),
+                    LogSafe.of(value));
             return Optional.empty();
         }
         return users.stream().findFirst();
@@ -522,7 +524,7 @@ public class LdapService {
 
         List<LdapUser> users = ldapTemplate.search(query, new LdapUserContextMapper(properties));
         if (users.size() > 1) {
-            log.warn("More than one directory user matches {}; not choosing between them", filter);
+            log.warn("More than one directory user matches {}; not choosing between them", LogSafe.of(filter));
             return Optional.empty();
         }
         return users.stream().findFirst();
@@ -882,7 +884,7 @@ public class LdapService {
             }
         }
 
-        log.debug("User {} owns {} group(s)", userDn, groups.size());
+        log.debug("User {} owns {} group(s)", LogSafe.of(userDn), groups.size());
         return List.copyOf(groups);
     }
 
@@ -905,7 +907,7 @@ public class LdapService {
         }
 
         // Drives both the "Member Of" list and the permission checks.
-        log.debug("User {} is a member of {} group(s)", userDn, groups.size());
+        log.debug("User {} is a member of {} group(s)", LogSafe.of(userDn), groups.size());
 
         return List.copyOf(groups);
     }
