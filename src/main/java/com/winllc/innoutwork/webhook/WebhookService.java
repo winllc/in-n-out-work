@@ -296,9 +296,11 @@ public class WebhookService {
      * <ul>
      *   <li>No new try starts after application.webhooks.run-budget (each try is itself cut off at
      *       application.webhooks.attempt-timeout);</li>
-     *   <li>one endpoint gets at most application.webhooks.per-endpoint-max tries and
-     *       application.webhooks.per-endpoint-budget of time per run, and none more in the run after a try it gave
-     *       no HTTP answer to;</li>
+     *   <li>due deliveries are taken per endpoint (endpoints with the oldest due first), at most
+     *       application.webhooks.per-endpoint-max and application.webhooks.per-endpoint-budget of time each, so one
+     *       endpoint's backlog never fills a run;</li>
+     *   <li>an endpoint that gives no HTTP answer at all is paused, with backoff (30 s, 2 min, 10 min, ... 8 h),
+     *       until which no run spends a try on it; any answer ends the pause;</li>
      *   <li>each delivery is claimed (a conditional update, in its own transaction) just before it is sent, so two
      *       replicas, or a run after a lost lock, never send it at once; the claim ends with the try, or lapses.</li>
      * </ul>
@@ -311,36 +313,27 @@ public class WebhookService {
             return 0;
         }
         long runDeadline = System.nanoTime() + settings.getRunBudget().toNanos();
-        Map<Long, Integer> tries = new java.util.HashMap<>();
-        Map<Long, Long> spent = new java.util.HashMap<>();
-        java.util.Set<Long> silent = new java.util.HashSet<>();
-        List<WebhookDelivery> due = deliveries.findDue(WebhookDelivery.State.PENDING, clock.instant(),
-                PageRequest.of(0, BATCH));
+        Instant now = clock.instant();
         int tried = 0;
-        for (WebhookDelivery delivery : due) {
+        for (Long endpoint : deliveries.findEndpointsWithDue(WebhookDelivery.State.PENDING, now, PageRequest.of(0, 500))) {
             if (System.nanoTime() >= runDeadline) {
                 break;
             }
-            Long endpoint = delivery.getEndpointId();
-            if (silent.contains(endpoint) || tries.getOrDefault(endpoint, 0) >= settings.getPerEndpointMax()
-                    || spent.getOrDefault(endpoint, 0L) >= settings.getPerEndpointBudget().toNanos()) {
-                continue;
+            long endpointDeadline = Math.min(runDeadline, System.nanoTime() + settings.getPerEndpointBudget().toNanos());
+            for (WebhookDelivery delivery : deliveries.findDueForEndpoint(endpoint, WebhookDelivery.State.PENDING, now,
+                    PageRequest.of(0, settings.getPerEndpointMax()))) {
+                if (System.nanoTime() >= endpointDeadline) {
+                    break;
+                }
+                if (!claim(delivery)) {
+                    continue;
+                }
+                tried++;
+                if (attempt(delivery) == Outcome.NO_ANSWER) {
+                    // Paused (finish), so neither this run nor the next ones spend a try on it until the backoff ends.
+                    break;
+                }
             }
-            if (!claim(delivery)) {
-                continue;
-            }
-            long started = System.nanoTime();
-            Outcome outcome;
-            try {
-                outcome = attempt(delivery);
-            } finally {
-                spent.merge(endpoint, System.nanoTime() - started, Long::sum);
-                tries.merge(endpoint, 1, Integer::sum);
-            }
-            if (outcome == Outcome.NO_ANSWER) {
-                silent.add(endpoint);
-            }
-            tried++;
         }
         return tried;
     }
@@ -350,7 +343,7 @@ public class WebhookService {
         Instant now = clock.instant();
         Instant until = now.plus(settings.getAttemptTimeout().multipliedBy(2)).plusSeconds(30);
         Integer claimed = newTransaction.execute(s -> deliveries.claim(delivery.getId(), WebhookDelivery.State.PENDING,
-                now, until));
+                delivery.getAttempts(), now, until));
         return claimed != null && claimed == 1;
     }
 
@@ -414,22 +407,20 @@ public class WebhookService {
 
     private void finish(WebhookDelivery delivery, WebhookEndpoint endpoint, Instant now, WebhookDelivery.State state,
                         Integer status, String problem) {
-        delivery.setAttempts(delivery.getAttempts() + 1);
-        delivery.setClaimedUntil(null);
-        delivery.setLastAttemptAt(now);
-        delivery.setLastStatus(status);
-        delivery.setLastError(cut(problem));
-        delivery.setState(state);
-        if (state == WebhookDelivery.State.DELIVERED) {
-            delivery.setDeliveredAt(now);
-            delivery.setNextAttemptAt(null);
-        } else if (state == WebhookDelivery.State.PENDING) {
-            delivery.setNextAttemptAt(now.plus(BACKOFF.get(Math.min(delivery.getAttempts() - 1, BACKOFF.size() - 1))));
-        } else {
-            delivery.setNextAttemptAt(null);
-        }
+        int before = delivery.getAttempts();
+        Instant next = state == WebhookDelivery.State.PENDING
+                ? now.plus(BACKOFF.get(Math.min(before, BACKOFF.size() - 1))) : null;
+        Instant delivered = state == WebhookDelivery.State.DELIVERED ? now : null;
+        // An answer of any kind shows the endpoint is there; no answer at all (status null after a send) pauses it.
+        boolean silent = status == null && problem != null && !problem.startsWith("not sent")
+                && endpoint != null && !problem.startsWith("the administrator");
         newTransaction.executeWithoutResult(s -> {
-            deliveries.save(delivery);
+            int recorded = deliveries.recordResult(delivery.getId(), before, state, now, status, cut(problem), next,
+                    delivered);
+            if (recorded != 1) {
+                log.warn("Webhook delivery {} was changed by another sender; its result here is not recorded",
+                        delivery.getId());
+            }
             if (endpoint != null) {
                 endpoints.findById(endpoint.getId()).ifPresent(e -> {
                     if (state == WebhookDelivery.State.DELIVERED) {
@@ -438,10 +429,21 @@ public class WebhookService {
                         e.setLastFailureAt(now);
                         e.setLastError(cut(problem));
                     }
+                    if (status != null) {
+                        e.setSilentFailures(0);
+                        e.setPausedUntil(null);
+                    } else if (silent) {
+                        e.setSilentFailures(e.getSilentFailures() + 1);
+                        e.setPausedUntil(now.plus(BACKOFF.get(Math.min(e.getSilentFailures() - 1, BACKOFF.size() - 1))));
+                    }
                     endpoints.save(e);
                 });
             }
         });
+        delivery.setAttempts(before + 1);
+        delivery.setState(state);
+        delivery.setNextAttemptAt(next);
+        delivery.setClaimedUntil(null);
     }
 
     /** Deletes delivered and failed deliveries older than application.webhooks.delivery-log-days. */

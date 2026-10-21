@@ -1234,7 +1234,13 @@ it, otherwise a non-zero `lockoutTime` unless the domain's `lockoutDuration` is 
 passed; OpenLDAP ppolicy `pwdAccountLockedTime` unless the account's policy (`pwdPolicySubentry`) has a known,
 non-zero `pwdLockoutDuration` that has passed (no `pwdPolicySubentry`, an unreadable policy or a duration of 0 mean
 locked; `APPLICATION_LDAP_ACCOUNTSTATUS_LOCKOUTDURATION`, unset by default, may give the default policy's duration);
-389 Directory Server `accountUnlockTime` in the future or `19700101000000Z`. and must still be an administrator; otherwise, or when the directory cannot
+389 Directory Server `accountUnlockTime` in the future or `19700101000000Z`. A status value that is not a number, and
+on Active Directory (`APPLICATION_LDAP_ACCOUNTSTATUS_ACTIVEDIRECTORY`: `auto`, an entry with the objectClass
+`user`; or `true`/`false`) an entry without `userAccountControl`, refuse: **the bind account (`LDAP_USERNAME`)
+must be able to read `userAccountControl`, `lockoutTime`, `accountExpires` and
+`msDS-User-Account-Control-Computed` (Active Directory), `nsAccountLock` and `accountUnlockTime` (389),
+`pwdAccountLockedTime`, `pwdPolicySubentry` and the policies' `pwdLockoutDuration` (OpenLDAP), and the domain
+root's `lockoutDuration` (Active Directory)**. and must still be an administrator; otherwise, or when the directory cannot
 be read, the token is refused. A usable account is remembered for at most `APPLICATION_LDAP_ACCOUNTSTATUS_CACHESECONDS`
 (60, the maximum; 0 turns it off); refusals are never remembered. The same check applies to webhook owners and to
 scheduled reports' owners and recipients. `APPLICATION_LDAP_ACCOUNTSTATUS_BUILTINCHECKS=false` turns the built-in
@@ -1268,10 +1274,13 @@ over the exact bytes received, compare in constant time, and refuse a timestamp 
 clock. Deliveries are queued in the database once the change commits, and sent within seconds by one replica at
 a time, each claimed (`claimed_until`, a conditional update) just before it is sent so that no two replicas send it
 at once. A try is cut off after `APPLICATION_WEBHOOKS_ATTEMPTTIMEOUT` (30s) altogether, whatever the receiver does
-(a handshake or answer sent a byte at a time included); a run starts no try after `APPLICATION_WEBHOOKS_RUNBUDGET`
-(40s); one endpoint gets at most `APPLICATION_WEBHOOKS_PERENDPOINTMAX` (20) tries and
-`APPLICATION_WEBHOOKS_PERENDPOINTBUDGET` (20s) per run, and none more in that run after a try it gave no HTTP
-answer to, so a slow or dead receiver cannot hold the others up. Delivery is at least once (a reply lost after
+(a handshake or answer sent a byte at a time, and the host's DNS lookup, included); a run starts no try after
+`APPLICATION_WEBHOOKS_RUNBUDGET` (40s); due deliveries are taken per endpoint, at most
+`APPLICATION_WEBHOOKS_PERENDPOINTMAX` (20) tries and `APPLICATION_WEBHOOKS_PERENDPOINTBUDGET` (20s) each; and an
+endpoint that gives no HTTP answer at all is paused with backoff (30 seconds, then 2, 10 and 30 minutes, 1, 2, 4
+and 8 hours) until any answer, so a slow or dead receiver, however long its backlog, cannot hold the others up.
+A claim and a result are recorded only on the row as it was read, so a stale copy can neither send a delivery
+another node rescheduled nor lower its count of tries. Delivery is at least once (a reply lost after
 the receiver processed it is sent again): receivers de-duplicate on `X-ReadyRoom-Delivery`; anything but a 2xx answer (a redirect included) is retried after 30 seconds, 2, 10 and 30 minutes, then
 1, 2, 4 and 8 hours, up to `APPLICATION_WEBHOOKS_MAXATTEMPTS` (8) tries, then marked failed. The page shows each
 webhook's recent deliveries (state, tries, last status, error); the log is kept
@@ -1296,7 +1305,7 @@ when a webhook is saved and again on every delivery, and the connection is made 
 | `APPLICATION_WEBHOOKS_DELIVERYLOGDAYS` | `30` | Days delivered and failed deliveries are kept |
 | `APPLICATION_WEBHOOKS_CONNECTTIMEOUT`, `_READTIMEOUT` | `5s`, `10s` | |
 | `APPLICATION_WEBHOOKS_ATTEMPTTIMEOUT`, `_RUNBUDGET`, `_PERENDPOINTMAX`, `_PERENDPOINTBUDGET` | `30s`, `40s`, `20`, `20s` | A try's overall deadline, and one run's limits |
-| `APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, `_LOCKOUTDURATION`, `_CACHESECONDS`, `_BUILTINCHECKS` | (none), (unset), `60`, `true` | The live account check of token, webhook and scheduled report owners (above) |
+| `APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, `_LOCKOUTDURATION`, `_CACHESECONDS`, `_BUILTINCHECKS`, `_ACTIVEDIRECTORY` | (none), (unset), `60`, `true`, `auto` | The live account check of token, webhook and scheduled report owners (above) |
 | `APPLICATION_API_MAXTOKENDAYS`, `_DEFAULTRATEPERMINUTE`, `_MAXRATEPERMINUTE`, `_MAXRANGEDAYS`, `_MAXPAGESIZE` | `366`, `120`, `1200`, `366`, `500` | |
 
 Audited: `webhook.created`, `webhook.disabled`, `webhook.enabled`, `webhook.deleted` (the secret appears only as

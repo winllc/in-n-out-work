@@ -6,8 +6,17 @@ import java.net.InetAddress;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
+import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * Where webhooks may be sent: the guard against server-side request forgery. A webhook URL must be
@@ -125,11 +134,48 @@ public class WebhookAddressPolicy {
      * @throws WebhookRefusedException when the host does not resolve, or any of its addresses is refused
      */
     public List<InetAddress> resolve(String host) throws WebhookRefusedException {
+        return resolve(host, DEFAULT_RESOLVE_TIMEOUT);
+    }
+
+    /** The longest a lookup may take when no try's deadline bounds it (saving a webhook). */
+    static final Duration DEFAULT_RESOLVE_TIMEOUT = Duration.ofSeconds(10);
+
+    /**
+     * Lookups run here, so that one the system resolver does not answer (it has no timeout of its own that Java can
+     * set, and retries can take minutes) is abandoned at the caller's deadline. Few threads: a resolver that hangs
+     * makes later lookups wait and time out too, which refuses, never sends.
+     */
+    private static final ExecutorService LOOKUPS = new ThreadPoolExecutor(1, 4, 60, TimeUnit.SECONDS,
+            new LinkedBlockingQueue<>(100), r -> {
+                Thread t = new Thread(r, "webhook-dns");
+                t.setDaemon(true);
+                return t;
+            });
+
+    /**
+     * {@link #resolve(String)} within {@code timeout}.
+     *
+     * @throws WebhookRefusedException also when the lookup does not finish in time
+     */
+    public List<InetAddress> resolve(String host, Duration timeout) throws WebhookRefusedException {
         String bare = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
         InetAddress[] addresses;
+        Future<InetAddress[]> lookup;
         try {
-            addresses = resolver.resolve(bare);
-        } catch (UnknownHostException e) {
+            lookup = LOOKUPS.submit(() -> resolver.resolve(bare));
+        } catch (RejectedExecutionException e) {
+            throw new WebhookRefusedException("Too many lookups of webhook hosts are waiting; " + bare + " was not looked up.");
+        }
+        try {
+            addresses = lookup.get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            lookup.cancel(true);
+            throw new WebhookRefusedException("The host " + bare + " did not resolve within " + timeout.toSeconds()
+                    + " seconds.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new WebhookRefusedException("Interrupted while looking up " + bare + ".");
+        } catch (ExecutionException e) {
             throw new WebhookRefusedException("The host " + bare + " does not resolve.");
         }
         if (addresses == null || addresses.length == 0) {

@@ -52,7 +52,7 @@ public class DirectoryAccounts {
     /** The attributes the built-in checks read, as they are named in the directories that have them. */
     static final List<String> STATUS_ATTRIBUTES = List.of("userAccountControl", "msDS-User-Account-Control-Computed",
             "lockoutTime", "accountExpires", "nsAccountLock", "accountUnlockTime", "pwdAccountLockedTime",
-            "pwdPolicySubentry");
+            "pwdPolicySubentry", "objectClass");
 
     /** 389 Directory Server's accountUnlockTime for an account locked until an administrator unlocks it. */
     static final String LOCKED_UNTIL_UNLOCKED_389 = "19700101000000Z";
@@ -151,7 +151,8 @@ public class DirectoryAccounts {
         try {
             status = settings.isBuiltInChecks() ? status(entry.get().status(), ldapDn) : Status.ACTIVE;
         } catch (RuntimeException e) {
-            log.warn("Could not read the lockout policy of {}: {}", LogSafe.of(dn), LogSafe.of(e.getMessage()));
+            // A policy that cannot be read, or a status attribute that cannot be understood: refused, never active.
+            log.warn("Could not establish whether {} is usable: {}", LogSafe.of(dn), LogSafe.of(e.getMessage()));
             return new Account(Status.UNAVAILABLE, null);
         }
         if (status != Status.ACTIVE) {
@@ -175,6 +176,10 @@ public class DirectoryAccounts {
      * directory when needed; a read that fails throws, and the caller refuses.
      */
     Status status(Map<String, String> attributes, LdapDn dn) {
+        if (activeDirectory(attributes) && attributes.get("useraccountcontrol") == null) {
+            throw new IllegalStateException("its entry came back without userAccountControl: the bind account must be"
+                    + " able to read it (and lockoutTime, accountExpires, msDS-User-Account-Control-Computed)");
+        }
         long uac = number(attributes.get("useraccountcontrol"));
         if ((uac & 0x2) != 0) {
             return Status.DISABLED;
@@ -313,6 +318,7 @@ public class DirectoryAccounts {
         return s == null ? null : s.trim();
     }
 
+    /** A number attribute: 0 when absent; a value that is not a number refuses (throws), never reads as 0. */
     private static long number(String s) {
         if (s == null || s.isBlank()) {
             return 0;
@@ -320,8 +326,29 @@ public class DirectoryAccounts {
         try {
             return Long.parseLong(s.trim());
         } catch (NumberFormatException e) {
-            return 0;
+            throw new IllegalStateException("an account status attribute is not a number: " + s);
         }
+    }
+
+    /** Whether to treat the entry as Active Directory's: as configured, or (auto) one with the objectClass user. */
+    private boolean activeDirectory(Map<String, String> attributes) {
+        String setting = settings.getActiveDirectory() == null ? "auto" : settings.getActiveDirectory().trim();
+        if (setting.equalsIgnoreCase("true")) {
+            return true;
+        }
+        if (setting.equalsIgnoreCase("false")) {
+            return false;
+        }
+        String classes = attributes.get("objectclass");
+        if (classes == null) {
+            return false;
+        }
+        for (String c : classes.split("\\s+")) {
+            if (c.equalsIgnoreCase("user")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** yyyyMMddHHmmss[.fraction]Z, as LDAP writes times; null when it cannot be read. */

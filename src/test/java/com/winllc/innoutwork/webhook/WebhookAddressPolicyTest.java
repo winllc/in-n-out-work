@@ -106,6 +106,24 @@ class WebhookAddressPolicyTest {
     }
 
     @Test
+    void aLookupThatHangsIsAbandonedAtTheDeadline() {
+        WebhookAddressPolicy slow = new WebhookAddressPolicy(List.of(), host -> {
+            try {
+                Thread.sleep(5_000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            return new InetAddress[]{InetAddress.getByName("93.184.216.34")};
+        });
+        long start = System.nanoTime();
+        WebhookRefusedException e = assertThrows(WebhookRefusedException.class,
+                () -> slow.resolve("slow.example.com", java.time.Duration.ofMillis(300)));
+        long took = java.time.Duration.ofNanos(System.nanoTime() - start).toMillis();
+        assertTrue(took < 2_000, "took " + took + " ms");
+        assertTrue(e.getMessage().contains("did not resolve within"), e.getMessage());
+    }
+
+    @Test
     void aHostWithAnyInternalAddressIsRefused() {
         WebhookRefusedException e = assertThrows(WebhookRefusedException.class, () -> STRICT.resolve("mixed.example.com"));
         assertTrue(e.getMessage().contains("10.0.0.5"), e.getMessage());

@@ -499,6 +499,15 @@ public class ApplicationProperties {
          * refused until its pwdAccountLockedTime is removed.
          */
         private Duration lockoutDuration;
+        /**
+         * Whether the directory is Active Directory, where every user entry must come back with userAccountControl
+         * (one without it means the bind account may not read it, and is refused): {@code auto} (the default: an
+         * entry with the objectClass user), {@code true} or {@code false}.
+         */
+        @Pattern(regexp = "(?i)auto|true|false",
+                message = "application.ldap.account-status.active-directory must be auto, true or false")
+        private String activeDirectory = "auto";
+
         /** How long a usable account is remembered (refusals never are): 0 to 60 seconds. */
         @Min(value = 0, message = "application.ldap.account-status.cache-seconds must be 0 to 60")
         @Max(value = 60, message = "application.ldap.account-status.cache-seconds must be 0 to 60")

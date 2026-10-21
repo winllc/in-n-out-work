@@ -217,6 +217,41 @@ class DirectoryAccountsTest extends FullApplicationTest {
         assertEquals(DirectoryAccounts.Status.UNAVAILABLE, failing.check(BOB).status());
     }
 
+    @org.junit.jupiter.params.ParameterizedTest(name = "{0}={1}")
+    @org.junit.jupiter.params.provider.CsvSource({"userAccountControl, abc", "lockoutTime, soon",
+            "accountExpires, never", "msDS-User-Account-Control-Computed, x10"})
+    void aStatusValueThatIsNotANumberRefuses(String attribute, String value) {
+        setAttribute(BOB, attribute, value);
+        assertEquals(DirectoryAccounts.Status.UNAVAILABLE, accounts.check(BOB).status());
+        assertFalse(accounts.check(BOB).active());
+    }
+
+    @Test
+    void anActiveDirectoryEntryWithoutUserAccountControlRefuses() {
+        // auto: an entry with the objectClass user is Active Directory's.
+        DIRECTORY.ldapTemplate().modifyAttributes(BOB, new javax.naming.directory.ModificationItem[]{
+                new javax.naming.directory.ModificationItem(javax.naming.directory.DirContext.ADD_ATTRIBUTE,
+                        new BasicAttribute("objectClass", "user"))});
+        try {
+            assertEquals(DirectoryAccounts.Status.UNAVAILABLE, accounts.check(BOB).status(),
+                    "the bind account cannot read userAccountControl");
+            setAttribute(BOB, "userAccountControl", "512");
+            assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status());
+        } finally {
+            DIRECTORY.ldapTemplate().modifyAttributes(BOB, new javax.naming.directory.ModificationItem[]{
+                    new javax.naming.directory.ModificationItem(javax.naming.directory.DirContext.REMOVE_ATTRIBUTE,
+                            new BasicAttribute("objectClass", "user"))});
+        }
+        assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status(), "not Active Directory");
+
+        ApplicationProperties settings = new ApplicationProperties();
+        settings.getLdap().getAccountStatus().setCacheSeconds(0);
+        settings.getLdap().getAccountStatus().setActiveDirectory("true");
+        DirectoryAccounts ad = new DirectoryAccounts(ldapService, users, settings);
+        removeAttribute(BOB, "userAccountControl");
+        assertEquals(DirectoryAccounts.Status.UNAVAILABLE, ad.check(BOB).status(), "configured as Active Directory");
+    }
+
     @Test
     void anAccountMustStillMatchTheConfiguredFilter() {
         ApplicationProperties settings = new ApplicationProperties();

@@ -327,6 +327,71 @@ class WebhookStallTest extends FullApplicationTest {
     }
 
     @Test
+    void aDeadEndpointsBacklogDoesNotDelayALiveEndpoint() throws Exception {
+        WebhookService sender = sender(Duration.ofSeconds(10));
+        WebhookEndpoint dead = endpoint(sender, drippingHandshake());
+        WebhookEndpoint alive = endpoint(sender, live(0));
+        Instant older = Instant.now().minusSeconds(3600);
+        List<WebhookDelivery> backlog = new ArrayList<>();
+        for (int i = 0; i < 200; i++) {
+            WebhookDelivery d = new WebhookDelivery();
+            d.setEndpointId(dead.getId());
+            d.setEventId(UUID.randomUUID().toString());
+            d.setEventType("status.changed");
+            d.setPayload("{}");
+            d.setState(WebhookDelivery.State.PENDING);
+            d.setCreatedAt(older.plusSeconds(i));
+            d.setNextAttemptAt(older.plusSeconds(i));
+            backlog.add(d);
+        }
+        deliveries.saveAll(backlog);
+        List<WebhookDelivery> toLive = new ArrayList<>();
+        for (int i = 0; i < 3; i++) {
+            toLive.add(queue(alive, Instant.now().minusSeconds(5 - i)));
+        }
+
+        long took = timed(sender::deliverDue);
+        assertTrue(took < 10_000, "within the run budget: " + took + " ms");
+        assertTrue(toLive.stream().allMatch(d -> deliveries.findById(d.getId()).orElseThrow().getState()
+                == WebhookDelivery.State.DELIVERED), "every live delivery in one run");
+        assertTrue(endpoints.findById(dead.getId()).orElseThrow().getPausedUntil() != null, "the dead one is paused");
+
+        // The next runs spend no try on it while it is paused.
+        long next = timed(() -> assertEquals(0, sender.deliverDue()));
+        assertTrue(next < 1_000, "took " + next + " ms");
+        assertEquals(1, deliveries.findAll().stream().filter(d -> d.getEndpointId().equals(dead.getId()))
+                .mapToInt(WebhookDelivery::getAttempts).sum());
+    }
+
+    @Test
+    void aStaleCopyCanNeitherClaimNorOverwriteADelivery() throws Exception {
+        WebhookService sender = sender(Duration.ofSeconds(40));
+        WebhookEndpoint alive = endpoint(sender, live(0));
+        WebhookDelivery d = queue(alive, Instant.now().minusSeconds(1));
+        WebhookDelivery stale = deliveries.findById(d.getId()).orElseThrow();
+
+        // Another node tried it and rescheduled it meanwhile.
+        WebhookDelivery fresh = deliveries.findById(d.getId()).orElseThrow();
+        fresh.setAttempts(3);
+        fresh.setNextAttemptAt(Instant.now().plusSeconds(600));
+        deliveries.save(fresh);
+
+        org.springframework.transaction.support.TransactionTemplate tx =
+                new org.springframework.transaction.support.TransactionTemplate(transactions);
+        assertEquals(Integer.valueOf(0), tx.execute(s -> deliveries.claim(d.getId(), WebhookDelivery.State.PENDING, stale.getAttempts(),
+                Instant.now(), Instant.now().plusSeconds(60))), "a stale count of tries");
+        assertEquals(Integer.valueOf(0), tx.execute(s -> deliveries.claim(d.getId(), WebhookDelivery.State.PENDING, 3,
+                Instant.now(), Instant.now().plusSeconds(60))), "rescheduled: not due");
+        assertEquals(Integer.valueOf(0), tx.execute(s -> deliveries.recordResult(d.getId(), stale.getAttempts(),
+                WebhookDelivery.State.FAILED, Instant.now(), 500, "stale", null, null)), "a stale result");
+        WebhookDelivery after = deliveries.findById(d.getId()).orElseThrow();
+        assertEquals(3, after.getAttempts(), "never lowered");
+        assertEquals(WebhookDelivery.State.PENDING, after.getState());
+        assertEquals(0, sender.deliverDue(), "not due yet");
+        assertTrue(received.isEmpty());
+    }
+
+    @Test
     void aClaimedDeliveryIsNotSentTwice() throws Exception {
         WebhookService one = sender(Duration.ofSeconds(40));
         WebhookService two = sender(Duration.ofSeconds(40));

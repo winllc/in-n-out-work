@@ -70,6 +70,14 @@ public class WebhookEndpoint {
     @Column(name = "last_error", length = 500)
     private String lastError;
 
+    /** Tries in a row that got no HTTP answer at all; reset by any answer. */
+    @Column(name = "silent_failures", nullable = false)
+    private int silentFailures;
+
+    /** After a try with no answer, nothing is sent to it until then (backing off with {@link #silentFailures}). */
+    @Column(name = "paused_until")
+    private Instant pausedUntil;
+
     public Set<WebhookEventType> getEventSet() {
         return WebhookEventType.parse(events);
     }

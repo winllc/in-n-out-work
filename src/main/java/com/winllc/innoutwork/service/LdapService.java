@@ -434,9 +434,10 @@ public class LdapService {
                 DirContextAdapter adapter = (DirContextAdapter) ctx;
                 Map<String, String> status = new HashMap<>();
                 for (String name : statusAttributes) {
-                    String value = adapter.getStringAttribute(name);
-                    if (value != null) {
-                        status.put(name.toLowerCase(Locale.ROOT), value);
+                    String[] values = adapter.getStringAttributes(name);
+                    if (values != null && values.length > 0) {
+                        // Several values (objectClass) are kept space separated.
+                        status.put(name.toLowerCase(Locale.ROOT), String.join(" ", values));
                     }
                 }
                 return new LiveUser(users.mapFromContext(ctx), status);

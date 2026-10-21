@@ -68,14 +68,14 @@ public class WebhookTransport {
     public int post(String url, Map<String, String> headers, byte[] body) throws IOException, WebhookRefusedException {
         URI uri = policy.checkUrl(url);
         String host = uri.getHost();
-        List<InetAddress> addresses = policy.resolve(host);
-        int port = uri.getPort() == -1 ? 443 : uri.getPort();
-        String bareHost = host.startsWith("[") ? host.substring(1, host.length() - 1) : host;
-
-        // One deadline for the whole try, every address included: a watchdog closes the connection when it passes,
+        // One deadline for the whole try, the host lookup and every address included: the lookup is abandoned at it
+        // (the system resolver has no timeout Java can set), and a watchdog closes the connection when it passes,
         // whatever the receiver is doing (a handshake or status line sent a byte at a time would otherwise keep each
         // read within its own timeout for hours).
         long deadline = System.nanoTime() + attemptTimeout.toNanos();
+        List<InetAddress> addresses = policy.resolve(host, attemptTimeout);
+        int port = uri.getPort() == -1 ? 443 : uri.getPort();
+        String bareHost = host.startsWith("[") ? host.substring(1, host.length() - 1) : host;
         IOException last = null;
         for (InetAddress address : addresses) {
             long remaining = (deadline - System.nanoTime()) / 1_000_000;
