@@ -187,7 +187,10 @@ to sign-in (`/login?expired`; API calls get `401`) and is audited as `auth.sessi
 Sessions are kept in the database (Spring Session JDBC, tables from Flyway `V6`), so any replica serves any
 request, a restart or rolling update does not sign anyone out, and the per-user limit counts sessions on every
 replica. Expired sessions are deleted once a minute, on one replica (`security.SessionExpiry`), which also
-audits each idle expiry. The cookie keeps its name, `JSESSIONID`. A session attribute a replica of another
+audits each idle expiry. The cookie keeps its name, `JSESSIONID`. Session attributes are read back only if they are made of the classes sessions hold (the JDK's
+plain values and collections, java.time, Spring Security's and ReadyRoom's own types; never `java.rmi` or
+`java.net`): a row written by anyone with database access cannot make ReadyRoom instantiate other classes, and a
+refused value counts as absent. A session attribute a replica of another
 release cannot read back (during a rolling update) is treated as absent: at worst that person signs in again.
 
 Timeouts under a minute, or a negative limit, stop startup with the setting's name. ReadyRoom had no idle
@@ -552,6 +555,12 @@ revisions, and logged at ERROR while set). With `ENS_LICENSE_EXPECT_INSTALLATION
 whenever it mounts no license volume, the same holds whatever the migration history: a fresh or rebuilt database
 behind an existing installation runs every migration at once and would otherwise look like a new installation.
 
+**Without the license volume** (several containers, `docker run` without `-v ...:/var/lib/ens/readyroom`), set
+`ENS_LICENSE_EXPECT_INSTALLATION_ID=true` (the Helm chart does so itself whenever it mounts no license volume):
+ReadyRoom then never makes up an installation id when its database has none, whatever the database's
+migration history says, so a fresh or rebuilt database behind an existing installation cannot silently break a
+bound license. The release bundle's compose files always mount the volume.
+
 **Upgrading:** keep the license volume mounted for the first start of this release (the release bundle and
 the chart do, unchanged); after that it is not read again and may be removed (the chart:
 `persistence.license.enabled=false`, which several replicas need). Back up the database: it now holds the
@@ -825,7 +834,7 @@ through `ENS_SSO_ROLE_MAPPING`; a group not listed there grants nothing, whateve
 | `ENS_SSO_OIDC_CLIENT_ID` | | Also the audience ID tokens must name |
 | `ENS_SSO_OIDC_CLIENT_SECRET`, `_FILE` | empty | Empty: a public client (PKCE only). The file wins |
 | `ENS_SSO_OIDC_SCOPES` | `openid,profile,email` | |
-| `ENS_SSO_OIDC_USER_FILTER` | required | e.g. `(userPrincipalName={preferred_username})`; see below on which claims to trust |
+| `ENS_SSO_OIDC_USER_FILTER` | required | e.g. `(userPrincipalName={upn})`; see below on which claims to trust |
 | `ENS_SSO_OIDC_GROUPS_CLAIM` | `groups` | |
 | `ENS_SSO_OIDC_DISPLAY_NAME` | `Sign in with single sign-on` | The button |
 | `ENS_SSO_SAML_ENABLED` | `false` | SAML 2.0 |
@@ -855,7 +864,11 @@ absolute URI.
 | SAML assertion consumer service (HTTP-POST) | `<base>/login/saml2/sso/saml` |
 
 **Entra ID.** OIDC: register an app (web platform) with the redirect URI, create a client secret; issuer
-`https://login.microsoftonline.com/<tenant id>/v2.0`; user filter `(userPrincipalName={preferred_username})`.
+`https://login.microsoftonline.com/<tenant id>/v2.0`. Add the `upn` optional claim to the ID token (*Token
+configuration*) and use `(userPrincipalName={upn})`, or, where the directory holds the Entra object id (for
+example AD's `msDS-ExternalDirectoryObjectId`, `User_<oid>`), `(msDS-ExternalDirectoryObjectId=User_{oid})`:
+`oid` never changes. Do not map on `preferred_username`: Entra documents it as a display hint that can change
+and is not guaranteed to be the UPN, nor on `email`, which is not verified.
 For groups, add the *groups* claim (security groups) to the ID token; Entra sends group object ids, so map
 those (`<object id>=ADMIN`). A user in more than 200 groups gets no `groups` claim (the overage case): assign
 the app's groups explicitly ("Groups assigned to the application") or rely on ReadyRoom's own roles. SAML:
@@ -885,7 +898,7 @@ HTTPS. ReadyRoom asks the IdP's HTTP-Redirect sign-in endpoint (the POST binding
 form, which the Content-Security-Policy blocks). The consent banner, when on, must be acknowledged before
 either method starts.
 
-**Audit.** Every sign-in is `auth.login` with `method` `oidc` or `saml2`; every refusal is a failed
+**Audit.** Every sign-in is `auth.login` with `method` `oidc` or `saml2` and `idpRoles`, the roles the IdP's groups granted through `ENS_SSO_ROLE_MAPPING`; every refusal is a failed
 `auth.login` with the reason (the IdP's error, the check that failed, `no single directory user matches`...).
 
 **Not included.** Sign-out ends the ReadyRoom session only, not the one at the identity provider (no

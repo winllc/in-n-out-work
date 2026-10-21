@@ -47,7 +47,7 @@ public class SsoUserMapper {
     public static void requireTemplate(String setting, String template) {
         if (template == null || template.isBlank()) {
             throw new IllegalStateException(setting + " is required: an LDAP filter finding the directory user,"
-                    + " for example (userPrincipalName={preferred_username}); use a claim the identity provider verifies");
+                    + " for example (userPrincipalName={upn}); use an immutable claim the identity provider controls");
         }
         if (!PLACEHOLDER.matcher(template).find()) {
             throw new IllegalStateException(setting + " has no {placeholder}: it would match the same directory"
@@ -94,6 +94,11 @@ public class SsoUserMapper {
             log.debug("Single sign-on: {} granted {} by their identity provider's groups", user.getDn(), granted);
         }
         return app;
+    }
+
+    /** The roles ENS_SSO_ROLE_MAPPING grants for {@code groups}, for the audit trail. */
+    public List<String> grantedBy(Collection<String> groups) {
+        return roles.rolesFor(groups).stream().map(UserRoleEnum::name).sorted().toList();
     }
 
     /** The first value of {@code name}, matched exactly, else ignoring case. */

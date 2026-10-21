@@ -123,7 +123,13 @@ replicaCount: 2
 persistence:
   license:
     enabled: false      # after the first start of this release, so the license volume was imported
+    imported: true      # says so; without it the chart refuses enabled=false while the claim exists
 ```
+
+The license claim carries `helm.sh/resource-policy: keep` and `argocd.argoproj.io/sync-options: Prune=false`, so
+turning the volume off (or `helm uninstall`) leaves it in place; delete it yourself once you no longer want
+it. An upgrade straight from an earlier release to `enabled: false` is refused while the claim exists and
+`imported` is not set (the chart looks the claim up), so the installation id cannot be skipped.
 
 Scheduled jobs run on one replica at a time (database locks), sessions and the license are in the database,
 and with more than one replica the chart adds a PodDisruptionBudget (`podDisruptionBudget.minAvailable`, 1)
@@ -151,7 +157,7 @@ sso:
     issuerUri: https://login.microsoftonline.com/<tenant id>/v2.0
     clientId: <application id>
     existingSecret: readyroom-oidc          # key oidc-client-secret, or existingSecretKey
-    userFilter: "(userPrincipalName={preferred_username})"
+    userFilter: "(userPrincipalName={upn})"   # the upn optional claim; or (msDS-ExternalDirectoryObjectId=User_{oid})
   saml:
     enabled: true
     idpMetadataUrl: https://login.microsoftonline.com/<tenant id>/federationmetadata/2007-06/federationmetadata.xml?appid=<app id>

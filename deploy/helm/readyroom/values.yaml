@@ -425,7 +425,8 @@ sso:
     existingSecret: ""
     existingSecretKey: oidc-client-secret
     scopes: openid,profile,email
-    # Required: e.g. (userPrincipalName={preferred_username}). Use a claim the IdP verifies (not Entra's email).
+    # Required: e.g. (userPrincipalName={upn}). Use an immutable claim the IdP controls (Entra: the upn
+    # optional claim, or oid); not preferred_username or email.
     userFilter: ""
     groupsClaim: groups
   saml:
@@ -525,6 +526,11 @@ persistence:
     # above 1 and rolling updates (a ReadWriteOnce volume would hold both back). New installations can turn it
     # off from the start. helm uninstall deletes it unless existingClaim is used.
     enabled: true
+    # Set with enabled=false once ReadyRoom has started with the volume (its state is then in the database).
+    # While false, the chart refuses enabled=false if the claim still exists, so an upgrade straight to several
+    # replicas cannot skip the import. The claim is kept (helm.sh/resource-policy: keep, not pruned by Argo CD):
+    # delete it yourself when you no longer want it.
+    imported: false
     size: 100Mi
     storageClass: ""
     accessModes: ["ReadWriteOnce"]

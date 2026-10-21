@@ -14,12 +14,15 @@ public class SsoAuthenticationToken extends AbstractAuthenticationToken {
     private final AppUserDetails user;
     private final String method;
     private final String registrationId;
+    private final java.util.ArrayList<String> idpRoles;
 
-    public SsoAuthenticationToken(AppUserDetails user, String method, String registrationId) {
+    public SsoAuthenticationToken(AppUserDetails user, String method, String registrationId,
+                                  java.util.List<String> idpRoles) {
         super(user.getAuthorities());
         this.user = user;
         this.method = method;
         this.registrationId = registrationId;
+        this.idpRoles = new java.util.ArrayList<>(idpRoles);
         setAuthenticated(true);
     }
 
@@ -41,6 +44,11 @@ public class SsoAuthenticationToken extends AbstractAuthenticationToken {
     /** {@code saml2} or {@code oidc}, for the audit trail. */
     public String method() {
         return method;
+    }
+
+    /** The roles the IdP's groups granted (ENS_SSO_ROLE_MAPPING), for the audit trail. */
+    public java.util.List<String> idpRoles() {
+        return java.util.List.copyOf(idpRoles);
     }
 
     public String registrationId() {

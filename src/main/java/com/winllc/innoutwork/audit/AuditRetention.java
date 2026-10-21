@@ -46,9 +46,9 @@ public class AuditRetention {
         this.clock = clock;
     }
 
-    // One replica at a time (ShedLock, config.SchedulerLockConfig), kept a while after a quick run as above.
+    // One replica at a time (ShedLock, config.SchedulerLockConfig), kept an hour after a quick run as above.
     @Scheduled(cron = "0 23 3 * * *")
-    @SchedulerLock(name = "AuditRetention", lockAtLeastFor = "PT5M", lockAtMostFor = "PT10M")
+    @SchedulerLock(name = "AuditRetention", lockAtLeastFor = "PT1H", lockAtMostFor = "PT2H")
     public void run() {
         try {
             prune();

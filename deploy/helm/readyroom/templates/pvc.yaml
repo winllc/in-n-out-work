@@ -1,12 +1,16 @@
 {{- $p := .Values.persistence.license -}}
 {{- if and $p.enabled (not $p.existingClaim) }}
-# The license, the installation id and the licensing state. Keep it: see persistence.license in
-# values.yaml. It is an ordinary release resource, so "helm uninstall" deletes it; back it up first, or
-# create the claim yourself and set persistence.license.existingClaim.
+# An earlier release's license state, imported into the database on the first start of this one (see
+# persistence.license in values.yaml). Kept when it leaves the release (persistence.license.enabled=false,
+# helm uninstall) and never pruned by Argo CD: losing it before the import would lose the installation id.
+# Delete it yourself once ReadyRoom has started with it.
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: {{ include "readyroom.licenseClaimName" . }}
+  annotations:
+    helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false
   labels:
     {{- include "readyroom.labels" . | nindent 4 }}
     app.kubernetes.io/component: license

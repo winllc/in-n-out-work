@@ -177,14 +177,14 @@ public class SamlSignIn {
         });
         values.put("nameid", List.of(principal.getName()));
         AppUserDetails user;
+        List<String> groups = values.getOrDefault(settings.getGroupsAttribute(), List.of());
         try {
-            user = mapper.map(settings.getUserFilter(), values, values.getOrDefault(settings.getGroupsAttribute(),
-                    List.of()));
+            user = mapper.map(settings.getUserFilter(), values, groups);
         } catch (SsoRefusedException e) {
             throw new Saml2AuthenticationException(new Saml2Error("sso_refused",
                     e.getMessage() + " (NameID " + principal.getName() + ")"));
         }
-        return new SsoAuthenticationToken(user, "saml2", REGISTRATION_ID);
+        return new SsoAuthenticationToken(user, "saml2", REGISTRATION_ID, mapper.grantedBy(groups));
     }
 
     private void firstUse(Assertion assertion) {

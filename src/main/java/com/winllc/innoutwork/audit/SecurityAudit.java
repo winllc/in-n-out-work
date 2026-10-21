@@ -63,10 +63,15 @@ public class SecurityAudit {
         }
         Authentication auth = event.getAuthentication();
         try {
-            audit.record(AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
+            AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
                     .actor(AuditRequestInfo.actor(auth))
                     .target("user", auth.getName(), com.winllc.innoutwork.data.LdapDn.cnOf(auth.getName()))
-                    .detail("method", method(auth)));
+                    .detail("method", method(auth));
+            java.util.List<String> idpRoles = idpRoles(auth);
+            if (idpRoles != null) {
+                entry.detail("idpRoles", idpRoles); // what the IdP's groups granted (ENS_SSO_ROLE_MAPPING)
+            }
+            audit.record(entry);
         } catch (AuditUnavailableException e) {
             throw new AuthenticationServiceException("Sign-in is unavailable: the audit log cannot be written.", e);
         }
@@ -225,6 +230,19 @@ public class SecurityAudit {
                 .detail("path", request.getRequestURI())
                 .detail("perMinute", perMinute);
         denials.collapse("auth.login|" + request.getRemoteAddr() + "|too many unknown sessions", entry);
+    }
+
+    /** For single sign-on, the roles the identity provider's groups granted; null for other sign-ins. */
+    static java.util.List<String> idpRoles(Authentication auth) {
+        if (auth instanceof com.winllc.innoutwork.security.sso.SsoAuthenticationToken sso) {
+            return sso.idpRoles();
+        }
+        if (auth != null && auth.getPrincipal() instanceof org.springframework.security.oauth2.core.oidc.user.OidcUser oidc
+                && oidc.getClaims().get(com.winllc.innoutwork.security.sso.OidcSignIn.IDP_ROLES_CLAIM) instanceof
+                java.util.List<?> roles) {
+            return roles.stream().map(String::valueOf).toList();
+        }
+        return null;
     }
 
     static String method(Authentication auth) {

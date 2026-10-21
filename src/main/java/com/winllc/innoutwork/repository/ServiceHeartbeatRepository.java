@@ -16,4 +16,8 @@ public interface ServiceHeartbeatRepository extends JpaRepository<ServiceHeartbe
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select h from ServiceHeartbeat h where h.id = 1")
     Optional<ServiceHeartbeat> lockHeartbeat();
+
+    /** The database's clock: every instance's beats are timed by the same one, so skew between pods fakes no outage. */
+    @Query(value = "select current_timestamp", nativeQuery = true)
+    Object databaseNow();
 }

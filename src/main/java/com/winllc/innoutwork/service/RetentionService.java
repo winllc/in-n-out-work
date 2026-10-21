@@ -140,10 +140,10 @@ public class RetentionService {
         return state.findById(RetentionState.ID).map(RetentionState::getLastRunAt).orElse(null);
     }
 
-    // One replica at a time (ShedLock, config.SchedulerLockConfig); the lock is kept for a while after a quick run so
-    // a replica whose clock is a little behind does not start the same nightly run again.
+    // One replica at a time (ShedLock, config.SchedulerLockConfig); the lock is kept for an hour after a quick run so
+    // a replica whose clock is behind (or a late scheduler) does not start the same nightly run again.
     @Scheduled(cron = "${application.retention.cron:0 17 2 * * *}")
-    @SchedulerLock(name = "RetentionPurge", lockAtLeastFor = "PT5M", lockAtMostFor = "PT10M")
+    @SchedulerLock(name = "RetentionPurge", lockAtLeastFor = "PT1H", lockAtMostFor = "PT2H")
     public void run() {
         if (!isEnabled()) {
             return;

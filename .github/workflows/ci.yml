@@ -123,6 +123,12 @@ jobs:
           fi
           grep -q "replicaCount > 1 with persistence.license" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
           helm template readyroom "$CHART" -f "$CHART/ci/ha-values.yaml" | grep -q "kind: PodDisruptionBudget"
+          # The license claim survives leaving the release and is never pruned: it may hold the installation id.
+          helm template readyroom "$CHART" -f "$CHART/ci/default-values.yaml" > "$RUNNER_TEMP/default.yaml"
+          grep -q "helm.sh/resource-policy: keep" "$RUNNER_TEMP/default.yaml"
+          grep -q "argocd.argoproj.io/sync-options: Prune=false" "$RUNNER_TEMP/default.yaml"
+          # Without the volume, ReadyRoom must never make up an installation id.
+          helm template readyroom "$CHART" -f "$CHART/ci/ha-values.yaml" | grep -A1 "ENS_LICENSE_EXPECT_INSTALLATION_ID" | grep -q '"true"'
 
   windows-client:
     # The Windows client (powershell/): PSScriptAnalyzer and the Pester tests, with Pester and PSScriptAnalyzer

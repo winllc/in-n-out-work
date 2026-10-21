@@ -232,7 +232,7 @@ public class EnsProperties {
             private String scopes = "openid,profile,email";
             /**
              * ENS_SSO_OIDC_USER_FILTER (required when enabled): an LDAP filter finding the one directory user, with
-             * claims as placeholders: {@code (userPrincipalName={preferred_username})}; use a claim the IdP verifies.
+             * claims as placeholders: {@code (userPrincipalName={upn})}; use an immutable claim the IdP controls (Entra ID: upn or oid, not preferred_username or email).
              */
             private String userFilter = "";
             /** ENS_SSO_OIDC_GROUPS_CLAIM: the claim holding the user's groups (Entra ID and Okta: groups). */

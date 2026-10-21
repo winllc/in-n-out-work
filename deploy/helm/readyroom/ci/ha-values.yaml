@@ -14,3 +14,5 @@ replicaCount: 2
 persistence:
   license:
     enabled: false
+    # Started once with the volume before; its state is in the database.
+    imported: true

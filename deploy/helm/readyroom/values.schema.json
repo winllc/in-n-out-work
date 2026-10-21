@@ -832,6 +832,9 @@
             },
             "existingClaim": {
               "type": "string"
+            },
+            "imported": {
+              "type": "boolean"
             }
           }
         }

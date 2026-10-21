@@ -23,7 +23,8 @@ import java.util.List;
  * Notices when the whole service was down, and what that means for the jobs that act on missing events.
  * <p>
  * The Windows client sends each logon, lock and unlock once; while no instance of ReadyRoom is running they are
- * lost. Every instance updates one heartbeat row every {@value #BEAT_MILLIS} ms; when an instance finds it older
+ * lost. Every instance updates one heartbeat row every {@value #BEAT_MILLIS} ms, timed by the database's clock; when
+ * an instance finds it older
  * than {@link #GAP}, nobody was running in between, and that span is recorded as an outage. With two or more
  * replicas and rolling updates there is always someone beating, so an upgrade is no outage. With one replica
  * (or the Recreate strategy) the restart is one, and so is a crash.
@@ -88,7 +89,7 @@ public class ServiceOutages {
     /** Updates the heartbeat, recording the gap before it as an outage when nobody beat for too long. */
     public void recordBeat() {
         transaction.executeWithoutResult(status -> {
-            Instant now = clock.instant();
+            Instant now = databaseNow();
             ServiceHeartbeat heartbeat = heartbeats.lockHeartbeat().orElse(null);
             if (heartbeat == null) {
                 heartbeat = new ServiceHeartbeat();
@@ -106,6 +107,24 @@ public class ServiceOutages {
             }
             heartbeats.save(heartbeat);
         });
+    }
+
+    /** The database's time, so instances whose clocks differ agree on gaps; this instance's when it cannot say. */
+    Instant databaseNow() {
+        Object now = heartbeats.databaseNow();
+        if (now instanceof java.sql.Timestamp timestamp) {
+            return timestamp.toInstant();
+        }
+        if (now instanceof java.time.OffsetDateTime offset) {
+            return offset.toInstant();
+        }
+        if (now instanceof java.time.ZonedDateTime zoned) {
+            return zoned.toInstant();
+        }
+        if (now instanceof Instant instant) {
+            return instant;
+        }
+        return clock.instant();
     }
 
     /** Outages that ended after {@code after}. */

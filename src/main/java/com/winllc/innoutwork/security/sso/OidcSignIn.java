@@ -21,6 +21,7 @@ import org.springframework.security.oauth2.core.ClientAuthenticationMethod;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2AuthenticationException;
 import org.springframework.security.oauth2.core.OAuth2Error;
+import org.springframework.security.oauth2.core.oidc.OidcIdToken;
 import org.springframework.security.oauth2.core.oidc.OidcUserInfo;
 import org.springframework.security.oauth2.core.oidc.user.DefaultOidcUser;
 import org.springframework.security.oauth2.core.oidc.user.OidcUser;
@@ -59,6 +60,8 @@ public class OidcSignIn {
     public static final String REGISTRATION_ID = "oidc";
     /** The claim the signed-in principal is named by: the directory DN it was mapped to. */
     static final String DN_CLAIM = "ens_dn";
+    /** The roles the IdP's groups granted (ENS_SSO_ROLE_MAPPING), for the audit trail. */
+    public static final String IDP_ROLES_CLAIM = "ens_idp_roles";
     static final Duration RETRY_DISCOVERY_AFTER = Duration.ofSeconds(30);
 
     private final EnsProperties.Sso.Oidc settings;
@@ -157,11 +160,18 @@ public class OidcSignIn {
                 throw new OAuth2AuthenticationException(new OAuth2Error("sso_refused",
                         e.getMessage() + " (subject " + subject + ")", null), e.getMessage());
             }
+            // Plain values only (strings, numbers, booleans, instants, lists, maps): the signed-in principal is kept
+            // in the database session, which reads back only such types (config.SessionStoreConfig); the decoder's
+            // java.net.URL issuer and JSON library types would be refused there.
             Map<String, Object> claims = new HashMap<>(idpUser.getUserInfo() == null ? Map.of()
-                    : idpUser.getUserInfo().getClaims());
+                    : plain(idpUser.getUserInfo().getClaims()));
             claims.put("sub", idpUser.getSubject());
             claims.put(DN_CLAIM, user.getUsername());
-            return new DefaultOidcUser(user.getAuthorities(), idpUser.getIdToken(), new OidcUserInfo(claims), DN_CLAIM);
+            claims.put(IDP_ROLES_CLAIM, mapper.grantedBy(values.getOrDefault(settings.getGroupsClaim(), List.of())));
+            OidcIdToken idToken = new OidcIdToken(idpUser.getIdToken().getTokenValue(),
+                    idpUser.getIdToken().getIssuedAt(), idpUser.getIdToken().getExpiresAt(),
+                    plain(idpUser.getIdToken().getClaims()));
+            return new DefaultOidcUser(user.getAuthorities(), idToken, new OidcUserInfo(claims), DN_CLAIM);
         };
     }
 
@@ -172,6 +182,46 @@ public class OidcSignIn {
 
     public String redirectUri() {
         return redirectUri;
+    }
+
+    /** Claims as plain values: strings, java.lang numbers, booleans, instants, and lists and maps of those. */
+    static Map<String, Object> plain(Map<String, Object> claims) {
+        Map<String, Object> result = new java.util.LinkedHashMap<>();
+        claims.forEach((name, value) -> {
+            Object converted = plainValue(value);
+            if (converted != null) {
+                result.put(name, converted);
+            }
+        });
+        return result;
+    }
+
+    private static Object plainValue(Object value) {
+        if (value == null || value instanceof String || value instanceof Boolean || value instanceof Instant
+                || value instanceof Long || value instanceof Integer || value instanceof Double) {
+            return value;
+        }
+        if (value instanceof Collection<?> many) {
+            List<Object> list = new ArrayList<>();
+            many.forEach(v -> {
+                Object converted = plainValue(v);
+                if (converted != null) {
+                    list.add(converted);
+                }
+            });
+            return list;
+        }
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> result = new java.util.LinkedHashMap<>();
+            map.forEach((k, v) -> {
+                Object converted = plainValue(v);
+                if (converted != null) {
+                    result.put(String.valueOf(k), converted);
+                }
+            });
+            return result;
+        }
+        return String.valueOf(value); // a URL issuer, a BigDecimal, a JSON library type
     }
 
     /** Claims as strings: a list's elements, or the value itself. */

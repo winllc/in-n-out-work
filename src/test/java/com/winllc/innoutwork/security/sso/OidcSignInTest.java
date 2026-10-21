@@ -177,6 +177,14 @@ class OidcSignInTest {
         Map<String, String> authorize = startSignIn(session);
 
         assertEquals("S256", authorize.get("code_challenge_method"), "PKCE, also for a confidential client");
+        for (String name : java.util.Collections.list(session.getAttributeNames())) {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            try (java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(bytes)) {
+                out.writeObject(session.getAttribute(name));
+            }
+            assertNotNull(com.winllc.innoutwork.config.SessionStoreConfig.deserialize(bytes.toByteArray(),
+                    getClass().getClassLoader()), name + " would not survive the session store");
+        }
         assertNotNull(authorize.get("code_challenge"));
         assertNotNull(authorize.get("nonce"));
 
@@ -194,6 +202,17 @@ class OidcSignInTest {
         assertTrue(roles(auth).contains("USER"));
         assertTrue(roles(auth).contains("ADMIN"), "granted by the mapped group");
         verify(audit, never()).ssoRefused(any(), anyString(), anyString());
+
+        // The real signed-in session, as the database session store writes and reads it back.
+        MockHttpSession signedIn = (MockHttpSession) result.getRequest().getSession();
+        for (String name : java.util.Collections.list(signedIn.getAttributeNames())) {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            try (java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(bytes)) {
+                out.writeObject(signedIn.getAttribute(name));
+            }
+            assertNotNull(com.winllc.innoutwork.config.SessionStoreConfig.deserialize(bytes.toByteArray(),
+                    getClass().getClassLoader()), name + " would not survive the session store");
+        }
     }
 
     @Test

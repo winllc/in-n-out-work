@@ -18,7 +18,9 @@ sso:
     clientId: 11111111-1111-1111-1111-111111111111
     existingSecret: readyroom-oidc
     existingSecretKey: client-secret
-    userFilter: "(userPrincipalName={preferred_username})"
+    # Entra ID: the upn optional claim (or {oid}); never preferred_username or email, which can change or are
+    # not verified.
+    userFilter: "(userPrincipalName={upn})"
   saml:
     enabled: true
     metadataConfigMap: readyroom-idp-metadata
