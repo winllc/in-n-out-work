@@ -59,7 +59,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiError> failed(HttpServletRequest request, Exception e) {
-        log.error("API request {} failed", request.getRequestURI(), e);
+        log.error("API request {} failed", com.winllc.innoutwork.util.LogSafe.of(request.getRequestURI()), e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(new ApiError("internal_error", "The request failed; the server log has the details."));
     }
