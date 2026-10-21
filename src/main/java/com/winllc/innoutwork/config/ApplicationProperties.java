@@ -100,6 +100,8 @@ public class ApplicationProperties {
     private Api api = new Api();
     @Valid
     private Webhooks webhooks = new Webhooks();
+    @Valid
+    private Reports reports = new Reports();
 
     /**
      * How long check-in and status records are kept (service.RetentionService). Audit events have their own retention
@@ -210,6 +212,54 @@ public class ApplicationProperties {
         @Min(value = 1, message = "application.api.max-page-size (APPLICATION_API_MAXPAGESIZE) must be at least 1")
         @Max(value = 5000, message = "application.api.max-page-size (APPLICATION_API_MAXPAGESIZE) must be at most 5000")
         private int maxPageSize = 500;
+    }
+
+    /** Report exports, scheduled reports and the time zones reports are in (export.*, service.TimeZones). */
+    @Data
+    public static class Reports {
+        /**
+         * Each site's time zone, as {@code <location>=<IANA zone>} (the location as the directory's location
+         * attribute spells it, any case), e.g. {@code New York=America/New_York}. A person's times in reports, exports
+         * and the API are in their own time zone (their profile), else their site's, else application.timezone.
+         */
+        private List<String> siteTimeZones = new ArrayList<>();
+
+        /** The most days one export or scheduled report may cover. */
+        @Min(value = 1, message = "application.reports.max-range-days (APPLICATION_REPORTS_MAXRANGEDAYS) must be at least 1")
+        private int maxRangeDays = 366;
+
+        /** The largest attachment a scheduled report sends; a bigger one is not sent, and its run says so. */
+        @Min(value = 10_000, message = "application.reports.max-attachment-bytes (APPLICATION_REPORTS_MAXATTACHMENTBYTES) must be at least 10000")
+        private long maxAttachmentBytes = 10L * 1024 * 1024;
+
+        /** The most recipients one scheduled report may have. */
+        @Min(value = 1, message = "application.reports.max-recipients (APPLICATION_REPORTS_MAXRECIPIENTS) must be at least 1")
+        private int maxRecipients = 20;
+
+        @AssertTrue(message = "application.reports.site-time-zones (APPLICATION_REPORTS_SITETIMEZONES) must be"
+                + " <location>=<IANA time zone> entries, e.g. New York=America/New_York")
+        public boolean isSiteTimeZonesValid() {
+            try {
+                siteZones();
+                return true;
+            } catch (RuntimeException e) {
+                return false;
+            }
+        }
+
+        /** {@link #siteTimeZones} by lower-cased location. */
+        public Map<String, java.time.ZoneId> siteZones() {
+            Map<String, java.time.ZoneId> zones = new HashMap<>();
+            for (String entry : siteTimeZones) {
+                int eq = entry.lastIndexOf('=');
+                if (eq <= 0) {
+                    throw new IllegalArgumentException("not location=zone: " + entry);
+                }
+                zones.put(entry.substring(0, eq).trim().toLowerCase(java.util.Locale.ROOT),
+                        java.time.ZoneId.of(entry.substring(eq + 1).trim()));
+            }
+            return zones;
+        }
     }
 
     /** Signed outbound webhooks (webhook.*): absence alerts and status changes, to HTTPS endpoints. */

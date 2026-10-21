@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Scheduled reports</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">Scheduled reports</span>
+
+<div layout:fragment="content">
+
+    <div th:if="${notice}" class="alert alert-success" role="status" id="schedules-notice" th:text="${notice}"></div>
+    <div th:if="${error}" class="alert alert-danger" role="alert" id="schedules-error" th:text="${error}"></div>
+
+    <div class="row row-cards">
+        <div class="col-lg-5">
+            <section class="card" aria-labelledby="new-schedule-title">
+                <div class="card-header">
+                    <h2 class="card-title" id="new-schedule-title">Schedule a group report</h2>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary">
+                        A group's attendance, a row per person and day, e-mailed as CSV or Excel. Only people who may
+                        run this group's report themselves can receive it; that is checked again each time.
+                    </p>
+                    <div th:if="${#maps.isEmpty(groups)}" class="alert alert-info" role="status">
+                        You manage no group whose report you may run.
+                    </div>
+                    <form th:unless="${#maps.isEmpty(groups)}" th:action="@{/app/reports/schedules}" method="post"
+                          id="create-schedule-form">
+                        <div class="mb-3">
+                            <label class="form-label" for="schedule-group">Group</label>
+                            <select class="form-select" id="schedule-group" name="groupDn" required>
+                                <option th:each="g : ${groups}" th:value="${g.key}" th:text="${g.value}"
+                                        th:selected="${g.key == selectedGroup}"></option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="schedule-name">Name</label>
+                            <input type="text" class="form-control" id="schedule-name" name="name" maxlength="200"
+                                   th:value="${name}" placeholder="e.g. Weekly attendance">
+                        </div>
+                        <fieldset class="mb-3">
+                            <legend class="form-label">How often</legend>
+                            <label class="form-check" th:each="f, i : ${frequencies}">
+                                <input class="form-check-input" type="radio" name="frequency" th:value="${f}"
+                                       th:checked="${f.name() == 'WEEKLY'}">
+                                <span class="form-check-label" th:text="${f.description}"></span>
+                            </label>
+                        </fieldset>
+                        <div class="row g-2 mb-3">
+                            <div class="col-6">
+                                <label class="form-label" for="schedule-hour">At (hour, your time zone)</label>
+                                <input type="number" class="form-control" id="schedule-hour" name="sendHour" min="0"
+                                       max="23" value="7" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label" for="schedule-format">Format</label>
+                                <select class="form-select" id="schedule-format" name="format">
+                                    <option value="xlsx">Excel (.xlsx)</option>
+                                    <option value="csv">CSV</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label" for="schedule-recipients">Recipients</label>
+                            <textarea class="form-control" id="schedule-recipients" name="recipients" rows="3"
+                                      aria-describedby="schedule-recipients-help" th:text="${recipients}"></textarea>
+                            <small class="form-hint" id="schedule-recipients-help">E-mail addresses or directory DNs,
+                                one a line.</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary" id="create-schedule">
+                            <i class="ti ti-calendar-time me-1" aria-hidden="true"></i>Schedule
+                        </button>
+                    </form>
+                </div>
+            </section>
+        </div>
+
+        <div class="col-lg-7">
+            <section class="card" aria-labelledby="schedules-title">
+                <div class="card-header">
+                    <h2 class="card-title" id="schedules-title">Schedules</h2>
+                </div>
+                <div class="list-group list-group-flush" id="schedule-list">
+                    <div class="list-group-item text-secondary" th:if="${#lists.isEmpty(schedules)}">Nothing scheduled.</div>
+                    <div class="list-group-item" th:each="s : ${schedules}" th:id="${'schedule-' + s.id}">
+                        <div class="d-flex flex-wrap gap-2 align-items-start">
+                            <div class="me-auto">
+                                <h3 class="h4 mb-1">
+                                    <span th:text="${s.name}"></span>
+                                    <span class="badge bg-secondary-lt" th:if="${!s.enabled}">off</span>
+                                </h3>
+                                <div class="small text-secondary">
+                                    <span th:text="${s.groupName}"></span> &middot;
+                                    <span th:text="${s.frequency.description}"></span>, at
+                                    <span th:text="${s.sendHour + ':00'}"></span> <span th:text="${s.timeZone}"></span> &middot;
+                                    <span th:text="${#strings.toUpperCase(s.format)}"></span> &middot;
+                                    <span th:text="${s.recipientList.size() + ' recipient(s)'}"></span>
+                                </div>
+                                <div class="small text-secondary" th:if="${s.lastResult != null}">
+                                    Last run: <span th:text="${s.lastResult}"></span>
+                                </div>
+                            </div>
+                            <form th:action="@{/app/reports/schedules/{id}/send(id=${s.id})}" method="post" th:if="${s.enabled}">
+                                <button type="submit" class="btn btn-sm" th:attr="aria-label=${'Send ' + s.name + ' now'}">Send now</button>
+                            </form>
+                            <form th:action="@{/app/reports/schedules/{id}/delete(id=${s.id})}" method="post">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        th:attr="aria-label=${'Delete ' + s.name}">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+</body>
+</html>

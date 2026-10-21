@@ -106,6 +106,42 @@ public class Mailer {
         }
     }
 
+    /**
+     * {@link #send} with a file attached ({@code bytes}, named {@code filename}): scheduled reports. Failures are
+     * logged, never thrown.
+     *
+     * @return whether it was handed to the mail server
+     */
+    public boolean sendWithAttachment(String to, String subject, String template, Map<String, Object> model,
+                                      String filename, byte[] bytes, String contentType) {
+        if (mailSender == null) {
+            log.debug("Not e-mailing \"{}\": no mail server is configured", subject);
+            return false;
+        }
+        if (!ValueValidatorUtil.isValidEmail(to)) {
+            log.error("Invalid email address: {}", to);
+            return false;
+        }
+        try {
+            Context context = new Context();
+            context.setVariables(model);
+            String html = templates.process(template, context);
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(properties.getNotificationSenderEmail());
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            helper.addAttachment(filename, new org.springframework.core.io.ByteArrayResource(bytes), contentType);
+            mailSender.send(message);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to send \"{}\" to {}", subject, to, e);
+            return false;
+        }
+    }
+
     /** {@link #send}, once the current transaction has committed (at once without one), off the caller's thread. */
     public void sendAfterCommit(String to, String subject, String template, Map<String, Object> model) {
         if (mailSender == null || to == null) {

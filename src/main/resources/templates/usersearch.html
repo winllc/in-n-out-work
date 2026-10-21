@@ -35,6 +35,17 @@
                     </div>
                     <small class="form-hint">Enter at least three characters.</small>
                 </div>
+                <div class="col-md-6 text-md-end">
+                    <form th:action="@{/app/export/people}" method="post" id="export-people-form" class="d-inline-flex gap-2">
+                        <input type="hidden" name="search" id="export-search">
+                        <button type="submit" class="btn" name="format" value="csv" id="export-people-csv" disabled>
+                            <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i>Export CSV
+                        </button>
+                        <button type="submit" class="btn" name="format" value="xlsx" id="export-people-xlsx" disabled>
+                            <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i>Export Excel
+                        </button>
+                    </form>
+                </div>
             </div>
         </div>
         <div class="card-body">
@@ -112,6 +123,10 @@
             searchTerm = document.getElementById("search-input").value;
             if (searchTerm.length >= 3) {
                 table.setData("/api/users/search"); // reload table with new search
+                // The export downloads what this search found.
+                document.getElementById("export-search").value = searchTerm;
+                document.getElementById("export-people-csv").disabled = false;
+                document.getElementById("export-people-xlsx").disabled = false;
             } else {
                 alert("Search must be 3 characters or more");
             }

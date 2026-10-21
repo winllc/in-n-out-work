@@ -53,6 +53,14 @@ data:
   APPLICATION_RETENTION_EVENTSDAYS: {{ $v.retention.eventsDays | quote }}
   APPLICATION_RETENTION_CRON: {{ $v.retention.schedule | quote }}
 
+  # Reports, exports and time zones
+  {{- with $v.reports.siteTimeZones }}
+  APPLICATION_REPORTS_SITETIMEZONES: {{ join "," . | quote }}
+  {{- end }}
+  APPLICATION_REPORTS_MAXRANGEDAYS: {{ $v.reports.maxRangeDays | quote }}
+  APPLICATION_REPORTS_MAXATTACHMENTBYTES: {{ $v.reports.maxAttachmentBytes | int64 | quote }}
+  APPLICATION_REPORTS_MAXRECIPIENTS: {{ $v.reports.maxRecipients | quote }}
+
   # Public API and webhooks
   APPLICATION_API_MAXTOKENDAYS: {{ $v.api.maxTokenDays | quote }}
   APPLICATION_API_DEFAULTRATEPERMINUTE: {{ $v.api.defaultRatePerMinute | quote }}

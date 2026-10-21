@@ -1077,7 +1077,7 @@ append-only in the database itself: a trigger refuses every UPDATE (see [Databas
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
 | account | `person.created` (a new tracked person, at first sign-in or lookup), `person.erased` (an administrator's erasure of their data, with counts), `account.role-changed`, `account.permission-granted`, `account.permission-revoked`, `api.token-created`, `api.token-revoked` |
 | configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed`, `webhook.created`, `webhook.enabled`, `webhook.disabled`, `webhook.deleted` |
-| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes changed, never their text, and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download, a person's data export, each public API read with `details.via` `api`) |
+| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes changed, never their text, and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF, CSV and XLSX downloads, people lists, a person's data export, each public API read with `details.via` `api`, each scheduled report sent with `details.via` `scheduled`), `report.schedule-created`, `report.schedule-deleted`, `report.schedule-disabled` |
 | license | `license.installed`, `license.rejected`, `license.mode-changed` (also across restarts), `license.limit-exceeded` |
 | system | `system.started`, `system.stopped`, `job.completed` / `job.failed` (one per run, with counts and duration), `job.skipped` (once per license mode change) |
 | audit | `audit.exported`, `audit.verified`, `audit.token-created`, `audit.token-revoked`, `audit.pruned`, `audit.delivery-failed`, `audit.delivery-recovered` |
@@ -1140,6 +1140,53 @@ whole trail, so expect duplicates by `id`.
   only as their SHA-256; they read the audit trail and nothing else, need no session or CSRF token, keep
   working while the application is read-only or unlicensed, and stop at once when revoked. Pulls are not
   themselves audited; the token's last use is shown instead.
+
+---
+
+## Reports, exports and time zones
+
+**Downloads.** The group report (*Generate Group Report* on a group's page, managers of the group and
+administrators) downloads as **CSV** or **Excel (XLSX)** besides the PDF: a row per person and day, with their
+status, first check-in, last check-out, minutes in and time zone. A group's members (on its page) and a name search
+(*Find a user*) download as a people list with each person's status today. A download holds exactly what its viewer
+may see on screen: the report's people are those whose details they may see, and a list shows everyone else as
+`application.privacy.coworker-visibility` says (no times). Files are made on the server and streamed as they are
+read, so a large group does not need the memory of the whole report; each download is a form post with the CSRF
+token and is audited as `data.exported` (format, group or search, period) before it starts. Exports cover at most
+`APPLICATION_REPORTS_MAXRANGEDAYS` (366) days; days the retention purge has summarised are marked so, the monthly
+summaries staying on the HTML report.
+
+Cells that a spreadsheet could take for a formula are made harmless: in CSV, text starting with `=`, `+`, `-`,
+`@`, a tab or a carriage return (or their full-width forms) gets a leading apostrophe; XLSX cells are typed text
+(inline strings) or numbers and never hold a formula. CSV is UTF-8 with a byte-order mark.
+
+**Scheduled reports** (*Scheduled reports*, `/app/reports/schedules`, managers and administrators): a group's
+attendance e-mailed as CSV or Excel every day (for the day before), week (Monday, for the week before) or month
+(the 1st, for the month before), at an hour in its owner's time zone. Only someone who may run the group's report
+schedules it, and its recipients (e-mail addresses or DNs) must each be able to run it themselves (an
+administrator, or a manager of the group with the manager role): so a report never reaches anyone who could not
+see it in ReadyRoom. Both are checked again at every run: a schedule whose owner may no longer run it is turned
+off, and recipients who may no longer receive it are skipped; the page shows each schedule's last result. The job
+runs every five minutes on one replica at a time (ShedLock), while the license includes reports and a mail server
+is configured; attachments over `APPLICATION_REPORTS_MAXATTACHMENTBYTES` (10 MB) are not sent. Audited:
+`report.schedule-created`, `report.schedule-deleted`, `report.schedule-disabled`, and each sending as
+`data.exported` (`details.via` `scheduled`, the recipients). Erasing a person deletes their schedules and takes
+them off others'.
+
+**Time zones.** ReadyRoom runs in one zone (`APPLICATION_TIMEZONE`), which the pages, the absence check and the
+day boundaries of the metrics still use. Reports, downloads, scheduled reports and the public API show each
+person's times in **their own** time zone: the one they chose on their profile (*Time zone*), else their site's,
+else the application's. Sites are mapped by the directory's location attribute:
+
+| Variable | Default | |
+|---|---|---|
+| `APPLICATION_REPORTS_SITETIMEZONES` | (none) | `<location>=<IANA zone>`, comma separated, e.g. `New York=America/New_York,Los Angeles=America/Los_Angeles`; an unknown zone stops startup |
+| `APPLICATION_REPORTS_MAXRANGEDAYS` | `366` | The most days one export covers |
+| `APPLICATION_REPORTS_MAXATTACHMENTBYTES` | `10485760` | A scheduled report's largest attachment |
+| `APPLICATION_REPORTS_MAXRECIPIENTS` | `20` | A scheduled report's most recipients |
+
+A group report's download can instead show every row in the viewer's own zone (*My time zone*). Per-site absence
+checks and translated pages are not done yet (see the accessibility conformance report).
 
 ---
 
@@ -1264,6 +1311,7 @@ index an interrupted script left invalid is rebuilt.
 | `V3__admin_managed_delegates.sql` | `user_records.alternate_managers` widened to 2000 characters, and `alternate_managers_review_pending`, set on every person who had delegates they chose themselves (see [Delegates](#delegates)). |
 | `V4__retention_summaries.sql` | `attendance_summaries` and `attendance_summary_statuses` (monthly roll-ups the retention purge writes), `retention_state` (one row: how far it has purged), and an index on `notification_records.notification_date` |
 | `V9__public_api.sql` | `api_tokens` (public API tokens, by SHA-256), `webhook_endpoints` (signing secrets encrypted) and `webhook_deliveries` (the queue and delivery log); see [Public API and webhooks](#public-api-and-webhooks). New tables only. |
+| `V10__reports.sql` | `user_records.time_zone` (a person's chosen time zone, null for their site's) and `report_schedules` (scheduled, e-mailed reports); see [Reports, exports and time zones](#reports-exports-and-time-zones). |
 
 **Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
 Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the

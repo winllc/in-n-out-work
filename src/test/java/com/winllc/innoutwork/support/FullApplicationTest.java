@@ -29,6 +29,9 @@ import org.springframework.test.context.bean.override.convention.TestBean;
         "application.application-base-url=https://readyroom.example.com/",
         "application.webhooks.secret-key=test-webhook-key-0123456789abcdef0123456789",
         "application.webhooks.poll-millis=3600000",
+        "application.reports.site-time-zones[0]=Chicago=America/Chicago",
+        "application.reports.check-initial-delay-millis=3600000",
+        "application.notification-sender-email=readyroom@example.com",
         "application.refresh-user-records-cron.initial-delay=3600000",
         "application.send-absent-notification-cron.initial-delay=3600000",
         "application.inactive-cron.initial-delay=3600000"

@@ -43,6 +43,29 @@ public class ReportService {
     private RetentionService retention;
     private AttendanceSummaryRepository summaries;
 
+    /** Each person's time zone (RR-19); without them (tests), the application's. */
+    private TimeZones timeZones;
+    private com.winllc.innoutwork.repository.UserRecordRepository userRecords;
+
+    @Autowired(required = false)
+    public void setTimeZones(TimeZones timeZones, com.winllc.innoutwork.repository.UserRecordRepository userRecords) {
+        this.timeZones = timeZones;
+        this.userRecords = userRecords;
+    }
+
+    /** Each of {@code lowerDns}' time zones, by lower-cased DN; the application's for anyone not listed. */
+    Map<String, java.time.ZoneId> zones(Collection<String> lowerDns) {
+        Map<String, java.time.ZoneId> zones = new HashMap<>();
+        if (timeZones == null || userRecords == null) {
+            return zones;
+        }
+        for (List<String> chunk : Chunks.of(lowerDns)) {
+            userRecords.findAllByLowercaseDnIn(chunk)
+                    .forEach(r -> zones.put(r.getDn().toLowerCase(), timeZones.zoneFor(r)));
+        }
+        return zones;
+    }
+
     @Autowired(required = false)
     public void setRetention(RetentionService retention, AttendanceSummaryRepository summaries) {
         this.retention = retention;
@@ -86,8 +109,13 @@ public class ReportService {
             groupMembers.stream().filter(Objects::nonNull).forEach(dn -> lowerDns.add(dn.toLowerCase()));
             Map<String, List<CheckInOutRecord>> recordsByDn = new HashMap<>();
             Map<String, Map<LocalDate, List<UserEventRecord>>> eventsByDn = new HashMap<>();
+            // Each person's days are in their own time zone, which may be up to a day either side of the report's.
+            Map<String, java.time.ZoneId> zones = zones(lowerDns);
+            boolean widen = zones.values().stream().anyMatch(z -> !z.equals(from.getZone()));
+            ZonedDateTime queryFrom = widen ? fromAtStartOfDay.minusDays(1) : fromAtStartOfDay;
+            ZonedDateTime queryTo = widen ? toAtEndOfDay.plusDays(1) : toAtEndOfDay;
             for (List<String> chunk : Chunks.of(lowerDns)) {
-                checkInOutRecordRepository.findByLowercaseDnInAndTimestampBetween(chunk, fromAtStartOfDay, toAtEndOfDay)
+                checkInOutRecordRepository.findByLowercaseDnInAndTimestampBetween(chunk, queryFrom, queryTo)
                         .forEach(r -> recordsByDn.computeIfAbsent(r.getDn().toLowerCase(), k -> new ArrayList<>()).add(r));
                 userEventRecordRepository.findByLowercaseDnInAndDateBetween(chunk, fromAtStartOfDay.toLocalDate(), toAtEndOfDay.toLocalDate())
                         .forEach(e -> eventsByDn.computeIfAbsent(e.getDn().toLowerCase(), k -> new HashMap<>())
@@ -105,7 +133,9 @@ public class ReportService {
                     Map<LocalDate, List<UserEventRecord>> memberEvents =
                             eventsByDn.getOrDefault(groupMember.toLowerCase(), Map.of());
 
-                    Map<LocalDate, List<CheckInOutRecord>> dateMap = createDateMap(memberRecords, fromAtStartOfDay, toAtEndOfDay);
+                    java.time.ZoneId zone = zones.getOrDefault(groupMember.toLowerCase(), from.getZone());
+                    Map<LocalDate, List<CheckInOutRecord>> dateMap = createDateMap(memberRecords, fromAtStartOfDay,
+                            toAtEndOfDay, zone);
 
                     List<UserDayReport> dayReports = new ArrayList<>();
 
@@ -116,7 +146,8 @@ public class ReportService {
                                 .filter(r -> r.getStatus() != UserStatusEnum.STANDARD)
                                 .findFirst();
 
-                        UserDayReport dayReport = UserDayReport.build(date, eventRecordOptional.orElse(null), checkInOutRecords);
+                        UserDayReport dayReport = UserDayReport.build(date, eventRecordOptional.orElse(null),
+                                checkInOutRecords, zone);
 
                         dayReports.add(dayReport);
                     });
@@ -193,8 +224,23 @@ public class ReportService {
     }
 
     public static Map<LocalDate, List<CheckInOutRecord>> createDateMap(List<CheckInOutRecord> records, ZonedDateTime from, ZonedDateTime to){
+        return createDateMap(records, from, to, java.time.ZoneId.systemDefault());
+    }
+
+    /**
+     * {@code records} by the day they fall on in {@code zone}, every day from {@code from} to {@code to} present, and
+     * only those days.
+     */
+    public static Map<LocalDate, List<CheckInOutRecord>> createDateMap(List<CheckInOutRecord> records, ZonedDateTime from,
+                                                                       ZonedDateTime to, java.time.ZoneId zone){
+        LocalDate first = from.toLocalDate();
+        LocalDate last = to.toLocalDate();
         Map<LocalDate, List<CheckInOutRecord>> collect = records.stream()
-                .collect(Collectors.groupingBy(r -> r.getZonedDateTimestamp().toLocalDate()));
+                .filter(r -> {
+                    LocalDate day = r.getTimestamp().withZoneSameInstant(zone).toLocalDate();
+                    return !day.isBefore(first) && !day.isAfter(last);
+                })
+                .collect(Collectors.groupingBy(r -> r.getTimestamp().withZoneSameInstant(zone).toLocalDate()));
 
         ZonedDateTime current = from;
         while(current.isBefore(to) || current.isEqual(to)) {

@@ -162,6 +162,15 @@
                             <span class="nav-link-title">Metrics</span>
                         </a>
                     </li>
+                    <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')"
+                        th:if="${licenseInfo == null or licenseInfo.isEnabled('metrics')}">
+                        <a class="nav-link" th:href="@{/app/reports/schedules}">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <i class="ti ti-calendar-time"></i>
+                            </span>
+                            <span class="nav-link-title">Scheduled reports</span>
+                        </a>
+                    </li>
                     <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
                         <a class="nav-link" th:href="@{/app/settings}">
                             <span class="nav-link-icon d-md-none d-lg-inline-block">

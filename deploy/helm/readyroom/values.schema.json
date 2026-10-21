@@ -248,6 +248,30 @@
         }
       }
     },
+    "reports": {
+      "type": "object",
+      "properties": {
+        "siteTimeZones": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^=]+=[A-Za-z0-9_+\\-/]+$"
+          }
+        },
+        "maxRangeDays": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxAttachmentBytes": {
+          "type": "integer",
+          "minimum": 10000
+        },
+        "maxRecipients": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
     "api": {
       "type": "object",
       "properties": {

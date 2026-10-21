@@ -106,6 +106,18 @@
                             </small>
                         </div>
 
+                        <div class="mb-3">
+                            <label for="time-zone" class="form-label">Time zone</label>
+                            <select id="time-zone" class="form-select" th:field="*{timeZone}"
+                                    aria-describedby="timeZoneHelp">
+                                <option value="">My site's time zone</option>
+                                <option th:each="z : ${timeZones}" th:value="${z}" th:text="${z}"></option>
+                            </select>
+                            <small id="timeZoneHelp" class="form-hint">The time zone your arrival and departure times
+                                are shown in on reports and exports. Leave it on your site's unless you work elsewhere.
+                            </small>
+                        </div>
+
                         <div class="btn-list">
                             <button type="submit" class="btn btn-primary">
                                 <i class="ti ti-device-floppy me-1"></i>Submit

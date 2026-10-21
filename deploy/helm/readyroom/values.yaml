@@ -167,6 +167,16 @@ retention:
   eventsDays: 0
   schedule: "0 17 2 * * *"
 
+# Reports (APPLICATION_REPORTS_*). siteTimeZones: each site's IANA time zone, as "<location>=<zone>" with the
+# location as the directory spells it, e.g. "New York=America/New_York". A person's times in reports, exports and
+# the API are in their own time zone (their profile), else their site's, else `timezone`. maxRangeDays: the most
+# days one export covers. maxAttachmentBytes / maxRecipients: limits of a scheduled, e-mailed report.
+reports:
+  siteTimeZones: []
+  maxRangeDays: 366
+  maxAttachmentBytes: 10485760
+  maxRecipients: 20
+
 # The public API, /api/v1 (APPLICATION_API_*). Administrators create its tokens under Administration,
 # Integrations, each with scopes, an expiry and a rate limit; see the README ("Public API and webhooks").
 # maxTokenDays: the longest a token may be valid for. defaultRatePerMinute / maxRatePerMinute: requests a

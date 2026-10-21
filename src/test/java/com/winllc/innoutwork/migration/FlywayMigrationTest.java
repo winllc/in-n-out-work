@@ -71,7 +71,9 @@ class FlywayMigrationTest extends PostgresTestSupport {
             // V4: retention
             "ux_attendance_summaries_dn_month", "ix_notifications_date",
             // V9: the public API and webhooks
-            "ux_api_tokens_hash", "ix_webhook_deliveries_due", "ix_webhook_deliveries_endpoint");
+            "ux_api_tokens_hash", "ix_webhook_deliveries_due", "ix_webhook_deliveries_endpoint",
+            // V10: scheduled reports
+            "ix_report_schedules_due", "ix_report_schedules_owner_lower");
 
     @Autowired
     private JdbcTemplate jdbc;
