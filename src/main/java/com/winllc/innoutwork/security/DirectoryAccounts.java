@@ -340,8 +340,11 @@ public class DirectoryAccounts {
             return false;
         }
         String classes = attributes.get("objectclass");
-        if (classes == null) {
-            return false;
+        if (classes == null || classes.isBlank()) {
+            // Hidden (by an ACL): it cannot be told whether this is Active Directory, so whether it must have
+            // userAccountControl. Refused.
+            throw new IllegalStateException("its entry came back without objectClass: the bind account must be able"
+                    + " to read it");
         }
         for (String c : classes.split("\\s+")) {
             if (c.equalsIgnoreCase("user")) {

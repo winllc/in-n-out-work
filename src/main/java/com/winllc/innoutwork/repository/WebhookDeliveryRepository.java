@@ -66,4 +66,9 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
                      @Param("state") WebhookDelivery.State state, @Param("at") Instant at,
                      @Param("status") Integer status, @Param("error") String error, @Param("next") Instant next,
                      @Param("delivered") Instant delivered);
+
+    /** Gives a claimed delivery back untried, if it is still as it was claimed. */
+    @Modifying
+    @Query("update WebhookDelivery d set d.claimedUntil = null where d.id = :id and d.attempts = :attempts")
+    int release(@Param("id") Long id, @Param("attempts") int attempts);
 }

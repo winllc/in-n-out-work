@@ -47,7 +47,8 @@ CREATE TABLE webhook_endpoints (
     last_failure_at   timestamp(6) with time zone,
     last_error        varchar(500),
     silent_failures   integer       NOT NULL DEFAULT 0,
-    paused_until      timestamp(6) with time zone
+    paused_until      timestamp(6) with time zone,
+    last_tried_at     timestamp(6) with time zone
 );
 
 CREATE TABLE webhook_deliveries (

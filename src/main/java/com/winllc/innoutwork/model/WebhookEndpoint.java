@@ -78,6 +78,10 @@ public class WebhookEndpoint {
     @Column(name = "paused_until")
     private Instant pausedUntil;
 
+    /** When a run last served it (tried, or deferred a try): runs start with the least recently served. */
+    @Column(name = "last_tried_at")
+    private Instant lastTriedAt;
+
     public Set<WebhookEventType> getEventSet() {
         return WebhookEventType.parse(events);
     }

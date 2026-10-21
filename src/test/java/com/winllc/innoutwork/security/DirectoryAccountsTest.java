@@ -291,9 +291,29 @@ class DirectoryAccountsTest extends FullApplicationTest {
     @Test
     void statusRulesOnTheirOwn() {
         DirectoryAccounts rules = new DirectoryAccounts(ldapService, users, new ApplicationProperties());
-        assertEquals(DirectoryAccounts.Status.ACTIVE, rules.status(Map.of()));
-        assertEquals(DirectoryAccounts.Status.DISABLED, rules.status(Map.of("useraccountcontrol", "66050")));
-        assertEquals(DirectoryAccounts.Status.LOCKED, rules.status(Map.of("pwdaccountlockedtime", "garbage")),
-                "an unreadable lock time locks");
+        assertEquals(DirectoryAccounts.Status.ACTIVE, rules.status(Map.of("objectclass", "top inetOrgPerson")));
+        assertEquals(DirectoryAccounts.Status.DISABLED, rules.status(Map.of("objectclass", "top person user",
+                "useraccountcontrol", "66050")));
+        assertEquals(DirectoryAccounts.Status.LOCKED, rules.status(Map.of("objectclass", "inetOrgPerson",
+                "pwdaccountlockedtime", "garbage")), "an unreadable lock time locks");
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, () -> rules.status(Map.of()),
+                "no objectClass: cannot tell Active Directory");
+    }
+
+    @Test
+    void anEntryWhoseObjectClassIsHiddenRefuses() {
+        LdapService hiding = mock(LdapService.class);
+        com.winllc.innoutwork.data.LdapUser bob = com.winllc.innoutwork.data.LdapUser.builder().dn(BOB).build();
+        when(hiding.lookupLiveUser(any(), any(), any()))
+                .thenReturn(java.util.Optional.of(new LdapService.LiveUser(bob, Map.of("useraccountcontrol", "512"))));
+        ApplicationProperties settings = new ApplicationProperties();
+        settings.getLdap().getAccountStatus().setCacheSeconds(0);
+        assertEquals(DirectoryAccounts.Status.UNAVAILABLE, new DirectoryAccounts(hiding, users, settings).check(BOB).status());
+        when(hiding.lookupLiveUser(any(), any(), any()))
+                .thenReturn(java.util.Optional.of(new LdapService.LiveUser(bob, Map.of("objectclass", " "))));
+        assertEquals(DirectoryAccounts.Status.UNAVAILABLE, new DirectoryAccounts(hiding, users, settings).check(BOB).status());
+        settings.getLdap().getAccountStatus().setActiveDirectory("false");
+        assertEquals(DirectoryAccounts.Status.ACTIVE, new DirectoryAccounts(hiding, users, settings).check(BOB).status(),
+                "configured: not Active Directory");
     }
 }

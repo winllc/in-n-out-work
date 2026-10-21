@@ -230,14 +230,37 @@ class WebhookStallTest extends FullApplicationTest {
 
     // --- the sender ------------------------------------------------------------------------------------------
 
+    /** Released at the end of a test: lookups of hang*.test wait for it, deaf to interruption. */
+    private final java.util.concurrent.CountDownLatch hang = new java.util.concurrent.CountDownLatch(1);
+
+    @AfterEach
+    void releaseLookups() {
+        hang.countDown();
+    }
+
     private WebhookService sender(Duration runBudget) {
+        return sender(runBudget, Duration.ofSeconds(20));
+    }
+
+    private WebhookService sender(Duration runBudget, Duration perEndpointBudget) {
         ApplicationProperties settings = new ApplicationProperties();
         settings.getWebhooks().setSecretKey(context.getWebhooks().getSecretKey());
         settings.getWebhooks().setAllowedCidrs(List.of("127.0.0.0/8"));
         settings.getWebhooks().setReadTimeout(Duration.ofSeconds(1));
         settings.getWebhooks().setAttemptTimeout(ATTEMPT);
         settings.getWebhooks().setRunBudget(runBudget);
+        settings.getWebhooks().setPerEndpointBudget(perEndpointBudget);
         WebhookAddressPolicy policy = new WebhookAddressPolicy(List.of(Cidr.parse("127.0.0.0/8")), host -> {
+            if (host.startsWith("hang")) {
+                while (hang.getCount() > 0) {
+                    try {
+                        hang.await();
+                    } catch (InterruptedException ignored) {
+                        // a hung resolver does not notice
+                    }
+                }
+                throw new UnknownHostException(host);
+            }
             if (host.equals("localhost")) {
                 return new InetAddress[]{InetAddress.getByName("127.0.0.1")};
             }
@@ -389,6 +412,55 @@ class WebhookStallTest extends FullApplicationTest {
         assertEquals(WebhookDelivery.State.PENDING, after.getState());
         assertEquals(0, sender.deliverDue(), "not due yet");
         assertTrue(received.isEmpty());
+    }
+
+    @Test
+    void lookupsWaitingForOurOwnPoolDoNotPauseALiveEndpoint() throws Exception {
+        WebhookService sender = sender(Duration.ofSeconds(30));
+        int port = live(0);
+        Instant older = Instant.now().minusSeconds(3600);
+        // As many hung lookups as the pool has threads, each from an endpoint of its own.
+        for (int i = 0; i < WebhookAddressPolicy.LOOKUP_THREADS; i++) {
+            WebhookEndpoint dead = endpoint(sender, port);
+            dead.setUrl("https://hang" + i + ".test:" + port + "/hook");
+            endpoints.save(dead);
+            queue(dead, older.plusSeconds(i));
+        }
+        WebhookEndpoint alive = endpoint(sender, port);
+        WebhookDelivery toLive = queue(alive, Instant.now().minusSeconds(1));
+
+        sender.deliverDue();
+        WebhookDelivery after = deliveries.findById(toLive.getId()).orElseThrow();
+        assertEquals(WebhookDelivery.State.PENDING, after.getState());
+        assertEquals(0, after.getAttempts(), "its lookup never started: not a try");
+        assertEquals(null, after.getClaimedUntil(), "given back");
+        WebhookEndpoint live = endpoints.findById(alive.getId()).orElseThrow();
+        assertEquals(null, live.getPausedUntil(), "not paused");
+        assertEquals(0, live.getSilentFailures());
+
+        hang.countDown();
+        Thread.sleep(200);
+        sender.deliverDue();
+        assertEquals(WebhookDelivery.State.DELIVERED, deliveries.findById(toLive.getId()).orElseThrow().getState());
+    }
+
+    @Test
+    void endpointsTakeTurnsAcrossRuns() throws Exception {
+        WebhookService sender = sender(Duration.ofMillis(600));
+        WebhookEndpoint slowA = endpoint(sender, live(400));
+        WebhookEndpoint slowB = endpoint(sender, live(400));
+        WebhookEndpoint late = endpoint(sender, live(0));
+        Instant old = Instant.now().minusSeconds(3600);
+        for (int i = 0; i < 10; i++) {
+            queue(slowA, old.plusSeconds(i));
+            queue(slowB, old.plusSeconds(100 + i));
+        }
+        WebhookDelivery waiting = queue(late, Instant.now().minusSeconds(1));
+        for (int run = 0; run < 3; run++) {
+            sender.deliverDue();
+        }
+        assertEquals(WebhookDelivery.State.DELIVERED, deliveries.findById(waiting.getId()).orElseThrow().getState(),
+                "the endpoint no run had reached went first in the third");
     }
 
     @Test

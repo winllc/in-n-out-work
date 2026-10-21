@@ -10,7 +10,6 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -140,17 +139,27 @@ public class WebhookAddressPolicy {
     /** The longest a lookup may take when no try's deadline bounds it (saving a webhook). */
     static final Duration DEFAULT_RESOLVE_TIMEOUT = Duration.ofSeconds(10);
 
+    /** Lookups at once. */
+    static final int LOOKUP_THREADS = 4;
+
     /**
      * Lookups run here, so that one the system resolver does not answer (it has no timeout of its own that Java can
-     * set, and retries can take minutes) is abandoned at the caller's deadline. Few threads: a resolver that hangs
-     * makes later lookups wait and time out too, which refuses, never sends.
+     * set, and retries can take minutes) is abandoned at the caller's deadline: a fixed pool of
+     * {@link #LOOKUP_THREADS} with a bounded queue. A lookup the pool cannot take, or that waits in its queue past the
+     * deadline, never started: {@link LookupDeferredException}, which does not count against the endpoint.
      */
-    private static final ExecutorService LOOKUPS = new ThreadPoolExecutor(1, 4, 60, TimeUnit.SECONDS,
-            new LinkedBlockingQueue<>(100), r -> {
-                Thread t = new Thread(r, "webhook-dns");
-                t.setDaemon(true);
-                return t;
-            });
+    private final ThreadPoolExecutor lookups = lookupPool();
+
+    private static ThreadPoolExecutor lookupPool() {
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(LOOKUP_THREADS, LOOKUP_THREADS, 60, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(100), r -> {
+                    Thread t = new Thread(r, "webhook-dns");
+                    t.setDaemon(true);
+                    return t;
+                });
+        pool.allowCoreThreadTimeOut(true);
+        return pool;
+    }
 
     /**
      * {@link #resolve(String)} within {@code timeout}.
@@ -161,15 +170,24 @@ public class WebhookAddressPolicy {
         String bare = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
         InetAddress[] addresses;
         Future<InetAddress[]> lookup;
+        java.util.concurrent.atomic.AtomicBoolean started = new java.util.concurrent.atomic.AtomicBoolean();
         try {
-            lookup = LOOKUPS.submit(() -> resolver.resolve(bare));
+            lookup = lookups.submit(() -> {
+                started.set(true);
+                return resolver.resolve(bare);
+            });
         } catch (RejectedExecutionException e) {
-            throw new WebhookRefusedException("Too many lookups of webhook hosts are waiting; " + bare + " was not looked up.");
+            throw new LookupDeferredException("Too many lookups of webhook hosts are waiting; " + bare
+                    + " was not looked up.");
         }
         try {
             addresses = lookup.get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             lookup.cancel(true);
+            if (!started.get()) {
+                throw new LookupDeferredException("The lookup of " + bare + " waited for a free lookup thread past"
+                        + " its deadline; not tried.");
+            }
             throw new WebhookRefusedException("The host " + bare + " did not resolve within " + timeout.toSeconds()
                     + " seconds.");
         } catch (InterruptedException e) {

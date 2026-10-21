@@ -1275,11 +1275,13 @@ clock. Deliveries are queued in the database once the change commits, and sent w
 a time, each claimed (`claimed_until`, a conditional update) just before it is sent so that no two replicas send it
 at once. A try is cut off after `APPLICATION_WEBHOOKS_ATTEMPTTIMEOUT` (30s) altogether, whatever the receiver does
 (a handshake or answer sent a byte at a time, and the host's DNS lookup, included); a run starts no try after
-`APPLICATION_WEBHOOKS_RUNBUDGET` (40s); due deliveries are taken per endpoint, at most
+`APPLICATION_WEBHOOKS_RUNBUDGET` (40s); due deliveries are taken per endpoint, least recently served endpoint
+first, at most
 `APPLICATION_WEBHOOKS_PERENDPOINTMAX` (20) tries and `APPLICATION_WEBHOOKS_PERENDPOINTBUDGET` (20s) each; and an
 endpoint that gives no HTTP answer at all is paused with backoff (30 seconds, then 2, 10 and 30 minutes, 1, 2, 4
 and 8 hours) until any answer, so a slow or dead receiver, however long its backlog, cannot hold the others up.
-A claim and a result are recorded only on the row as it was read, so a stale copy can neither send a delivery
+Host lookups run on a pool of 4 threads; one that never got a thread before the deadline is not counted as a
+try and does not pause the endpoint. A claim and a result are recorded only on the row as it was read, so a stale copy can neither send a delivery
 another node rescheduled nor lower its count of tries. Delivery is at least once (a reply lost after
 the receiver processed it is sent again): receivers de-duplicate on `X-ReadyRoom-Delivery`; anything but a 2xx answer (a redirect included) is retried after 30 seconds, 2, 10 and 30 minutes, then
 1, 2, 4 and 8 hours, up to `APPLICATION_WEBHOOKS_MAXATTEMPTS` (8) tries, then marked failed. The page shows each

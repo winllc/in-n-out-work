@@ -315,7 +315,8 @@ public class WebhookService {
         long runDeadline = System.nanoTime() + settings.getRunBudget().toNanos();
         Instant now = clock.instant();
         int tried = 0;
-        for (Long endpoint : deliveries.findEndpointsWithDue(WebhookDelivery.State.PENDING, now, PageRequest.of(0, 500))) {
+        for (Long endpoint : fairOrder(deliveries.findEndpointsWithDue(WebhookDelivery.State.PENDING, now,
+                PageRequest.of(0, 500)))) {
             if (System.nanoTime() >= runDeadline) {
                 break;
             }
@@ -336,6 +337,19 @@ public class WebhookService {
             }
         }
         return tried;
+    }
+
+    /**
+     * The endpoints with due deliveries, least recently served first (never served first), then oldest due: each run
+     * starts with those the last runs did not reach, so slow endpoints with old backlogs cannot take every run.
+     */
+    List<Long> fairOrder(List<Long> oldestDueFirst) {
+        Map<Long, Instant> served = new java.util.HashMap<>();
+        endpoints.findAllById(oldestDueFirst).forEach(e -> served.put(e.getId(), e.getLastTriedAt()));
+        List<Long> order = new ArrayList<>(oldestDueFirst);
+        order.sort(java.util.Comparator.comparing(id -> served.get(id),
+                java.util.Comparator.nullsFirst(java.util.Comparator.naturalOrder())));
+        return order;
     }
 
     /** Takes {@code delivery} for this try; false when another replica or run has it, or it is no longer due. */
@@ -388,6 +402,12 @@ public class WebhookService {
             }
             outcome = Outcome.ANSWERED;
             problem = "answered HTTP " + status;
+        } catch (LookupDeferredException e) {
+            // Never asked of the endpoint: not counted, not a reason to pause it; it stays due.
+            log.info("Webhook delivery {} to endpoint {} deferred: {}", delivery.getId(), endpoint.getId(),
+                    LogSafe.of(e.getMessage()));
+            release(delivery, endpoint, now);
+            return Outcome.NOT_SENT;
         } catch (WebhookRefusedException e) {
             problem = "refused: " + e.getMessage();
         } catch (IOException e) {
@@ -403,6 +423,18 @@ public class WebhookService {
         finish(delivery, endpoint, now, last ? WebhookDelivery.State.FAILED : WebhookDelivery.State.PENDING, status,
                 problem);
         return outcome;
+    }
+
+    /** Gives a claimed delivery back untried: its count of tries and its next try unchanged. */
+    private void release(WebhookDelivery delivery, WebhookEndpoint endpoint, Instant now) {
+        newTransaction.executeWithoutResult(s -> {
+            deliveries.release(delivery.getId(), delivery.getAttempts());
+            endpoints.findById(endpoint.getId()).ifPresent(e -> {
+                e.setLastTriedAt(now);
+                endpoints.save(e);
+            });
+        });
+        delivery.setClaimedUntil(null);
     }
 
     private void finish(WebhookDelivery delivery, WebhookEndpoint endpoint, Instant now, WebhookDelivery.State state,
@@ -423,6 +455,7 @@ public class WebhookService {
             }
             if (endpoint != null) {
                 endpoints.findById(endpoint.getId()).ifPresent(e -> {
+                    e.setLastTriedAt(now);
                     if (state == WebhookDelivery.State.DELIVERED) {
                         e.setLastSuccessAt(now);
                     } else {
