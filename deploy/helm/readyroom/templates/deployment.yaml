@@ -8,11 +8,10 @@ metadata:
   labels:
     {{- include "readyroom.labels" . | nindent 4 }}
 spec:
-  # See replicaCount in values.yaml: more than one replica is not supported.
   replicas: {{ $v.replicaCount }}
   revisionHistoryLimit: {{ $v.revisionHistoryLimit }}
   strategy:
-    {{- toYaml $v.strategy | nindent 4 }}
+    {{- include "readyroom.strategy" . | nindent 4 }}
   selector:
     matchLabels:
       {{- include "readyroom.selectorLabels" . | nindent 6 }}
@@ -40,6 +39,7 @@ spec:
       {{- with $v.priorityClassName }}
       priorityClassName: {{ . }}
       {{- end }}
+      terminationGracePeriodSeconds: {{ $v.terminationGracePeriodSeconds }}
       securityContext:
         {{- include "readyroom.podSecurityContext" (dict "ctx" $v.podSecurityContext "root" .) | nindent 8 }}
       {{- if and $licenseSecret $v.persistence.license.enabled }}
@@ -113,6 +113,27 @@ spec:
             {{- end }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "LDAP_PASSWORD" "value" $v.ldap.bindPassword "existingSecret" $v.ldap.existingSecret "existingSecretKey" $v.ldap.existingSecretKey "key" "ldap-password") }}{{ . | nindent 12 }}{{ end }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "SPRING_MAIL_PASSWORD" "value" $v.smtp.password "existingSecret" $v.smtp.existingSecret "existingSecretKey" $v.smtp.existingSecretKey "key" "smtp-password") }}{{ . | nindent 12 }}{{ end }}
+            {{- if not $v.persistence.license.enabled }}
+            # No license volume to import from: the installation id must already be in the database. A fresh or
+            # rebuilt database behind an existing installation is not given a new id silently.
+            - name: ENS_LICENSE_EXPECT_INSTALLATION_ID
+              value: "true"
+            {{- end }}
+            {{- if $v.license.newInstallationId }}
+            - name: ENS_LICENSE_NEW_INSTALLATION_ID
+              value: "true"
+            {{- end }}
+            {{- if $licenseSecret }}
+            # The supplied license, installed in the database when none usable is, or when it is a newer revision.
+            - name: ENS_LICENSE
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $licenseSecret }}
+                  key: license.lic
+            {{- end }}
+            {{- if $v.sso.oidc.enabled }}
+            {{- with include "readyroom.secretEnv" (dict "root" . "env" "ENS_SSO_OIDC_CLIENT_SECRET" "value" $v.sso.oidc.clientSecret "existingSecret" $v.sso.oidc.existingSecret "existingSecretKey" $v.sso.oidc.existingSecretKey "key" "oidc-client-secret") }}{{ . | nindent 12 }}{{ end }}
+            {{- end }}
             {{- if $v.audit.splunk.url }}
             {{- with include "readyroom.secretEnv" (dict "root" . "env" "ENS_AUDIT_SPLUNK_TOKEN" "value" $v.audit.splunk.token "existingSecret" $v.audit.splunk.existingSecret "existingSecretKey" $v.audit.splunk.existingSecretKey "key" "splunk-token") }}{{ . | nindent 12 }}{{ end }}
             {{- end }}
@@ -125,6 +146,13 @@ spec:
             {{- with $v.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
+          {{- if gt (int $v.preStopSleepSeconds) 0 }}
+          lifecycle:
+            # Out of the Service's endpoints before the server stops accepting, so no check-in is refused.
+            preStop:
+              exec:
+                command: ["sleep", "{{ $v.preStopSleepSeconds }}"]
+          {{- end }}
           startupProbe:
             httpGet:
               path: /actuator/health/liveness
@@ -185,6 +213,16 @@ spec:
               mountPath: /etc/in-n-out/x509
               readOnly: true
             {{- end }}
+            {{- if and $v.sso.saml.enabled $v.sso.saml.metadataConfigMap }}
+            - name: saml-idp
+              mountPath: /etc/in-n-out/saml-idp
+              readOnly: true
+            {{- end }}
+            {{- if and $v.sso.saml.enabled $v.sso.saml.spKeySecret }}
+            - name: saml-sp
+              mountPath: /etc/in-n-out/saml-sp
+              readOnly: true
+            {{- end }}
             {{- if $v.x509.revocation.crlConfigMap }}
             - name: crl
               mountPath: /etc/in-n-out/crl
@@ -208,7 +246,7 @@ spec:
           persistentVolumeClaim:
             claimName: {{ include "readyroom.licenseClaimName" . }}
           {{- else }}
-          # Not persistent: the license and installation id are lost with the pod. Testing only.
+          # No license volume: the license state is in the database (nothing to import from an earlier release).
           emptyDir: {}
           {{- end }}
         {{- if and $licenseSecret $v.persistence.license.enabled }}
@@ -284,6 +322,25 @@ spec:
                       path: ca.pem
               {{- end }}
         {{- end }}
+        {{- if and $v.sso.saml.enabled $v.sso.saml.metadataConfigMap }}
+        - name: saml-idp
+          configMap:
+            name: {{ $v.sso.saml.metadataConfigMap }}
+            items:
+              - key: {{ $v.sso.saml.metadataConfigMapKey }}
+                path: metadata.xml
+        {{- end }}
+        {{- if and $v.sso.saml.enabled $v.sso.saml.spKeySecret }}
+        - name: saml-sp
+          secret:
+            secretName: {{ $v.sso.saml.spKeySecret }}
+            defaultMode: 0440
+            items:
+              - key: tls.key
+                path: tls.key
+              - key: tls.crt
+                path: tls.crt
+        {{- end }}
         {{- if $v.x509.revocation.crlConfigMap }}
         - name: crl
           configMap:
@@ -304,9 +361,21 @@ spec:
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with $v.affinity }}
+      {{- if $v.affinity }}
       affinity:
-        {{- toYaml . | nindent 8 }}
+        {{- toYaml $v.affinity | nindent 8 }}
+      {{- else if gt (int $v.replicaCount) 1 }}
+      affinity:
+        # Replicas on different nodes when there is room, so losing a node does not take them all.
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    {{- include "readyroom.selectorLabels" . | nindent 20 }}
+                    app.kubernetes.io/component: app
       {{- end }}
       {{- with $v.tolerations }}
       tolerations:

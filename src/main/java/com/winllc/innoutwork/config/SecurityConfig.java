@@ -6,6 +6,7 @@ import com.winllc.innoutwork.security.AppUserDetailsService;
 import com.winllc.innoutwork.security.ConsentBanner;
 import com.winllc.innoutwork.security.ConsentFilter;
 import com.winllc.innoutwork.security.SessionControls;
+import com.winllc.innoutwork.security.sso.SsoSignIn;
 import com.winllc.innoutwork.security.x509.X509SignIn;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -87,9 +88,15 @@ public class SecurityConfig {
                                                    ObjectProvider<ConsentBanner> consentBanner,
                                                    ObjectProvider<SessionControls> sessionControls,
                                                    ObjectProvider<X509SignIn> x509SignIn,
+                                                   ObjectProvider<SsoSignIn> ssoSignIn,
                                                    Environment environment) throws Exception {
         // Preferred: HTTPS with a client certificate (X.509).
         configureX509(http, appUserDetailsService, x509SignIn);
+        // Single sign-on (OpenID Connect, SAML), each only when configured (ENS_SSO_*).
+        SsoSignIn sso = ssoSignIn.getIfAvailable();
+        if (sso != null) {
+            sso.configure(http);
+        }
         // The notice-and-consent banner before any sign-in, and the session lifetimes after it.
         BrowserSessionConfig.apply(http, consentBanner, sessionControls);
         http
@@ -162,6 +169,7 @@ public class SecurityConfig {
                 .subjectPrincipalRegex("(.*)") // full subject DN is used as the username
                 .userDetailsService(appUserDetailsService)
         );
+        X509SignIn.keepNoCertificate(http);
     }
 
     /**

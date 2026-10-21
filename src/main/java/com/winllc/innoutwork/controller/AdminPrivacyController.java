@@ -47,7 +47,8 @@ public class AdminPrivacyController {
     private static final SecureRandom RANDOM = new SecureRandom();
 
     /** The first step's token, for one person, until it expires. */
-    record PendingErasure(String dn, String token, Instant expires) {
+    /** Kept in the browser session, which is in the database: serializable. */
+    record PendingErasure(String dn, String token, Instant expires) implements java.io.Serializable {
     }
 
     private final PersonalDataService personalData;

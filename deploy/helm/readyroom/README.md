@@ -23,10 +23,11 @@ What it creates:
 
 | Resource | What |
 |---|---|
-| Deployment | ReadyRoom, one replica (`Recreate`), port 8181. A `license-init` init container when a license is supplied |
+| Deployment | ReadyRoom, `replicaCount` replicas (1), port 8181; `RollingUpdate`, or `Recreate` while the license is on a ReadWriteOnce volume. A `license-init` init container when a license is supplied and the license volume is on |
+| PodDisruptionBudget | Only with `replicaCount` above 1 |
 | ConfigMap | Every non-secret setting, as ReadyRoom's environment. A change rolls the pod |
 | Secret | Inline passwords (database, LDAP, SMTP, keystores, Splunk token), and the license file from `license.file` |
-| PersistentVolumeClaim | `<release>-readyroom-license` at `/var/lib/ens`: the license, the installation id and the licensing state |
+| PersistentVolumeClaim | `<release>-readyroom-license` at `/var/lib/ens`: an earlier release's license state, imported into the database on the first start (`persistence.license`) |
 | Job | `<release>-readyroom-migrate-<revision>`: runs the database scripts once ReadyRoom has created its tables |
 | Service, Ingress, Route | How ReadyRoom is reached |
 | StatefulSet | Only with `database.embedded.enabled`: PostgreSQL 16 for evaluation (no backups) |
@@ -98,15 +99,75 @@ helm install readyroom oci://ghcr.io/winllc/charts/readyroom --version 1.2.3 -f 
 #     --set license.existingSecret=readyroom-license
 ```
 
-The `license-init` init container copies it into the license volume **only when no license is
-installed there yet**, as the release bundle's `install.sh` does. A license uploaded later on the
-license screen (`/app/admin/license`) is never overwritten by `helm upgrade`. To replace a license,
-upload it on the license screen.
+It is also passed as `ENS_LICENSE`, which ReadyRoom installs (in its database) **only when no usable license
+is installed yet, or when it is a newer revision** of the installed one. A license uploaded later on the
+license screen (`/app/admin/license`) is never overwritten by `helm upgrade`. To replace a license, upload it
+on the license screen. (With the license volume on, the `license-init` init container also copies it there,
+for releases before the license moved to the database.)
 
 The license screen shows the installation id (for example `RR-7F3K-29QD`), which you enter on the ENS
-licensing portal to bind a license to this installation. It is kept in the license PVC, so **keep that
-PVC**. `helm uninstall` deletes it with the rest of the release; to keep it independent of the release,
-create the claim yourself and set `persistence.license.existingClaim`.
+licensing portal to bind a license to this installation. ReadyRoom keeps it, the license and the licensing
+state in its database, so **back up the database**. The license PVC (`persistence.license`) is only read on
+the first start of a release that keeps them in the database: it imports what an earlier release kept there.
+After that upgrade has started once, set `persistence.license.enabled=false` (needed for several replicas,
+below). Without the volume the chart sets `ENS_LICENSE_EXPECT_INSTALLATION_ID=true`: ReadyRoom then never
+makes up an installation id when its database has none, so a fresh or rebuilt database behind an existing
+installation cannot silently break a bound license. A new installation either starts once with the volume on,
+or sets `license.newInstallationId: true` for its first start (honoured only while the database holds no
+license; unset it afterwards).
+
+### Several replicas
+
+```yaml
+replicaCount: 2
+persistence:
+  license:
+    enabled: false      # after the first start of this release, so the license volume was imported
+    imported: true      # says so; without it the chart refuses enabled=false while the claim exists
+```
+
+The license claim carries `helm.sh/resource-policy: keep` and `argocd.argoproj.io/sync-options: Prune=false`, so
+turning the volume off (or `helm uninstall`) leaves it in place; delete it yourself once you no longer want
+it. An upgrade straight from an earlier release to `enabled: false` is refused while the claim exists and
+`imported` is not set (the chart looks the claim up), so the installation id cannot be skipped.
+
+Scheduled jobs run on one replica at a time (database locks), sessions and the license are in the database,
+and with more than one replica the chart adds a PodDisruptionBudget (`podDisruptionBudget.minAvailable`, 1)
+and prefers to put the replicas on different nodes. The strategy is `RollingUpdate` (`maxSurge` 1,
+`maxUnavailable` 0): a new pod is ready before an old one stops, so the Windows client's events are never
+refused during an upgrade. Each pod leaves the Service before it stops (`preStopSleepSeconds`, 10), then
+finishes requests and any running job (`terminationGracePeriodSeconds`, 60).
+
+While the license is on a ReadWriteOnce volume the chart refuses `replicaCount` above 1 (two pods cannot
+share it) and uses `Recreate` (a new pod on another node could not attach it), so an upgrade is a short
+outage; ReadyRoom then holds back absence alerts for people who may have checked in during it (see
+"Several replicas, upgrades and outages" in the ReadyRoom README). `audit.file.persistence` is refused with
+several replicas too (one file); forward the audit trail to syslog or Splunk instead.
+
+### Single sign-on
+
+OpenID Connect (Entra ID) and SAML (metadata from a ConfigMap), as in `ci/sso-values.yaml`; the ReadyRoom
+README's "Single sign-on" section has the settings for Entra ID, Okta and ADFS:
+
+```yaml
+sso:
+  roleMapping: "<Entra group object id>=ADMIN"
+  oidc:
+    enabled: true
+    issuerUri: https://login.microsoftonline.com/<tenant id>/v2.0
+    clientId: <application id>
+    existingSecret: readyroom-oidc          # key oidc-client-secret, or existingSecretKey
+    userFilter: "(userPrincipalName={upn})"   # the upn optional claim; or (msDS-ExternalDirectoryObjectId=User_{oid})
+  saml:
+    enabled: true
+    idpMetadataUrl: https://login.microsoftonline.com/<tenant id>/federationmetadata/2007-06/federationmetadata.xml?appid=<app id>
+    userFilter: "(userPrincipalName={http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn})"
+```
+
+Register `<publicUrl>/login/oauth2/code/oidc` (OIDC) and `<publicUrl>/saml2/service-provider-metadata/saml`
+(SAML metadata; assertion consumer service `<publicUrl>/login/saml2/sso/saml`) at the identity provider.
+SAML needs HTTPS end to end as the browser sees it. With `networkPolicy.enabled`, port 443 is opened for the
+identity provider.
 
 ### Ingress with TLS (browsers)
 
@@ -254,6 +315,12 @@ existing schema as version 0 and brings it up to date (it builds any index the o
 that one start takes longer on a large database). There is no migration Job any more; an old one from a
 previous release is removed by the upgrade.
 
+Upgrading to the release with sessions, job locks and the license in the database (Flyway V6 to V8) needs
+nothing by hand: keep your values, and the first start imports the license volume. Everyone signs in again
+once. To go to several replicas afterwards, see [Several replicas](#several-replicas); until then the chart
+keeps `Recreate`, and absence alerts wait for people whose check-in may have been sent while the pod was
+restarting.
+
 ### Backups
 
 With `backup.enabled`, a CronJob runs `pg_dump` (custom format, with the database image so the version
@@ -311,8 +378,10 @@ delete it.
 | `image.pullPolicy` | `IfNotPresent` | |
 | `imagePullSecrets` | `[]` | Pull secrets for every pod |
 | `nameOverride`, `fullnameOverride` | `""` | |
-| `replicaCount` | `1` | Only 1 is supported: the license volume and the scheduled jobs are single-writer |
-| `strategy.type` | `Recreate` | |
+| `replicaCount` | `1` | More than 1 needs `persistence.license.enabled=false` (or ReadWriteMany); see Several replicas |
+| `strategy` | `{}` | Empty: `RollingUpdate` (maxSurge 1, maxUnavailable 0), or `Recreate` while the license is on a ReadWriteOnce volume |
+| `podDisruptionBudget.minAvailable` | `1` | With more than one replica |
+| `preStopSleepSeconds`, `terminationGracePeriodSeconds` | `10`, `60` | Leaving the Service, then finishing requests and running jobs |
 | `revisionHistoryLimit` | `3` | |
 | `serviceAccount.create`, `.name`, `.annotations` | `true`, `""`, `{}` | The token is never mounted |
 | `podAnnotations`, `podLabels` | `{}` | |
@@ -375,6 +444,9 @@ delete it.
 | `tls.keystore.password` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `keystore-password` | |
 | `tls.truststore.*` | as keystore, `truststore.p12`, `truststore-password` | CAs of client certificates; required with `tls.enabled` unless `tls.clientAuth` is `none` |
 | `windowsAuth.enabled` | `false` | Kerberos sign-in for the Windows client |
+| `sso.roleMapping`, `sso.clockSkew` | `""`, `60s` | IdP group to role (`group=ADMIN;group=MANAGER`); clock skew allowed |
+| `sso.oidc.enabled`, `.issuerUri`, `.clientId`, `.clientSecret` / `.existingSecret`, `.userFilter`, `.groupsClaim`, `.scopes`, `.displayName` | off | OpenID Connect (ENS_SSO_OIDC_*) |
+| `sso.saml.enabled`, `.idpMetadataUrl` / `.metadataConfigMap`, `.entityId`, `.userFilter`, `.groupsAttribute`, `.spKeySecret`, `.displayName` | off | SAML 2.0 (ENS_SSO_SAML_*) |
 | `windowsAuth.servicePrincipal` | `""` | Required when enabled |
 | `windowsAuth.keytab.secretName`, `.secretKey` | `""`, `http.keytab` | Required when enabled; mounted at `/etc/in-n-out/http.keytab` |
 | `windowsAuth.krb5Conf`, `.krb5ConfExistingConfigMap`, `.krb5ConfExistingConfigMapKey` | `""`, `""`, `krb5.conf` | Optional `/etc/krb5.conf` |
@@ -386,7 +458,8 @@ delete it.
 | `audit.splunk.url`, `.index`, `.sourcetype`, `.insecure` | `""`, `""`, `ens:audit`, `false` | `ENS_AUDIT_SPLUNK_*` |
 | `audit.splunk.token` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `splunk-token` | `ENS_AUDIT_SPLUNK_TOKEN` |
 | `audit.syslog.host`, `.port`, `.protocol`, `.facility` | `""`, `""`, `tcp`, `local0` | `ENS_AUDIT_SYSLOG_*` |
-| `persistence.license.enabled` | `true` | The license PVC at `/var/lib/ens` |
+| `license.newInstallationId` | `false` | Accept a new installation id when the database has none and no volume is mounted (`ENS_LICENSE_NEW_INSTALLATION_ID`) |
+| `persistence.license.enabled` | `true` | The license PVC at `/var/lib/ens`, imported into the database on the first start; turn off afterwards for several replicas |
 | `persistence.license.size`, `.storageClass`, `.accessModes`, `.existingClaim` | `100Mi`, `""`, RWO, `""` | |
 | `license.existingSecret` | `""` | Secret with key `license.lic` |
 | `license.file` | `""` | The license itself (`--set-file license.file=./license.lic`) |

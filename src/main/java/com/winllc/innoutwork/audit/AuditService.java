@@ -178,11 +178,19 @@ public class AuditService implements AuditLog {
         return required.execute(status -> head().getLicenseMode());
     }
 
-    /** Remembers the license mode with the event that records the change, in one transaction. */
+    /**
+     * Remembers the license mode with the event that records the change, in one transaction; nothing when the mode
+     * on record is already {@code mode} (another replica recorded the same change).
+     */
     public void recordLicenseMode(String mode, AuditEntry entry) {
         Captured captured = capture(entry);
         try {
             required.executeWithoutResult(status -> {
+                // Under the chain head's row lock: with several replicas each notices the change, and only the
+                // first records it.
+                if (mode.equals(head().getLicenseMode())) {
+                    return;
+                }
                 append(captured);
                 AuditChainHead head = em.find(AuditChainHead.class, AuditChainHead.ID);
                 head.setLicenseMode(mode);

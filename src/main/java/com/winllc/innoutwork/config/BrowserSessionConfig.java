@@ -11,6 +11,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.authentication.AnonymousAuthenticationFilter;
 import org.springframework.security.web.authentication.preauth.x509.X509AuthenticationFilter;
+import org.springframework.session.FindByIndexNameSessionRepository;
 
 import java.time.Clock;
 
@@ -28,8 +29,15 @@ public class BrowserSessionConfig {
 
     /** Also the session listener that notices idle expiry; Boot registers it with the container. */
     @Bean
-    SessionControls sessionControls(EnsProperties properties, ObjectProvider<AuditLog> audit) {
-        return new SessionControls(properties.getSession(), audit, Clock.systemUTC());
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    SessionControls sessionControls(EnsProperties properties, ObjectProvider<AuditLog> audit,
+                                    ObjectProvider<FindByIndexNameSessionRepository> sharedSessions) {
+        SessionControls controls = new SessionControls(properties.getSession(), audit, Clock.systemUTC());
+        FindByIndexNameSessionRepository shared = sharedSessions.getIfAvailable();
+        if (shared != null) {
+            controls.useSessionRepository(shared);
+        }
+        return controls;
     }
 
     /**

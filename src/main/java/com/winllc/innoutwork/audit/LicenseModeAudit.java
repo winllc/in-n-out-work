@@ -60,6 +60,8 @@ public class LicenseModeAudit implements Consumer<LicenseCheck> {
         }
     }
 
+    // Every instance, not one at a time (no ShedLock): each checks its own license state; a change is recorded once,
+    // under the audit chain's row lock (AuditService.recordLicenseMode).
     @Scheduled(fixedDelay = 30000, initialDelay = 30000)
     public void check() {
         if (started) {

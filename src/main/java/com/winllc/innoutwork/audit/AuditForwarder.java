@@ -1,6 +1,8 @@
 package com.winllc.innoutwork.audit;
 
 import com.winllc.innoutwork.metrics.EnsMetrics;
+import net.javacrumbs.shedlock.core.LockConfiguration;
+import net.javacrumbs.shedlock.core.LockingTaskExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -16,6 +18,10 @@ import java.util.List;
  * restarts. Failures are retried with exponential backoff, capped at five minutes. An output failing for more
  * than 15 minutes records one {@code audit.delivery-failed}; {@code audit.delivery-recovered} follows when it
  * delivers again.
+ * <p>
+ * With several replicas every one runs a forwarder, but each batch is delivered under a lock in the database
+ * ({@link #setClusterLock}), so one replica at a time reads the cursor, sends and moves it: no batch goes out twice
+ * because two replicas read the same cursor.
  */
 public class AuditForwarder {
 
@@ -36,6 +42,11 @@ public class AuditForwarder {
     private volatile boolean running;
     private Thread thread;
     private Duration backoff = MIN_BACKOFF;
+    /** Held while a batch is delivered; null delivers without one (one instance, tests). */
+    private LockingTaskExecutor clusterLock;
+
+    /** How long a delivery's lock lasts if its replica dies; extended while a slow delivery is still running. */
+    static final Duration LOCK_AT_MOST = Duration.ofMinutes(2);
 
     public AuditForwarder(AuditOutput output, AuditService audit, AuditQueryService query,
                           AuditOutputStateRepository states, Duration alertAfter, long pollMillis, Clock clock) {
@@ -46,6 +57,11 @@ public class AuditForwarder {
         this.alertAfter = alertAfter;
         this.pollMillis = pollMillis;
         this.clock = clock;
+    }
+
+    /** Delivers each batch holding this lock, named for the output, so replicas take turns. */
+    public void setClusterLock(LockingTaskExecutor clusterLock) {
+        this.clusterLock = clusterLock;
     }
 
     public AuditOutput output() {
@@ -83,7 +99,7 @@ public class AuditForwarder {
             long waitMillis;
             boolean backingOff = false;
             try {
-                int sent = deliverOnce();
+                int sent = deliverTakingTurns();
                 backoff = MIN_BACKOFF;
                 waitMillis = sent >= output.batchSize() ? 0 : pollMillis;
             } catch (Exception e) {
@@ -117,6 +133,23 @@ public class AuditForwarder {
         }
     }
 
+    /** {@link #deliverOnce()} under the cluster lock; 0 when another replica holds it (it is delivering). */
+    int deliverTakingTurns() throws Exception {
+        if (clusterLock == null) {
+            return deliverOnce();
+        }
+        LockingTaskExecutor.TaskResult<Integer> result;
+        try {
+            result = clusterLock.executeWithLock(this::deliverOnce, new LockConfiguration(clock.instant(),
+                    "AuditForwarder-" + output.name(), LOCK_AT_MOST, Duration.ZERO));
+        } catch (Exception | Error e) {
+            throw e;
+        } catch (Throwable t) {
+            throw new IllegalStateException(t);
+        }
+        return result.wasExecuted() && result.getResult() != null ? result.getResult() : 0;
+    }
+
     /**
      * Sends the next batch after the cursor, if there is one. Returns how many were delivered; throws (after
      * recording the error) when the output refused them.
@@ -136,7 +169,8 @@ public class AuditForwarder {
             failed(state, e);
             throw e;
         }
-        state.setLastSeq(batch.getLast().getSeq());
+        // Only ever forward: the cursor was read under this delivery's lock, and the batch is after it.
+        state.setLastSeq(Math.max(state.getLastSeq(), batch.getLast().getSeq()));
         state.setLastDeliveredAt(clock.instant());
         if (state.getFailingSince() != null) {
             recovered(state);

@@ -11,7 +11,11 @@ import ch.qos.logback.core.util.FileSize;
 import org.slf4j.ILoggerFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import net.javacrumbs.shedlock.core.DefaultLockingTaskExecutor;
+import net.javacrumbs.shedlock.core.LockProvider;
 import org.springframework.beans.factory.DisposableBean;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
@@ -50,6 +54,12 @@ public class AuditOutputs implements DisposableBean {
 
     public AuditOutputs(AuditProperties properties, AuditService audit, AuditQueryService query,
                         AuditOutputStateRepository states) {
+        this(properties, audit, query, states, null);
+    }
+
+    @Autowired
+    public AuditOutputs(AuditProperties properties, AuditService audit, AuditQueryService query,
+                        AuditOutputStateRepository states, ObjectProvider<LockProvider> locks) {
         this.properties = properties;
         this.audit = audit;
         this.query = query;
@@ -71,6 +81,12 @@ public class AuditOutputs implements DisposableBean {
             } catch (RuntimeException e) {
                 log.error("Audit output syslog: NOT started: {}", e.getMessage());
             }
+        }
+        LockProvider lockProvider = locks == null ? null : locks.getIfAvailable();
+        if (lockProvider != null) {
+            // Replicas take turns delivering each batch (see AuditForwarder).
+            DefaultLockingTaskExecutor executor = new DefaultLockingTaskExecutor(lockProvider);
+            forwarders.forEach(f -> f.setClusterLock(executor));
         }
         forwarders.forEach(f -> audit.onAppend(f::wake));
     }

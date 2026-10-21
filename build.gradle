@@ -14,12 +14,24 @@ java {
 
 repositories {
     mavenCentral()
+    // OpenSAML 5, for the SAML service provider, is published only to the Shibboleth Consortium's repository.
+    // Only its own groups are fetched from there; everything else still comes from Maven Central.
+    exclusiveContent {
+        forRepository {
+            maven { url = 'https://build.shibboleth.net/maven/releases/' }
+        }
+        filter {
+            includeGroup 'org.opensaml'
+            includeGroupByRegex 'net\\.shibboleth.*'
+        }
+    }
 }
 
 // Security fixes ahead of the Spring Boot release that brings them (the image scan, Trivy, fails on known
 // HIGH/CRITICAL issues with a fix). Drop each once Boot's own version is at least this.
 ext['tomcat.version'] = '11.0.25'        // CVE-2026-65182, CVE-2026-65905, CVE-2026-68525
 ext['jackson-bom.version'] = '3.1.7'     // CVE-2026-89407, CVE-2026-89425, CVE-2026-68497, CVE-2026-91776, CVE-2026-91777
+ext['jackson-2-bom.version'] = '2.21.7'  // the same CVEs in Jackson 2, which OpenSAML (SAML sign-in) brings in
 
 dependencies {
     // --- Lombok (compile-time annotation processor) ---
@@ -37,6 +49,21 @@ dependencies {
     implementation 'org.springframework.security:spring-security-ldap'
     // Windows (Kerberos) sign-in for the check-in calls; off unless application.windows-auth.enabled.
     implementation 'org.springframework.security:spring-security-kerberos-core'
+    // Single sign-on (ens.sso): an OpenID Connect client and a SAML 2.0 service provider, both off unless
+    // configured. The libraries only, not Boot's starters, so nothing is configured from spring.security.*.
+    implementation 'org.springframework.security:spring-security-oauth2-client'
+    implementation 'org.springframework.security:spring-security-oauth2-jose'
+    implementation 'org.springframework.security:spring-security-saml2-service-provider'
+    // BouncyCastle, which OpenSAML, Shibboleth, Nimbus and the OIDC SDK use at runtime: OpenSAML 5.2.3 brings 1.84
+    // (CVE-2026-8763, CVE-2026-13506). All three pinned, so none is left behind at the old version.
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
+    implementation 'org.bouncycastle:bcpkix-jdk18on:1.86'
+    implementation 'org.bouncycastle:bcutil-jdk18on:1.86'
+
+    // --- High availability: sessions in the database, and scheduled jobs that run on one replica at a time ---
+    implementation 'org.springframework.boot:spring-boot-starter-session-jdbc'
+    implementation 'net.javacrumbs.shedlock:shedlock-spring:7.10.1'
+    implementation 'net.javacrumbs.shedlock:shedlock-provider-jdbc-template:7.10.1'
 
     // --- LDAP Client ---
     implementation 'org.springframework.boot:spring-boot-starter-data-ldap'
@@ -80,9 +107,8 @@ dependencies {
     // Docker is unavailable).
     testImplementation 'org.testcontainers:testcontainers-postgresql'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
-    // Certificates, CRLs and OCSP responses made in the tests, so X.509 sign-in is tested with real ones (tests only;
-    // the application itself uses the JDK's providers).
-    testImplementation 'org.bouncycastle:bcpkix-jdk18on:1.86'
+    // The tests make certificates, CRLs and OCSP responses with BouncyCastle (bcpkix, declared above for the SAML and
+    // OIDC libraries), so X.509 sign-in is tested with real ones; the application's own X.509 code uses the JDK's.
     // An in-process Kerberos server, so Windows sign-in is tested with real tickets and a real keytab.
     testImplementation 'org.apache.kerby:kerb-simplekdc:2.1.2'
     testImplementation platform('org.junit:junit-bom:6.1.3')

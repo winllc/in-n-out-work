@@ -1,6 +1,7 @@
 package com.winllc.innoutwork.audit;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -45,7 +46,9 @@ public class AuditRetention {
         this.clock = clock;
     }
 
+    // One replica at a time (ShedLock, config.SchedulerLockConfig), kept an hour after a quick run as above.
     @Scheduled(cron = "0 23 3 * * *")
+    @SchedulerLock(name = "AuditRetention", lockAtLeastFor = "PT1H", lockAtMostFor = "PT2H")
     public void run() {
         try {
             prune();

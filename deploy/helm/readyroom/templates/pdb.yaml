@@ -1,0 +1,16 @@
+{{- if gt (int .Values.replicaCount) 1 }}
+# Keeps replicas serving during voluntary disruptions (node drains, cluster upgrades); only with more than one,
+# since with one it would block every drain.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "readyroom.fullname" . }}
+  labels:
+    {{- include "readyroom.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "readyroom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
+{{- end }}

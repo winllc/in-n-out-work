@@ -26,15 +26,27 @@ imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""
 
-# One replica only. ReadyRoom keeps single-writer state: the license and installation id in the
-# license volume (ReadWriteOnce), and its scheduled jobs (directory sync, auto check-out, absence
-# e-mails) run in every instance, so a second replica would send duplicate e-mails and race the first
-# on the same records. More than 1 is not supported.
+# Replicas. Scheduled jobs run on one replica at a time (database locks), browser sessions and the license
+# state are in the database, and a rolling update keeps one replica serving, so check-ins are not lost while
+# it runs. More than 1 needs persistence.license off (or ReadWriteMany): see there.
 replicaCount: 1
 
-# Recreate: the old pod releases the license volume before the new one mounts it.
-strategy:
-  type: Recreate
+# Empty: RollingUpdate (a new pod is ready before an old one stops: maxSurge 1, maxUnavailable 0), except while
+# the license is on a ReadWriteOnce volume, which two pods on different nodes cannot share: then Recreate, the
+# old pod stopping before the new one starts (a short outage; see "Upgrades and outages" in README.md).
+# Set it to override either.
+strategy: {}
+
+# With more than one replica: a PodDisruptionBudget keeping this many available during voluntary disruptions
+# (node drains, cluster upgrades).
+podDisruptionBudget:
+  minAvailable: 1
+
+# Stopping a pod: it is first taken out of the Service and waits preStopSleepSeconds for the endpoints to update
+# everywhere, then finishes requests in progress and any scheduled job already running (releasing its lock), all
+# within terminationGracePeriodSeconds.
+preStopSleepSeconds: 10
+terminationGracePeriodSeconds: 60
 
 revisionHistoryLimit: 3
 
@@ -391,6 +403,51 @@ x509:
     cache: 10m
 
 # ---------------------------------------------------------------------------------------------------
+# Single sign-on (ENS_SSO_*): OpenID Connect and SAML 2.0, each off until enabled. See "Single sign-on" in
+# the ReadyRoom README for Entra ID, Okta and ADFS. Whoever the identity provider signs in must match exactly one
+# directory user by userFilter and gets that user's roles; roleMapping adds roles for the IdP's groups, and
+# nothing else the IdP says grants any. The Windows client is unaffected (certificates, Windows tickets).
+# ---------------------------------------------------------------------------------------------------
+
+sso:
+  # IdP group to role, group=ROLE pairs separated by ; (MANAGER or ADMIN). Empty: the IdP's groups grant nothing.
+  roleMapping: ""
+  clockSkew: 60s
+  oidc:
+    enabled: false
+    displayName: Sign in with single sign-on
+    # The issuer (Entra ID: https://login.microsoftonline.com/<tenant id>/v2.0). Redirect URI to register at the
+    # IdP: <publicUrl>/login/oauth2/code/oidc.
+    issuerUri: ""
+    clientId: ""
+    # Inline, or from your own Secret; empty: a public client (PKCE only).
+    clientSecret: ""
+    existingSecret: ""
+    existingSecretKey: oidc-client-secret
+    scopes: openid,profile,email
+    # Required: e.g. (userPrincipalName={upn}). Use an immutable claim the IdP controls (Entra: the upn
+    # optional claim, or oid); not preferred_username or email.
+    userFilter: ""
+    groupsClaim: groups
+  saml:
+    enabled: false
+    displayName: Sign in with SAML single sign-on
+    # The IdP's metadata URL (https://...), or empty and metadataConfigMap: a ConfigMap of your own holding it
+    # under metadataConfigMapKey. This service provider's metadata for the IdP: <publicUrl>/saml2/service-provider-metadata/saml
+    idpMetadataUrl: ""
+    metadataConfigMap: ""
+    metadataConfigMapKey: metadata.xml
+    # Empty: <publicUrl>/saml2/service-provider-metadata/saml.
+    entityId: ""
+    # Required: e.g. (userPrincipalName={http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn}) or
+    # (mail={nameid}).
+    userFilter: ""
+    groupsAttribute: http://schemas.microsoft.com/ws/2008/06/identity/claims/groups
+    # Optional: a Secret with a PKCS#8 PEM key (tls.key) and its certificate (tls.crt), to sign requests and
+    # decrypt encrypted assertions.
+    spKeySecret: ""
+
+# ---------------------------------------------------------------------------------------------------
 # Windows (Kerberos) sign-in for the Windows client's check-in, lock and unlock calls
 # ---------------------------------------------------------------------------------------------------
 
@@ -462,17 +519,28 @@ audit:
 
 persistence:
   license:
-    # The license, this installation's id (licenses can be bound to it) and the licensing state,
-    # mounted at /var/lib/ens. Keep this PVC: if it is lost the installation gets a new id and a
-    # license bound to the old one stops working. helm uninstall deletes it unless existingClaim is
-    # used, so back it up, or use an existingClaim you manage yourself.
+    # The license volume, mounted at /var/lib/ens. Since ReadyRoom keeps the license, the installation id and
+    # the licensing state in its database, this volume is only read once: on the first start of a release that
+    # does, it imports what an earlier release kept here (so the installation keeps its id and licenses bound to
+    # it keep working). After that upgrade has started once, it can be turned off, which allows replicaCount
+    # above 1 and rolling updates (a ReadWriteOnce volume would hold both back). New installations can turn it
+    # off from the start. helm uninstall deletes it unless existingClaim is used.
     enabled: true
+    # Set with enabled=false once ReadyRoom has started with the volume (its state is then in the database).
+    # While false, the chart refuses enabled=false if the claim still exists, so an upgrade straight to several
+    # replicas cannot skip the import. The claim is kept (helm.sh/resource-policy: keep, not pruned by Argo CD):
+    # delete it yourself when you no longer want it.
+    imported: false
     size: 100Mi
     storageClass: ""
     accessModes: ["ReadWriteOnce"]
     existingClaim: ""
 
 license:
+  # Accept a NEW installation id (licenses bound to the old one stop working). Only for a new installation
+  # started without the license volume, or when the old volume is lost; honoured only while the database holds
+  # no license. Without the volume, ReadyRoom otherwise refuses to make up an id. Unset it after that start.
+  newInstallationId: false
   # Optional. A license file to install when none is installed yet: an init container copies it into
   # the license volume only if that holds no license, so a newer license uploaded on the license screen
   # (/app/admin/license) is never overwritten by a later helm upgrade. Either your own Secret with the
@@ -544,8 +612,8 @@ networkPolicy:
     # Destinations for the database, LDAP, SMTP and audit outputs.
     cidrs:
       - 0.0.0.0/0
-    # TCP ports to allow to cidrs. The database port, the LDAP and SMTP ports and the audit ports are
-    # added from the values above.
+    # TCP ports to allow to cidrs. The database port, the LDAP and SMTP ports, the audit ports and, with single
+    # sign-on, 443 (the identity provider) are added from the values above.
     extraPorts: []
 
 # ---------------------------------------------------------------------------------------------------

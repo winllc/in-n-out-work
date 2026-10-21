@@ -19,6 +19,7 @@ import com.winllc.innoutwork.repository.RetentionStateRepository;
 import com.winllc.innoutwork.repository.StatusRequestRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.util.Chunks;
+import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -139,7 +140,10 @@ public class RetentionService {
         return state.findById(RetentionState.ID).map(RetentionState::getLastRunAt).orElse(null);
     }
 
+    // One replica at a time (ShedLock, config.SchedulerLockConfig); the lock is kept for an hour after a quick run so
+    // a replica whose clock is behind (or a late scheduler) does not start the same nightly run again.
     @Scheduled(cron = "${application.retention.cron:0 17 2 * * *}")
+    @SchedulerLock(name = "RetentionPurge", lockAtLeastFor = "PT1H", lockAtMostFor = "PT2H")
     public void run() {
         if (!isEnabled()) {
             return;

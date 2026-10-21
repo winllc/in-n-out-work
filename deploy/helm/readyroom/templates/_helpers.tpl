@@ -124,6 +124,20 @@ The image holds no keystore or truststore, and ReadyRoom refuses to start with T
 {{- if and (eq (toString $v.ldap.scheme) "ldaps") (eq (toString $v.ldap.port) "389") (not $v.ldap.url) -}}
 {{- fail "ldap.port is 389 with ldap.scheme ldaps (the default since LDAPS became it): set ldap.port to your directory's LDAPS port (636), or ldap.scheme: ldap to keep connecting in clear text" -}}
 {{- end -}}
+{{- if and (not $v.persistence.license.enabled) (not $v.persistence.license.imported) -}}
+{{- /* The license claim from an earlier release still exists: its state may not be in the database yet. */ -}}
+{{- if lookup "v1" "PersistentVolumeClaim" .Release.Namespace (include "readyroom.licenseClaimName" .) -}}
+{{- fail (printf "persistence.license.enabled is false but the license claim %s still exists: it holds the installation id an earlier release kept there, imported into the database only on a start with the volume mounted. Upgrade once with persistence.license.enabled=true (replicaCount 1); after ReadyRoom has started, set persistence.license.imported=true with enabled=false (and delete the claim when you no longer want it)" (include "readyroom.licenseClaimName" .)) -}}
+{{- end -}}
+{{- end -}}
+{{- if gt (int $v.replicaCount) 1 -}}
+{{- if and $v.persistence.license.enabled (not (has "ReadWriteMany" $v.persistence.license.accessModes)) -}}
+{{- fail "replicaCount > 1 with persistence.license on a ReadWriteOnce volume, which two pods cannot share: the license state is in the database now, so once this release has started with replicaCount 1 (importing the volume's license and installation id), set persistence.license.enabled=false (see \"Several replicas\" in the chart README)" -}}
+{{- end -}}
+{{- if and $v.audit.file.enabled $v.audit.file.persistence.enabled -}}
+{{- fail "replicaCount > 1 cannot share audit.file.persistence (ReadWriteOnce, one file): turn audit.file.persistence off (each pod's file is then an emptyDir) or send the audit trail to syslog/Splunk, which read it from the database" -}}
+{{- end -}}
+{{- end -}}
 {{- if and $v.windowsAuth.enabled (not $v.windowsAuth.keytab.secretName) -}}
 {{- fail "windowsAuth.keytab.secretName is required when windowsAuth.enabled: a Secret holding the service principal's keytab" -}}
 {{- end -}}
@@ -235,4 +249,22 @@ true
 
 {{- define "readyroom.probeScheme" -}}
 {{- if .Values.metrics.enabled -}}HTTP{{- else -}}{{ include "readyroom.scheme" . }}{{- end -}}
+{{- end -}}
+
+{{/*
+The Deployment strategy: strategy when set; otherwise RollingUpdate, except Recreate while the license or the audit
+file is on a ReadWriteOnce volume, which a new pod on another node could not attach while the old one holds it.
+*/}}
+{{- define "readyroom.strategy" -}}
+{{- $v := .Values -}}
+{{- if $v.strategy -}}
+{{- toYaml $v.strategy -}}
+{{- else if or (and $v.persistence.license.enabled (not (has "ReadWriteMany" $v.persistence.license.accessModes))) (and $v.audit.file.enabled $v.audit.file.persistence.enabled (not (has "ReadWriteMany" $v.audit.file.persistence.accessModes))) -}}
+type: Recreate
+{{- else -}}
+type: RollingUpdate
+rollingUpdate:
+  maxSurge: 1
+  maxUnavailable: 0
+{{- end -}}
 {{- end -}}

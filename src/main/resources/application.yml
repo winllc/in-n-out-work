@@ -1,5 +1,7 @@
 server:
   port: ${SERVER_PORT:8181}
+  # Finish requests in progress before stopping, so a check-in sent as a replica stops is not cut off.
+  shutdown: graceful
   ssl:
     # Off by default so the application starts and is reachable over plain HTTP with no
     # certificate setup.
@@ -24,6 +26,9 @@ server:
       # sessions follow ens.session (ENS_SESSION_IDLE_TIMEOUT, and the administrators' own).
       timeout: ${ENS_SESSION_IDLE_TIMEOUT:30m}
       cookie:
+        # The servlet container's own name, kept now that Spring Session (sessions in the database) sets the cookie,
+        # so proxies, firewalls and monitors that know it need no change.
+        name: JSESSIONID
         http-only: true
         # Lax: the browser leaves the session cookie off another site's posts and scripted requests (the CSRF
         # token refuses those as well), but still sends it when someone follows a link from elsewhere. Strict
@@ -98,9 +103,26 @@ spring:
       "[com.sun.jndi.ldap.read.timeout]": 30000
   task:
     scheduling:
-      # One thread per scheduled job, so a slow run of one does not delay the others.
+      # A thread for each of the jobs that can run long (directory sync, absence alerts, auto check-out, the
+      # retention purges), with room for the short ones (service heartbeat, session clean-up, audit summaries),
+      # so a slow run of one does not delay the others.
       pool:
-        size: 3
+        size: 8
+      # Stopping (a rolling update, a scale-down): a job already running finishes and releases its lock rather than
+      # being interrupted half-way; Kubernetes' grace period (60 seconds in the chart) bounds the wait.
+      shutdown:
+        await-termination: true
+        await-termination-period: 45s
+  # Browser sessions in the database (tables from Flyway V6), shared by every replica; see config.SessionStoreConfig.
+  # The timeout is server.servlet.session.timeout's. Expired sessions are deleted, and idle expiry audited, by
+  # security.SessionExpiry, one replica at a time, instead of Spring Session's own clean-up.
+  session:
+    jdbc:
+      cleanup-cron: "-"
+  lifecycle:
+    # Graceful shutdown: requests already in progress finish before the server stops (the chart waits for the
+    # Service to stop sending new ones first).
+    timeout-per-shutdown-phase: 30s
   jackson:
     time-zone: America/New_York
   #base: dc=winllc,dc=com
@@ -177,6 +199,32 @@ ens:
     crl-dir: ${ENS_X509_CRL_DIR:}
     revocation-fail: ${ENS_X509_REVOCATION_FAIL:closed}
     revocation-cache: ${ENS_X509_REVOCATION_CACHE:10m}
+  # Single sign-on (security.sso; README "Single sign-on"): OpenID Connect and SAML 2.0, each off until enabled.
+  # Whoever the identity provider signs in must match exactly one directory user by the protocol's user filter, and
+  # gets that user's roles; role-mapping adds roles for the IdP's groups (group=MANAGER;other group=ADMIN), and
+  # nothing else the IdP says grants any.
+  sso:
+    role-mapping: ${ENS_SSO_ROLE_MAPPING:}
+    clock-skew: ${ENS_SSO_CLOCK_SKEW:60s}
+    oidc:
+      enabled: ${ENS_SSO_OIDC_ENABLED:false}
+      display-name: ${ENS_SSO_OIDC_DISPLAY_NAME:Sign in with single sign-on}
+      issuer-uri: ${ENS_SSO_OIDC_ISSUER_URI:}
+      client-id: ${ENS_SSO_OIDC_CLIENT_ID:}
+      client-secret: ${ENS_SSO_OIDC_CLIENT_SECRET:}
+      client-secret-file: ${ENS_SSO_OIDC_CLIENT_SECRET_FILE:}
+      scopes: ${ENS_SSO_OIDC_SCOPES:openid,profile,email}
+      user-filter: ${ENS_SSO_OIDC_USER_FILTER:}
+      groups-claim: ${ENS_SSO_OIDC_GROUPS_CLAIM:groups}
+    saml:
+      enabled: ${ENS_SSO_SAML_ENABLED:false}
+      display-name: ${ENS_SSO_SAML_DISPLAY_NAME:Sign in with SAML single sign-on}
+      idp-metadata: ${ENS_SSO_SAML_IDP_METADATA:}
+      entity-id: ${ENS_SSO_SAML_ENTITY_ID:}
+      user-filter: ${ENS_SSO_SAML_USER_FILTER:}
+      groups-attribute: ${ENS_SSO_SAML_GROUPS_ATTRIBUTE:http://schemas.microsoft.com/ws/2008/06/identity/claims/groups}
+      sp-key-file: ${ENS_SSO_SAML_SP_KEY_FILE:}
+      sp-cert-file: ${ENS_SSO_SAML_SP_CERT_FILE:}
   audit:
     # Each event as one raw JSON line on stdout, logger ens.audit (Docker logs, Splunk UF).
     stdout: ${ENS_AUDIT_STDOUT:true}
@@ -229,6 +277,11 @@ management:
     tags:
       application: readyroom
 application:
+  # Several replicas and outages of the whole service (service.ServiceOutages). After the service was down, people
+  # whose check-in was due after the outage began get this long after it ends to be seen (their next logon or unlock)
+  # before an absence alert goes out: their check-in may have been sent while nothing was running. 0 turns it off.
+  ha:
+    outage-grace: ${APPLICATION_HA_OUTAGEGRACE:30m}
   # Read-only demo. Visitors still sign in; what it changes is that nothing can be written and that
   # the accounts listed under demo.accounts are published on the login page for visitors to pick a
   # role from. Off here, and with no accounts, so nothing is published by default.

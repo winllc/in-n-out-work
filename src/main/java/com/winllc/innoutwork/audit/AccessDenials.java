@@ -99,6 +99,7 @@ public class AccessDenials {
     }
 
     /** Records the counted repeats of every window older than 60 seconds. */
+    // Every instance, not one at a time (no ShedLock): each flushes the denials it counted itself.
     @Scheduled(fixedDelay = 15000, initialDelay = 15000)
     public void flush() {
         flushExpired(clock.instant());

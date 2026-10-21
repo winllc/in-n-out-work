@@ -43,6 +43,9 @@ public class SecurityAudit {
     /** The Windows client's API: one sign-in per logon, lock, unlock or logoff. */
     static final String CLIENT_API = "/api/check/";
 
+    /** Set on a request whose failed sign-in was recorded, so a single sign-on failure handler does not repeat it. */
+    public static final String FAILURE_RECORDED = SecurityAudit.class.getName() + ".failureRecorded";
+
     private final AuditLog audit;
     private final AccessDenials denials;
 
@@ -60,10 +63,15 @@ public class SecurityAudit {
         }
         Authentication auth = event.getAuthentication();
         try {
-            audit.record(AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
+            AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
                     .actor(AuditRequestInfo.actor(auth))
                     .target("user", auth.getName(), com.winllc.innoutwork.data.LdapDn.cnOf(auth.getName()))
-                    .detail("method", method(auth)));
+                    .detail("method", method(auth));
+            java.util.List<String> idpRoles = idpRoles(auth);
+            if (idpRoles != null) {
+                entry.detail("idpRoles", idpRoles); // what the IdP's groups granted (ENS_SSO_ROLE_MAPPING)
+            }
+            audit.record(entry);
         } catch (AuditUnavailableException e) {
             throw new AuthenticationServiceException("Sign-in is unavailable: the audit log cannot be written.", e);
         }
@@ -85,6 +93,7 @@ public class SecurityAudit {
         if (request != null) {
             entry.source(AuditRequestInfo.source(request));
             entry.detail("path", request.getRequestURI());
+            request.setAttribute(FAILURE_RECORDED, Boolean.TRUE);
         }
         if (request != null && isClientApi(request)) {
             // Every workstation retries on its next event; one event per source and reason a minute is enough.
@@ -148,6 +157,24 @@ public class SecurityAudit {
         denials.collapse("auth.login|" + request.getRemoteAddr() + "|" + subject + "|" + reason, entry);
     }
 
+    /**
+     * A single sign-on refused: the identity provider's error, a response or token that failed a check (signature,
+     * issuer, audience, times, InResponseTo, replay), or someone it signed in who maps to no single directory user.
+     */
+    public void ssoRefused(HttpServletRequest request, String method, String reason) {
+        EnsMetrics.authAttempt(method, false);
+        AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
+                .failure(reason)
+                .actor(AuditEntry.Actor.anonymous(null))
+                .detail("method", method);
+        if (request != null) {
+            entry.source(AuditRequestInfo.source(request));
+            entry.detail("path", request.getRequestURI());
+            request.setAttribute(FAILURE_RECORDED, Boolean.TRUE);
+        }
+        audit.recordQuietly(entry);
+    }
+
     /** A pull-API request with a wrong or revoked token: a failed sign-in, collapsed per source. */
     void apiTokenRefused(HttpServletRequest request) {
         EnsMetrics.authAttempt("api-token", false);
@@ -205,6 +232,19 @@ public class SecurityAudit {
         denials.collapse("auth.login|" + request.getRemoteAddr() + "|too many unknown sessions", entry);
     }
 
+    /** For single sign-on, the roles the identity provider's groups granted; null for other sign-ins. */
+    static java.util.List<String> idpRoles(Authentication auth) {
+        if (auth instanceof com.winllc.innoutwork.security.sso.SsoAuthenticationToken sso) {
+            return sso.idpRoles();
+        }
+        if (auth != null && auth.getPrincipal() instanceof org.springframework.security.oauth2.core.oidc.user.OidcUser oidc
+                && oidc.getClaims().get(com.winllc.innoutwork.security.sso.OidcSignIn.IDP_ROLES_CLAIM) instanceof
+                java.util.List<?> roles) {
+            return roles.stream().map(String::valueOf).toList();
+        }
+        return null;
+    }
+
     static String method(Authentication auth) {
         if (auth instanceof UsernamePasswordAuthenticationToken) {
             return "ldap";
@@ -215,10 +255,21 @@ public class SecurityAudit {
         if (auth instanceof KerberosServiceRequestToken) {
             return "sso";
         }
+        if (auth instanceof com.winllc.innoutwork.security.sso.SsoAuthenticationToken sso) {
+            return sso.method();
+        }
+        if (auth instanceof org.springframework.security.oauth2.client.authentication.OAuth2LoginAuthenticationToken
+                || auth instanceof org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken
+                || auth instanceof org.springframework.security.oauth2.client.authentication.OAuth2AuthorizationCodeAuthenticationToken) {
+            return "oidc";
+        }
+        if (auth instanceof org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationToken) {
+            return "saml2";
+        }
         return auth == null ? null : auth.getClass().getSimpleName();
     }
 
-    static String reason(AuthenticationException e) {
+    public static String reason(AuthenticationException e) {
         if (e instanceof BadCredentialsException) {
             return "bad credentials";
         }
@@ -233,6 +284,13 @@ public class SecurityAudit {
         }
         if (e instanceof com.winllc.innoutwork.security.x509.CertificateRefusedException) {
             return e.getMessage();
+        }
+        if (e instanceof org.springframework.security.oauth2.core.OAuth2AuthenticationException oauth) {
+            String description = oauth.getError().getDescription();
+            return oauth.getError().getErrorCode() + (description == null ? "" : ": " + description);
+        }
+        if (e instanceof org.springframework.security.saml2.provider.service.authentication.Saml2AuthenticationException saml) {
+            return saml.getSaml2Error().getErrorCode() + ": " + saml.getSaml2Error().getDescription();
         }
         log.debug("Sign-in failed: {}", e.toString());
         return e.getClass().getSimpleName().replaceAll("Exception$", "") + ": " + e.getMessage();

@@ -13,6 +13,10 @@
 {{- if $v.audit.syslog.host -}}
 {{- $ports = append $ports (int (default (ternary 6514 514 (eq $v.audit.syslog.protocol "tls")) $v.audit.syslog.port)) -}}
 {{- end -}}
+{{- if or $v.sso.oidc.enabled (and $v.sso.saml.enabled $v.sso.saml.idpMetadataUrl) -}}
+{{- /* The identity provider's discovery, keys, token endpoint or metadata, over HTTPS. */ -}}
+{{- $ports = append $ports 443 -}}
+{{- end -}}
 {{- range $np.egress.extraPorts -}}
 {{- $ports = append $ports (int .) -}}
 {{- end -}}

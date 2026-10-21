@@ -6,6 +6,7 @@ import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.license.LicensedJobs;
 import com.winllc.innoutwork.license.LicensedFeature;
 import com.winllc.innoutwork.model.GlobalCalendarRecord;
+import com.winllc.innoutwork.model.ServiceOutage;
 import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
@@ -14,10 +15,12 @@ import com.winllc.innoutwork.repository.NotificationRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.service.NotificationService;
+import com.winllc.innoutwork.service.ServiceOutages;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.SliceImpl;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.Clock;
 import java.time.LocalTime;
@@ -255,5 +258,75 @@ class SendAbsentNotificationsCronTest {
         when(calendar.findByDate(NOW.toLocalDate())).thenReturn(List.of(record));
         holiday.sendNotifications();
         verifyNoInteractions(users, checkIns, events, notificationService);
+    }
+
+    // --- after the whole service was down ---------------------------------------------------------------
+
+    private static ServiceOutages outages(ServiceOutage... outages) {
+        ServiceOutages service = mock(ServiceOutages.class);
+        when(service.endedAfter(any())).thenReturn(List.of(outages));
+        when(service.grace()).thenReturn(Duration.ofMinutes(30));
+        return service;
+    }
+
+    private static ServiceOutage down(ZonedDateTime from, ZonedDateTime until) {
+        return new ServiceOutage(from.toInstant(), until.toInstant());
+    }
+
+    /**
+     * A restart from 8:50 to 10:15 (one replica, or a crash): bob's 9:00 check-in may be among the events lost
+     * then, so he is not alerted at 10:30, though 9:00 plus the hour's grace has passed; he has until 10:45.
+     */
+    @Test
+    void someoneDueAfterAnOutageBeganIsGivenTimeAfterItEnds() {
+        SendAbsentNotificationsCron cron = cronAt(NOW, List.of(userWithDn("cn=bob", LocalTime.of(9, 0))));
+        ServiceOutages service = outages(down(NOW.withHour(8).withMinute(50), NOW.withHour(10).withMinute(15)));
+        cron.setServiceOutages(service);
+
+        cron.sendNotifications();
+
+        verify(service).recordBeat(); // the outage this instance's own start ended is on record first
+        verifyNoInteractions(notificationService);
+
+        SendAbsentNotificationsCron later = cronAt(NOW.withHour(10).withMinute(46),
+                List.of(userWithDn("cn=bob", LocalTime.of(9, 0))));
+        later.setServiceOutages(outages(down(NOW.withHour(8).withMinute(50), NOW.withHour(10).withMinute(15))));
+        later.sendNotifications();
+        verify(notificationService).createAbsentNotification("cn=bob", LocalTime.of(9, 0));
+    }
+
+    /** An outage before anyone was due (an early-morning restart) changes nothing for later check-in times. */
+    @Test
+    void anOutageLongBeforeSomeonesTimeChangesNothing() {
+        SendAbsentNotificationsCron cron = cronAt(NOW, List.of(userWithDn("cn=bob", LocalTime.of(9, 0))));
+        cron.setServiceOutages(outages(down(NOW.withHour(6).withMinute(0), NOW.withHour(6).withMinute(5))));
+
+        cron.sendNotifications();
+
+        verify(notificationService).createAbsentNotification("cn=bob", LocalTime.of(9, 0));
+    }
+
+    /** A rolling update with two replicas is no outage: alerts go out on time. */
+    @Test
+    void withNoOutageAlertsAreOnTime() {
+        SendAbsentNotificationsCron cron = cronAt(NOW, List.of(userWithDn("cn=bob", LocalTime.of(9, 0))));
+        cron.setServiceOutages(outages());
+
+        cron.sendNotifications();
+
+        verify(notificationService).createAbsentNotification("cn=bob", LocalTime.of(9, 0));
+    }
+
+    /** The outage record cannot be read (the database is struggling): alerts go out as before rather than not at all. */
+    @Test
+    void outagesThatCannotBeReadDoNotStopAlerts() {
+        SendAbsentNotificationsCron cron = cronAt(NOW, List.of(userWithDn("cn=bob", LocalTime.of(9, 0))));
+        ServiceOutages service = mock(ServiceOutages.class);
+        org.mockito.Mockito.doThrow(new IllegalStateException("database")).when(service).recordBeat();
+        cron.setServiceOutages(service);
+
+        cron.sendNotifications();
+
+        verify(notificationService).createAbsentNotification("cn=bob", LocalTime.of(9, 0));
     }
 }

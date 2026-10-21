@@ -35,6 +35,9 @@ public class ConsentFilter extends OncePerRequestFilter {
     private static final List<String> MACHINE = List.of("/api/check/", "/api/audit/", "/actuator/health",
             "/actuator/prometheus");
 
+    /** SAML's assertion consumer service. */
+    static final String SAML_ANSWER = "/login/saml2/sso/";
+
     static final String CERTIFICATE_ATTRIBUTE = "jakarta.servlet.request.X509Certificate";
 
     private final ConsentBanner banner;
@@ -61,6 +64,13 @@ public class ConsentFilter extends OncePerRequestFilter {
         }
         String path = path(request);
         if (OPEN.contains(path)) {
+            chain.doFilter(withoutCertificate(request), response);
+            return;
+        }
+        if (path.startsWith(SAML_ANSWER)) {
+            // The IdP's answer, a cross-site POST that arrives without the session cookie. It signs in only if it
+            // answers a request this browser started, which it could only do after acknowledging (SamlRequestStore);
+            // the acknowledgement then carries over to the new session.
             chain.doFilter(withoutCertificate(request), response);
             return;
         }

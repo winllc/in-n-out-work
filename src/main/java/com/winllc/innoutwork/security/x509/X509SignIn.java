@@ -25,5 +25,11 @@ public class X509SignIn {
         http.x509(x509 -> x509
                 .subjectPrincipalRegex("(.*)") // full subject DN; the default mapping uses it as the directory DN
                 .authenticationUserDetailsService(signIn));
+        keepNoCertificate(http);
+    }
+
+    /** The signed-in certificate's subject, issuer and serial are kept in the session, not the certificate. */
+    public static void keepNoCertificate(HttpSecurity http) {
+        http.addFilterAfter(new CertificateCredentialsFilter(), X509AuthenticationFilter.class);
     }
 }
