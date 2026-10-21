@@ -6,6 +6,7 @@
     <meta charset="UTF-8">
     <title>My Reports</title>
     <script th:src="@{/libs/chartjs/chart.js}"></script>
+    <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
 </head>
 <body>
 
@@ -159,6 +160,13 @@
         </div>
     </div>
 
+
+    <!-- Wrapped rather than putting th:if beside th:replace: th:replace is processed first, so the
+         condition on the same tag would be discarded and the calendar would render for a manager
+         with nobody on it. -->
+    <th:block th:if="${reportCount > 0 and (licenseInfo == null or licenseInfo.isEnabled('calendar'))}">
+        <th:block th:replace="~{fragments/calendar :: combined('Team Calendar', @{/api/event/reports}, 'Statuses everyone reporting to you set for themselves. They set their own on their profile; click an entry to open that person. No status can be changed from here.')}"></th:block>
+    </th:block>
 
     <div class="card mt-3" id="report-attendance" th:if="${team != null and !team.reports().isEmpty()}">
         <div class="card-header">

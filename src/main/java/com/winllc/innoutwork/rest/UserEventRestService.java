@@ -11,6 +11,7 @@ import com.winllc.innoutwork.constant.UserStatusEnum;
 import com.winllc.innoutwork.data.CalendarEvent;
 import com.winllc.innoutwork.data.EventRange;
 import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserEventData;
 import com.winllc.innoutwork.data.reports.UserDayReport;
 import com.winllc.innoutwork.model.CheckInOutRecord;
@@ -21,11 +22,14 @@ import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
 import com.winllc.innoutwork.constant.StatusClass;
 import com.winllc.innoutwork.model.StatusRequest;
+import com.winllc.innoutwork.security.AccessPolicy;
 import com.winllc.innoutwork.service.Approvers;
 import com.winllc.innoutwork.service.InvalidRequestException;
+import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.StatusCalendar;
 import com.winllc.innoutwork.service.StatusPolicy;
 import com.winllc.innoutwork.service.StatusRequestService;
+import com.winllc.innoutwork.service.UserService;
 import org.springframework.security.access.AccessDeniedException;
 import com.winllc.innoutwork.service.ReportService;
 import org.apache.commons.lang3.StringUtils;
@@ -41,6 +45,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -61,6 +67,9 @@ public class UserEventRestService {
     private final StatusCalendar statusCalendar;
     private final StatusRequestService requestService;
     private final Approvers approvers;
+    private final LdapService ldapService;
+    private final UserService userService;
+    private final AccessPolicy accessPolicy;
 
     private AuditLog audit = AuditLog.NOOP;
 
@@ -73,7 +82,8 @@ public class UserEventRestService {
                                 CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
                                 GlobalCalendarRecordRepository globalCalendarRecordRepository, StatusPolicy statusPolicy,
                                 StatusCalendar statusCalendar, StatusRequestService requestService,
-                                Approvers approvers) {
+                                Approvers approvers, LdapService ldapService, UserService userService,
+                                AccessPolicy accessPolicy) {
         this.userEventRecordRepository = userEventRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
@@ -82,6 +92,9 @@ public class UserEventRestService {
         this.statusCalendar = statusCalendar;
         this.requestService = requestService;
         this.approvers = approvers;
+        this.ldapService = ldapService;
+        this.userService = userService;
+        this.accessPolicy = accessPolicy;
     }
 
 
@@ -161,6 +174,121 @@ public class UserEventRestService {
         allEvents.addAll(globalEvents);
 
         return allEvents;
+    }
+
+    /**
+     * Every member of a group's self-set statuses over a date range, as one combined calendar.
+     * <p>
+     * Membership comes from the directory and the statuses from a single query over the whole
+     * membership, so a group costs one directory read plus one select however many members it has.
+     * Guarded like the group page that draws it, and narrowed the same way its member table is:
+     * a member whose details the viewer may not see contributes nothing (AccessPolicy).
+     */
+    @GetMapping("/group/{groupDn}")
+    @PreAuthorize("@accessPolicy.canViewGroup(authentication, #groupDn)")
+    public List<CalendarEvent> getGroupEvents(Authentication authentication,
+                                              @PathVariable String groupDn,
+                                              @RequestParam Instant from,
+                                              @RequestParam Instant to) {
+
+        return combinedCalendar(authentication, ldapService.getGroupMembers(LdapDn.builder().dn(groupDn).build()),
+                from, to);
+    }
+
+    /**
+     * The same combined calendar for the signed-in user's direct reports, behind the My Reports page.
+     * <p>
+     * Scoped to the caller by design, like {@code /api/users/reports}: the team is derived from the
+     * authenticated principal rather than a parameter, so it cannot be pointed at somebody else's.
+     * Open to any authenticated user for the reason the page itself is - reporting lines come from
+     * the directory, so someone holding only USER can still have a team.
+     */
+    @GetMapping("/reports")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).USER, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER)")
+    public List<CalendarEvent> getDirectReportEvents(Authentication authentication,
+                                                     @RequestParam Instant from,
+                                                     @RequestParam Instant to) {
+
+        List<String> reports = userService.findDirectReports(LdapDn.builder().dn(authentication.getName()).build())
+                .stream()
+                .map(LdapUser::getDn)
+                .toList();
+
+        return combinedCalendar(authentication, reports, from, to);
+    }
+
+    /**
+     * One calendar holding the statuses every one of {@code memberDns} set for themselves, narrowed
+     * to the people this viewer may see in detail.
+     */
+    private List<CalendarEvent> combinedCalendar(Authentication viewer, List<String> memberDns,
+                                                 Instant from, Instant to) {
+        LocalDate fromDate = LocalDate.ofInstant(from, ZoneId.systemDefault());
+        LocalDate toDate = LocalDate.ofInstant(to, ZoneId.systemDefault());
+
+        AccessPolicy.Scope scope = accessPolicy.scope(viewer);
+
+        // Lower-cased DN to the directory's spelling: the repository compares lower(dn), and the
+        // spelling is what labels the event and links to the member.
+        Map<String, String> members = new LinkedHashMap<>();
+        for (String memberDn : memberDns) {
+            // A status names the person and what they are doing, which is their details: a viewer
+            // who only sees presence must not read it off the calendar instead.
+            if (StringUtils.isNotBlank(memberDn) && scope.canViewDetails(memberDn)) {
+                members.putIfAbsent(memberDn.toLowerCase(), memberDn);
+            }
+        }
+
+        if (members.isEmpty()) {
+            // "in ()" is not valid SQL, so an empty membership must not reach the query.
+            log.debug("Nothing visible to {} on this calendar", LogSafe.of(viewer.getName()));
+            return List.of();
+        }
+
+        List<UserEventRecord> records =
+                userEventRecordRepository.findByLowercaseDnInAndDateBetween(members.keySet(), fromDate, toDate);
+
+        log.debug("Combined calendar: {} status entries for {} member(s) between {} and {}",
+                records.size(), members.size(), fromDate, toDate);
+
+        return records.stream()
+                .map(r -> groupEvent(r, members.getOrDefault(r.getDn().toLowerCase(), r.getDn())))
+                .sorted(Comparator.comparing(CalendarEvent::getStart).thenComparing(CalendarEvent::getTitle))
+                .toList();
+    }
+
+    /** One member's status on one day, named and linked back to that member. */
+    private CalendarEvent groupEvent(UserEventRecord record, String memberDn) {
+        UserStatusEnum status = record.getStatus();
+
+        String label = status.getFriendlyName();
+        if (status == UserStatusEnum.LATE_ARRIVAL && record.getLoginByTime() != null) {
+            label = "%s by %s".formatted(label, record.getLoginByTime());
+        }
+
+        CalendarEvent event = new CalendarEvent(record.getDate(), "%s: %s".formatted(nameOf(memberDn), label));
+        // The shared constructor derives the id from the title, which two namesakes on the same
+        // status and day share. Keyed on the member instead, so every event stays distinct -
+        // FullCalendar draws events that share an id as one event.
+        event.setId("%s|%s|%s".formatted(record.getDate(), memberDn.toLowerCase(), status.name()));
+        event.setBackgroundColor(status.isExcusable()
+                ? properties.getCalendarStatusEventColor()
+                : properties.getCalendarAbsentStatusEventColor());
+        event.setUrl("/app/user/details/" + memberDn);
+
+        return event;
+    }
+
+    /** The member's CN, falling back to the raw value so an odd member never loses its row. */
+    private static String nameOf(String memberDn) {
+        try {
+            String cn = LdapDn.builder().dn(memberDn).build().getCn();
+            return StringUtils.isNotBlank(cn) ? cn : memberDn;
+        } catch (IllegalArgumentException e) {
+            return memberDn;
+        }
     }
 
     /**

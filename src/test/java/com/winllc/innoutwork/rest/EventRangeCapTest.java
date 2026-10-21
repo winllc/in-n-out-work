@@ -51,6 +51,10 @@ class EventRangeCapTest {
     @MockitoBean com.winllc.innoutwork.service.StatusCalendar statusCalendar;
     @MockitoBean com.winllc.innoutwork.service.StatusRequestService statusRequestService;
     @MockitoBean com.winllc.innoutwork.service.Approvers approvers;
+    // The combined group and team calendars read the directory; nothing here goes near them.
+    @MockitoBean com.winllc.innoutwork.service.LdapService ldapService;
+    @MockitoBean com.winllc.innoutwork.service.UserService userService;
+    @MockitoBean(name = "accessPolicy") com.winllc.innoutwork.security.AccessPolicy accessPolicy;
 
     @Configuration
     @EnableWebSecurity
