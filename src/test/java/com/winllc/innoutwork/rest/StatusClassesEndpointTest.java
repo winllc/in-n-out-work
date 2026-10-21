@@ -80,6 +80,9 @@ class StatusClassesEndpointTest {
     @MockitoBean StatusRequestService requestService;
     @MockitoBean Approvers approvers;
     @MockitoBean(name = "accessPolicy") AccessPolicy accessPolicy;
+    // The combined group and team calendars read the directory; nothing here goes near them.
+    @MockitoBean com.winllc.innoutwork.service.LdapService ldapService;
+    @MockitoBean com.winllc.innoutwork.service.UserService userService;
 
     @Configuration
     @EnableWebSecurity
