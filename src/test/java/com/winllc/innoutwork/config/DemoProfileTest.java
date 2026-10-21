@@ -29,6 +29,7 @@ class DemoProfileTest {
 
     private static final Path SEED_SCRIPT = Path.of("test", "seed-mock-data.sh");
     private static final Path PACKAGED_CONFIG = Path.of("src", "main", "resources", "application.yml");
+    private static final Path LAYOUT = Path.of("src", "main", "resources", "templates", "layout.html");
 
     private static ConfigurableEnvironment environment(String... profiles) {
         ConfigurableEnvironment env = new StandardEnvironment();
@@ -106,5 +107,20 @@ class DemoProfileTest {
                 "the administrator account is not under super-user-dns, so it would not be an admin");
         assertTrue(seed.contains("'MANAGER'"),
                 "the seed script grants nobody the MANAGER role, so the tile's manager would be a plain user");
+    }
+
+    /**
+     * The banner is the only thing telling a visitor what demo mode is, so it must not describe a
+     * demo that no longer exists. It said sign-in was off for a while after the login page came
+     * back, which told visitors the opposite of what the page in front of them was asking for.
+     */
+    @Test
+    void theBannerDoesNotClaimSignInIsOffWhileThereIsALoginPage() throws IOException {
+        String layout = Files.readString(LAYOUT);
+
+        assertFalse(layout.contains("Sign-in is off"),
+                "the demo banner says sign-in is off, but demo mode shows a login page");
+        assertTrue(layout.contains("nothing here can be changed"),
+                "the banner no longer says the demo is read-only");
     }
 }
