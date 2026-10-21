@@ -382,6 +382,71 @@ public class LdapService {
         return Optional.ofNullable(user);
     }
 
+    /** A user's entry read live, with the attributes that say whether the account is usable. */
+    public record LiveUser(LdapUser user, Map<String, String> status) {
+    }
+
+    /**
+     * {@code dn}'s entry read now from the directory, never from a cache: only if it still matches the user filter
+     * and {@code extraFilter}. Looked up by its DN, or by application.user-dn-attribute when lookups go by attribute.
+     * The entry itself is then read with a base-scope search, which is how Active Directory returns constructed
+     * attributes (msDS-User-Account-Control-Computed).
+     *
+     * @return empty when there is no such entry, or it no longer matches the filters
+     * @throws org.springframework.ldap.NamingException when the directory cannot be read: callers refuse then
+     */
+    public Optional<LiveUser> lookupLiveUser(LdapDn dn, String extraFilter, List<String> statusAttributes) {
+        AndFilter filter = new AndFilter();
+        if (StringUtils.isNotBlank(properties.getUserLdapFilter())) {
+            filter.and(new HardcodedFilter(properties.getUserLdapFilter()));
+        }
+        if (StringUtils.isNotBlank(extraFilter)) {
+            String f = extraFilter.trim();
+            filter.and(new HardcodedFilter(f.startsWith("(") ? f : "(" + f + ")"));
+        }
+        if (filter.encode().equals("")) {
+            filter.and(new PresentFilter("objectclass"));
+        }
+        String entryDn = dn.toString();
+        if (properties.isLookupOnDnAttribute()) {
+            SearchControls find = new SearchControls();
+            find.setSearchScope(SearchControls.SUBTREE_SCOPE);
+            find.setCountLimit(2);
+            find.setReturningAttributes(new String[]{"objectClass"});
+            List<String> found = ldapTemplate.search(properties.getUserBaseDn(),
+                    new EqualsFilter(properties.getUserDnAttribute(), dn.toString()).encode(), find,
+                    (ContextMapper<String>) ctx -> ((DirContextAdapter) ctx).getNameInNamespace());
+            if (found.size() != 1) {
+                return Optional.empty();
+            }
+            entryDn = found.getFirst();
+        }
+        List<String> attributes = new ArrayList<>(List.of(userAttributes()));
+        attributes.addAll(statusAttributes);
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.OBJECT_SCOPE);
+        controls.setCountLimit(1);
+        controls.setReturningAttributes(attributes.toArray(String[]::new));
+        LdapUserContextMapper users = new LdapUserContextMapper(properties);
+        List<LiveUser> entries;
+        try {
+            entries = ldapTemplate.search(entryDn, filter.encode(), controls, (ContextMapper<LiveUser>) ctx -> {
+                DirContextAdapter adapter = (DirContextAdapter) ctx;
+                Map<String, String> status = new HashMap<>();
+                for (String name : statusAttributes) {
+                    String value = adapter.getStringAttribute(name);
+                    if (value != null) {
+                        status.put(name.toLowerCase(Locale.ROOT), value);
+                    }
+                }
+                return new LiveUser(users.mapFromContext(ctx), status);
+            });
+        } catch (NameNotFoundException e) {
+            return Optional.empty();
+        }
+        return entries.stream().findFirst();
+    }
+
     /**
      * The one user entry (matching the configured user filter) whose {@code attribute} equals {@code value};
      * empty when there is none, or more than one, since then it is not clear who is meant.

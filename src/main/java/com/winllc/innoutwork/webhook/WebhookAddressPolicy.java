@@ -14,9 +14,10 @@ import java.util.Locale;
  * {@code https://}, name a host and carry no user name or password. Every address its host resolves to must be a
  * public one: loopback, unspecified, link-local, private (RFC 1918, unique local), shared (100.64/10), reserved,
  * benchmarking, broadcast and multicast addresses are refused, including IPv4 ones inside IPv6 (mapped, compatible,
- * NAT64, 6to4), unless an allow-listed range (application.webhooks.allowed-cidrs) holds them. Cloud metadata
- * services (169.254.169.254, fd00:ec2::254, 100.100.100.200, 169.254.170.2) are refused whatever the allow-list
- * says, and multicast too.
+ * NAT64, 6to4, ISATAP), unless an allow-listed range (application.webhooks.allowed-cidrs) holds them. Cloud metadata
+ * services (169.254.169.254, 169.254.170.2, 168.63.129.16, 100.100.100.200, fd00:ec2::254, fd20:ce::254),
+ * multicast, and IPv6 translation and tunnel ranges (SIIT ::ffff:0:0:0/96, Teredo 2001::/32, 64:ff9b:1::/48) are
+ * refused whatever the allow-list says.
  *
  * <p>The check runs when a webhook is saved and again on every delivery, and the delivery connects to the address
  * that was checked ({@link WebhookTransport}), so a name that resolves to a public address when saved and to an
@@ -34,7 +35,19 @@ public class WebhookAddressPolicy {
 
     private static final List<Cidr> METADATA = List.of(
             Cidr.parse("169.254.169.254/32"), Cidr.parse("169.254.170.2/32"), Cidr.parse("100.100.100.200/32"),
-            Cidr.parse("fd00:ec2::254/128"));
+            Cidr.parse("168.63.129.16/32"),   // Azure's wire server
+            Cidr.parse("fd00:ec2::254/128"), Cidr.parse("fd20:ce::254/128"));
+
+    /**
+     * IPv6 ranges that reach IPv4 hosts in ways this guard cannot check (translators and tunnels): refused outright,
+     * whatever the allow-list says. IPv4-mapped addresses (::ffff:0:0/96) are listed for completeness; the JDK
+     * turns them into plain IPv4 addresses, which are then checked as such.
+     */
+    private static final List<Cidr> TUNNELS = List.of(
+            Cidr.parse("::ffff:0:0/96"),      // IPv4-mapped
+            Cidr.parse("::ffff:0:0:0/96"),    // IPv4-translated (SIIT)
+            Cidr.parse("2001::/32"),          // Teredo
+            Cidr.parse("64:ff9b:1::/48"));    // local-use IPv4/IPv6 translation
 
     private static final List<Cidr> SPECIAL_V4 = List.of(
             Cidr.parse("0.0.0.0/8"),          // "this network", unspecified
@@ -139,6 +152,12 @@ public class WebhookAddressPolicy {
                 return "a cloud metadata address, which webhooks are never sent to";
             }
         }
+        for (Cidr tunnel : TUNNELS) {
+            if (tunnel.contains(address)) {
+                return "an IPv6 translation or tunnel address (SIIT, Teredo, NAT64 local use), which webhooks are never"
+                        + " sent to";
+            }
+        }
         Inet4Address embedded = embeddedIpv4(address);
         if (embedded != null) {
             String inner = refusal(embedded);
@@ -189,6 +208,9 @@ public class WebhookAddressPolicy {
             v4 = new byte[]{a[12], a[13], a[14], a[15]};
         } else if (a[0] == 0x20 && a[1] == 0x02) {
             v4 = new byte[]{a[2], a[3], a[4], a[5]};
+        } else if ((a[8] == 0 || a[8] == 0x02) && a[9] == 0 && a[10] == 0x5E && a[11] == (byte) 0xFE) {
+            // ISATAP: an interface id of ::5efe:a.b.c.d (or 200:5efe:a.b.c.d) under any prefix.
+            v4 = new byte[]{a[12], a[13], a[14], a[15]};
         }
         if (v4 == null) {
             return null;

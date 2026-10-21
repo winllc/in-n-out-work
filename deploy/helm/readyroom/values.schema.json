@@ -293,6 +293,9 @@
     "webhooks": {
       "type": "object",
       "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
         "secretKey": {
           "type": "object",
           "properties": {

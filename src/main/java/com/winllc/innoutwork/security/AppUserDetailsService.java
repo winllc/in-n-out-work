@@ -60,6 +60,16 @@ public class AppUserDetailsService implements UserDetailsService {
         LdapUser ldapUser = userCache.get(username);
 
         if (ldapUser != null) {
+            return detailsFor(dn, ldapUser);
+        } else {
+            log.debug("Refused sign-in for {}: no such user in the directory", dn);
+            throw new UsernameNotFoundException("No directory user " + dn);
+        }
+    }
+
+    /** {@code ldapUser}'s details and roles, as at sign-in, from an entry already read from the directory. */
+    public UserDetails detailsFor(LdapDn dn, LdapUser ldapUser) {
+        {
             Set<UserRoleEnum> roles = new HashSet<>();
             roles.add(UserRoleEnum.USER);
 
@@ -90,10 +100,6 @@ public class AppUserDetailsService implements UserDetailsService {
             }
 
             return details;
-
-        } else {
-            log.debug("Refused sign-in for {}: no such user in the directory", dn);
-            throw new UsernameNotFoundException("No directory user " + dn);
         }
     }
 

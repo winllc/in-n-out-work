@@ -21,6 +21,6 @@ public class WebhookConfig {
             throws NoSuchAlgorithmException {
         ApplicationProperties.Webhooks settings = properties.getWebhooks();
         return new WebhookTransport(policy, SSLContext.getDefault().getSocketFactory(), settings.getConnectTimeout(),
-                settings.getReadTimeout());
+                settings.getReadTimeout(), settings.getAttemptTimeout());
     }
 }

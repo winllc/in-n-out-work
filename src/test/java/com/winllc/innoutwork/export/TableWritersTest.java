@@ -50,6 +50,20 @@ class TableWritersTest {
         assertEquals("plain", CsvTableWriter.guard("plain"));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {" =1+1", "  +1", "\u00A0=cmd", "\t=1", "\r@SUM(A1)",
+            "\n-1", " \u00A0 \t=HYPERLINK(1)", "|cmd", " |cmd", "\uFF5Ccmd", "\u2007=1", "\uFEFF=1"})
+    void leadingBlanksDoNotHideAFormula(String value) {
+        assertTrue(CsvTableWriter.guard(value).startsWith("'"), "not guarded: [" + value + "]");
+    }
+
+    @Test
+    void plainTextIsLeftAlone() {
+        for (String value : List.of("Jane Doe", " leading space", "a=b", "1-2", "  ", "\u00A0")) {
+            assertEquals(value, CsvTableWriter.guard(value));
+        }
+    }
+
     @Test
     void xlsxIsAWellFormedWorkbookWithInlineStringsAndNoFormulas() throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream();

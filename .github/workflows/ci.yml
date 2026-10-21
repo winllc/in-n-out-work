@@ -122,6 +122,17 @@ jobs:
           fi
           grep -q "x509.source header needs x509.trustedCa" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
 
+      - name: Webhooks without a key do not render
+        run: |
+          # The key that encrypts webhook signing secrets is never generated at render time (it would change at
+          # every helm template or Argo CD sync), so it must be given.
+          if helm template readyroom "$CHART" -f "$CHART/ci/default-values.yaml" \
+              --set webhooks.enabled=true > /dev/null 2> "$RUNNER_TEMP/err"; then
+            echo "rendered webhooks.enabled without webhooks.secretKey"
+            exit 1
+          fi
+          grep -q "webhooks.enabled needs webhooks.secretKey" "$RUNNER_TEMP/err" || { cat "$RUNNER_TEMP/err"; exit 1; }
+
       - name: Several replicas on a ReadWriteOnce license volume do not render
         run: |
           # Two pods cannot share it; the license state is in the database, so the volume is turned off instead.

@@ -296,6 +296,25 @@ public class ApplicationProperties {
         @NotNull
         private Duration readTimeout = Duration.ofSeconds(10);
 
+        /**
+         * The most one try may take altogether (connecting, TLS, sending, the answer's status line), whatever the
+         * receiver does: past it the connection is closed, so a receiver sending a byte at a time cannot hold it.
+         */
+        @NotNull
+        private Duration attemptTimeout = Duration.ofSeconds(30);
+
+        /** How long one sending run may start new tries for; the next run, seconds later, carries on. */
+        @NotNull
+        private Duration runBudget = Duration.ofSeconds(40);
+
+        /** The most tries one endpoint gets in one run. */
+        @Min(value = 1, message = "application.webhooks.per-endpoint-max (APPLICATION_WEBHOOKS_PERENDPOINTMAX) must be at least 1")
+        private int perEndpointMax = 20;
+
+        /** The most time one endpoint's tries may take in one run, so one slow receiver cannot starve the others. */
+        @NotNull
+        private Duration perEndpointBudget = Duration.ofSeconds(20);
+
         /** Whether webhooks can be used: a secret key of 32 characters or more is set. */
         public boolean isConfigured() {
             return secretKey != null && secretKey.length() >= 32;
@@ -456,6 +475,32 @@ public class ApplicationProperties {
          */
         @Min(1)
         private int maxPages = 1000;
+        /** Whether an account is still usable, for the tokens, webhooks and reports that act for someone. */
+        @Valid
+        private AccountStatus accountStatus = new AccountStatus();
+    }
+
+    /**
+     * application.ldap.account-status: how ReadyRoom decides, live from the directory, that the person an API token,
+     * a webhook or a scheduled report acts for may still act (security.DirectoryAccounts). Their entry must still
+     * match application.user-ldap-filter and {@link #filter}, and, unless {@link #builtInChecks} is off, not be:
+     * disabled (Active Directory userAccountControl bit 0x2; 389/OpenLDAP nsAccountLock=true), locked out (Active
+     * Directory msDS-User-Account-Control-Computed bit 0x10; OpenLDAP ppolicy pwdAccountLockedTime, permanently
+     * 000001010000Z or set within {@link #lockoutDuration}) or expired (Active Directory accountExpires).
+     */
+    @Data
+    public static class AccountStatus {
+        /** The built-in checks above. */
+        private boolean builtInChecks = true;
+        /** An LDAP filter an account must also match to be usable, e.g. (!(employeeType=terminated)); empty: none. */
+        private String filter = "";
+        /** OpenLDAP ppolicy: the policy's pwdLockoutDuration; a pwdAccountLockedTime newer than this locks. */
+        @NotNull
+        private Duration lockoutDuration = Duration.ofMinutes(15);
+        /** How long a usable account is remembered (refusals never are): 0 to 60 seconds. */
+        @Min(value = 0, message = "application.ldap.account-status.cache-seconds must be 0 to 60")
+        @Max(value = 60, message = "application.ldap.account-status.cache-seconds must be 0 to 60")
+        private int cacheSeconds = 60;
     }
 
     /**

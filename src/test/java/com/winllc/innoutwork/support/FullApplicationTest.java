@@ -29,6 +29,8 @@ import org.springframework.test.context.bean.override.convention.TestBean;
         "application.application-base-url=https://readyroom.example.com/",
         "application.webhooks.secret-key=test-webhook-key-0123456789abcdef0123456789",
         "application.webhooks.poll-millis=3600000",
+        // Account checks read the directory every time, so the tests' changes to it show at once.
+        "application.ldap.account-status.cache-seconds=0",
         "application.reports.site-time-zones[0]=Chicago=America/Chicago",
         "application.reports.check-initial-delay-millis=3600000",
         "application.notification-sender-email=readyroom@example.com",
@@ -45,6 +47,34 @@ public abstract class FullApplicationTest {
     public static final String JANE = "cn=Doe\\, Jane,ou=Users,dc=winllc,dc=com";
 
     protected static final InMemoryDirectory DIRECTORY = InMemoryDirectory.start();
+
+    /** Sets {@code attribute} on {@code dn}'s entry in the test directory, replacing any value. */
+    protected static void setAttribute(String dn, String attribute, String value) {
+        DIRECTORY.ldapTemplate().modifyAttributes(dn, new javax.naming.directory.ModificationItem[]{
+                new javax.naming.directory.ModificationItem(javax.naming.directory.DirContext.REPLACE_ATTRIBUTE,
+                        new javax.naming.directory.BasicAttribute(attribute, value))});
+    }
+
+    /** Removes {@code attribute} from {@code dn}'s entry, if it is there. */
+    protected static void removeAttribute(String dn, String attribute) {
+        try {
+            DIRECTORY.ldapTemplate().modifyAttributes(dn, new javax.naming.directory.ModificationItem[]{
+                    new javax.naming.directory.ModificationItem(javax.naming.directory.DirContext.REMOVE_ATTRIBUTE,
+                            new javax.naming.directory.BasicAttribute(attribute))});
+        } catch (RuntimeException e) {
+            // not there
+        }
+    }
+
+    /** The account-status attributes the tests set, removed again. */
+    protected static void clearAccountStatus(String... dns) {
+        for (String dn : dns) {
+            for (String a : java.util.List.of("userAccountControl", "msDS-User-Account-Control-Computed",
+                    "accountExpires", "nsAccountLock", "pwdAccountLockedTime", "lockoutTime")) {
+                removeAttribute(dn, a);
+            }
+        }
+    }
 
     @DynamicPropertySource
     static void ldap(DynamicPropertyRegistry registry) {

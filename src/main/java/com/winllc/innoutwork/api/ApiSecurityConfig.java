@@ -3,7 +3,7 @@ package com.winllc.innoutwork.api;
 import com.winllc.innoutwork.audit.AuditLog;
 import com.winllc.innoutwork.audit.SecurityAudit;
 import com.winllc.innoutwork.config.SecurityConfig;
-import com.winllc.innoutwork.security.AppUserDetailsService;
+import com.winllc.innoutwork.security.DirectoryAccounts;
 import com.winllc.innoutwork.security.ClientRateLimiter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.ObjectProvider;
@@ -37,11 +37,11 @@ public class ApiSecurityConfig {
     @Bean
     @Order(1)
     SecurityFilterChain publicApiFilterChain(HttpSecurity http, ApiTokenService tokens,
-                                             AppUserDetailsService users,
+                                             DirectoryAccounts accounts,
                                              ObjectProvider<SecurityAudit> securityAudit,
                                              ObjectProvider<AuditLog> audit) throws Exception {
         http.securityMatcher(PathPatternRequestMatcher.pathPattern(PATH))
-                .addFilterBefore(new ApiTokenFilter(tokens, users, securityAudit.getIfAvailable(),
+                .addFilterBefore(new ApiTokenFilter(tokens, accounts, securityAudit.getIfAvailable(),
                         audit.getIfAvailable(), tokenLimiter), AnonymousAuthenticationFilter.class)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(PathPatternRequestMatcher.pathPattern(HttpMethod.GET, OPENAPI),

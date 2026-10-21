@@ -186,12 +186,14 @@ api:
   defaultRatePerMinute: 120
   maxRatePerMinute: 1200
 
-# Signed webhooks for absence alerts and status changes (APPLICATION_WEBHOOKS_*).
+# Signed webhooks for absence alerts and status changes (APPLICATION_WEBHOOKS_*). Off by default.
 webhooks:
-  # The key webhook signing secrets are encrypted with in the database: 32 characters or more, the same on every
-  # replica. Empty, with no existingSecret: the chart generates one on install and keeps it across upgrades (in
-  # this release's Secret, key webhook-secret-key). Changing it makes the existing webhooks' secrets unreadable:
-  # their deliveries fail until they are created again.
+  # true: webhooks can be added under Administration, Integrations. Needs secretKey below.
+  enabled: false
+  # Required with enabled: the key webhook signing secrets are encrypted with in the database, 32 characters or
+  # more, the same on every replica and across upgrades (e.g. openssl rand -base64 36). Inline, or your own Secret.
+  # The chart never generates it: a key made at render time would change at every render (helm template, Argo CD).
+  # Changing it makes the existing webhooks' secrets unreadable: their deliveries fail until they are added again.
   secretKey:
     value: ""
     existingSecret: ""
@@ -199,7 +201,7 @@ webhooks:
   # Private, loopback or link-local ranges (CIDR) webhooks may still be sent to, e.g. ["10.20.0.0/16"] for an
   # internal SIEM. Empty: public addresses only. Cloud metadata addresses are refused whatever this says.
   allowedCidrs: []
-  # With networkPolicy.enabled: the ports webhooks may be sent to (to networkPolicy.egress.cidrs). Empty: none.
+  # With enabled and networkPolicy.enabled: the ports webhooks may be sent to (to networkPolicy.egress.cidrs).
   ports:
     - 443
 

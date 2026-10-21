@@ -82,4 +82,12 @@ public class WebhookDelivery {
 
     @Column(name = "delivered_at")
     private Instant deliveredAt;
+
+    /**
+     * Set, by a conditional update in its own transaction, by the replica about to send it, and cleared when the try
+     * ends: while it is in the future no other replica (or later run) sends it. A replica that dies mid-try leaves it
+     * to lapse.
+     */
+    @Column(name = "claimed_until")
+    private Instant claimedUntil;
 }

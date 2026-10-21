@@ -22,18 +22,14 @@ public class WebhookDispatcher {
     }
 
     @Scheduled(fixedDelayString = "${application.webhooks.poll-millis:5000}", initialDelayString = "${application.webhooks.poll-millis:5000}")
-    @SchedulerLock(name = "WebhookDispatcher", lockAtMostFor = "PT10M")
+    @SchedulerLock(name = "WebhookDispatcher", lockAtMostFor = "PT5M")
     public void send() {
         if (!webhooks.isConfigured()) {
             return;
         }
         try {
-            int tried;
-            int rounds = 0;
-            do {
-                tried = webhooks.deliverDue();
-                rounds++;
-            } while (tried == WebhookService.BATCH && rounds < 20);
+            // One run, within application.webhooks.run-budget; the next run carries on a few seconds later.
+            webhooks.deliverDue();
         } catch (RuntimeException e) {
             log.error("Sending webhook deliveries failed", e);
         }

@@ -167,28 +167,38 @@ class PublicApiTest extends FullApplicationTest {
     }
 
     @Test
-    void aTokenNeverSeesMoreThanItsOwnerMayNow() throws Exception {
-        // A token Alice was given while she was an administrator; she no longer is. She manages Engineering
-        // (herself and Bob) and Bob and Carol report to her, so the token sees their details and not Jane's.
-        String token = adminToken(ApiScope.PEOPLE_READ, ApiScope.ATTENDANCE_READ, ApiScope.ABSENCES_READ);
-        ApiToken record = tokenRepository.findAll().stream()
-                .filter(t -> t.getTokenPrefix().equals(token.substring(0, t.getTokenPrefix().length())))
-                .reduce((a, b) -> b).orElseThrow();
+    void aTokenWhoseOwnerIsNoLongerAnAdministratorIsRefused() throws Exception {
+        // A token Alice was given while she was an administrator; she no longer is (she manages a group, which is not
+        // enough): it is refused, not narrowed.
+        String token = adminToken(ApiScope.PEOPLE_READ, ApiScope.ATTENDANCE_READ);
+        ApiToken record = tokenRepository.findByTokenHash(com.winllc.innoutwork.audit.TokenSecrets.hash(token)).orElseThrow();
         record.setOwnerDn(ALICE);
         tokenRepository.save(record);
+        mockMvc.perform(get("/api/v1/people").header("Authorization", "Bearer " + token))
+                .andExpect(status().isUnauthorized());
+        assertTrue(audit.findAll().stream().anyMatch(a -> a.getAction().equals("auth.login")
+                && a.getLine().contains("no longer an administrator")));
+    }
 
-        JsonNode attendance = getJson("/api/v1/attendance/events?from=" + today + "&to=" + today, token);
-        assertEquals(Set.of(ALICE, BOB, ADMIN), Set.copyOf(dns(attendance)));
-        JsonNode absences = getJson("/api/v1/absences?from=" + today + "&to=" + today.plusDays(7), token);
-        assertEquals(List.of(BOB), dns(absences));
-        mockMvc.perform(get("/api/v1/attendance/events?from=" + today + "&to=" + today + "&dn=" + JANE)
-                .header("Authorization", "Bearer " + token)).andExpect(status().isForbidden());
-
-        JsonNode people = getJson("/api/v1/people?size=50", token);
-        JsonNode jane = people.get("items").valueStream().filter(i -> i.get("dn").asString().equals(JANE))
-                .findFirst().orElseThrow();
-        assertFalse(jane.get("details").asBoolean());
-        assertTrue(jane.get("checkedInAt").isNull(), "no times for a coworker: " + jane);
+    @org.junit.jupiter.params.ParameterizedTest(name = "{0}={1}")
+    @org.junit.jupiter.params.provider.CsvSource({
+            "userAccountControl, 514",                       // Active Directory: disabled
+            "msDS-User-Account-Control-Computed, 16",        // Active Directory: locked out
+            "accountExpires, 130000000000000000",            // Active Directory: expired (2012)
+            "nsAccountLock, TRUE",                           // 389 Directory Server: disabled
+            "pwdAccountLockedTime, 000001010000Z"})          // OpenLDAP ppolicy: locked until unlocked
+    void aTokenWhoseOwnerIsDisabledLockedOrExpiredInTheDirectoryIsRefusedAtOnce(String attribute, String value)
+            throws Exception {
+        String token = adminToken(ApiScope.PEOPLE_READ);
+        mockMvc.perform(get("/api/v1/people").header("Authorization", "Bearer " + token)).andExpect(status().isOk());
+        try {
+            setAttribute(ADMIN, attribute, value);
+            mockMvc.perform(get("/api/v1/people").header("Authorization", "Bearer " + token))
+                    .andExpect(status().isUnauthorized());
+        } finally {
+            clearAccountStatus(ADMIN);
+        }
+        mockMvc.perform(get("/api/v1/people").header("Authorization", "Bearer " + token)).andExpect(status().isOk());
     }
 
     @Test

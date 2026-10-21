@@ -10,7 +10,7 @@ import com.winllc.innoutwork.model.ReportSchedule;
 import com.winllc.innoutwork.repository.ReportScheduleRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.security.AccessPolicy;
-import com.winllc.innoutwork.security.AppUserDetailsService;
+import com.winllc.innoutwork.security.DirectoryAccounts;
 import com.winllc.innoutwork.service.InvalidRequestException;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.Mailer;
@@ -63,7 +63,7 @@ public class ReportScheduleService {
     private final ReportScheduleRepository schedules;
     private final ReportExports exports;
     private final AccessPolicy accessPolicy;
-    private final AppUserDetailsService users;
+    private final DirectoryAccounts accounts;
     private final LdapService ldapService;
     private final UserRecordRepository people;
     private final TimeZones timeZones;
@@ -74,21 +74,21 @@ public class ReportScheduleService {
 
     @Autowired
     public ReportScheduleService(ReportScheduleRepository schedules, ReportExports exports, AccessPolicy accessPolicy,
-                                 AppUserDetailsService users, LdapService ldapService, UserRecordRepository people,
+                                 DirectoryAccounts accounts, LdapService ldapService, UserRecordRepository people,
                                  TimeZones timeZones, Mailer mailer, ApplicationProperties properties,
                                  ObjectProvider<AuditLog> audit) {
-        this(schedules, exports, accessPolicy, users, ldapService, people, timeZones, mailer, properties,
+        this(schedules, exports, accessPolicy, accounts, ldapService, people, timeZones, mailer, properties,
                 audit.getIfAvailable(() -> AuditLog.NOOP), Clock.systemUTC());
     }
 
     ReportScheduleService(ReportScheduleRepository schedules, ReportExports exports, AccessPolicy accessPolicy,
-                          AppUserDetailsService users, LdapService ldapService, UserRecordRepository people,
+                          DirectoryAccounts accounts, LdapService ldapService, UserRecordRepository people,
                           TimeZones timeZones, Mailer mailer, ApplicationProperties properties, AuditLog audit,
                           Clock clock) {
         this.schedules = schedules;
         this.exports = exports;
         this.accessPolicy = accessPolicy;
-        this.users = users;
+        this.accounts = accounts;
         this.ldapService = ldapService;
         this.people = people;
         this.timeZones = timeZones;
@@ -110,14 +110,17 @@ public class ReportScheduleService {
         return role && accessPolicy.canManageGroup(who, groupDn);
     }
 
-    /** {@code dn} signed in as they are now, with their roles; empty when they are not in the directory. */
+    /**
+     * {@code dn} as they are now, read live from the directory, with their roles; empty when they are not there, are
+     * disabled, locked out or expired, or the directory cannot be read (DirectoryAccounts).
+     */
     Optional<Authentication> asUser(String dn) {
-        try {
-            UserDetails details = users.loadUserByUsername(dn);
-            return Optional.of(UsernamePasswordAuthenticationToken.authenticated(dn, null, details.getAuthorities()));
-        } catch (UsernameNotFoundException | IllegalArgumentException e) {
+        DirectoryAccounts.Account account = accounts.check(dn);
+        if (!account.active()) {
             return Optional.empty();
         }
+        return Optional.of(UsernamePasswordAuthenticationToken.authenticated(dn, null,
+                account.details().getAuthorities()));
     }
 
     // --- managing ----------------------------------------------------------------------------------------------------

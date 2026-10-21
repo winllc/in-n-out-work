@@ -10,7 +10,7 @@ import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.repository.ReportScheduleRepository;
 import com.winllc.innoutwork.repository.UserRecordRepository;
 import com.winllc.innoutwork.security.AccessPolicy;
-import com.winllc.innoutwork.security.AppUserDetailsService;
+import com.winllc.innoutwork.security.DirectoryAccounts;
 import com.winllc.innoutwork.service.InvalidRequestException;
 import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.Mailer;
@@ -64,7 +64,7 @@ class ReportScheduleServiceTest extends FullApplicationTest {
     @Autowired ReportScheduleRepository repository;
     @Autowired ReportExports exports;
     @Autowired AccessPolicy accessPolicy;
-    @Autowired AppUserDetailsService users;
+    @Autowired DirectoryAccounts accounts;
     @Autowired LdapService ldapService;
     @Autowired UserRecordRepository people;
     @Autowired TimeZones timeZones;
@@ -96,7 +96,7 @@ class ReportScheduleServiceTest extends FullApplicationTest {
             @Override public Clock withZone(ZoneId zone) { return this; }
             @Override public Instant instant() { return now.get(); }
         };
-        service = new ReportScheduleService(repository, exports, accessPolicy, users, ldapService, people, timeZones,
+        service = new ReportScheduleService(repository, exports, accessPolicy, accounts, ldapService, people, timeZones,
                 mailer, properties, auditLog, clock);
     }
 
@@ -189,6 +189,28 @@ class ReportScheduleServiceTest extends FullApplicationTest {
         ReportSchedule after = repository.findById(schedule.getId()).orElseThrow();
         assertFalse(after.isEnabled());
         assertTrue(sent.isEmpty(), "nothing sent");
+    }
+
+    @Test
+    void aDisabledOwnerTurnsTheScheduleOffAndADisabledRecipientIsSkipped() {
+        ReportSchedule schedule = service.create("Daily", ENGINEERING, ReportSchedule.Frequency.DAILY, "csv",
+                "alice@winllc.com", 7, signedIn(ADMIN, "USER", "ADMIN"));
+        now.set(schedule.getNextRunAt().plusSeconds(1));
+        try {
+            setAttribute(ALICE, "nsAccountLock", "true");
+            service.runDue();
+            ReportSchedule after = repository.findById(schedule.getId()).orElseThrow();
+            assertTrue(after.isEnabled());
+            assertTrue(after.getLastResult().startsWith("Not sent: none of its recipients"), after.getLastResult());
+            assertTrue(sent.isEmpty());
+
+            setAttribute(ADMIN, "userAccountControl", "514");
+            now.set(after.getNextRunAt().plusSeconds(1));
+            service.runDue();
+            assertFalse(repository.findById(schedule.getId()).orElseThrow().isEnabled(), "turned off");
+        } finally {
+            clearAccountStatus(ALICE, ADMIN);
+        }
     }
 
     @Test

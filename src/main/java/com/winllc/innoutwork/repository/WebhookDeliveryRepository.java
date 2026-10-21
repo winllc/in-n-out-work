@@ -13,7 +13,7 @@ import java.util.List;
 public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery, Long> {
 
     @Query("select d from WebhookDelivery d where d.state = :state and d.nextAttemptAt <= :now"
-            + " order by d.nextAttemptAt, d.id")
+            + " and (d.claimedUntil is null or d.claimedUntil < :now) order by d.nextAttemptAt, d.id")
     List<WebhookDelivery> findDue(@Param("state") WebhookDelivery.State state, @Param("now") Instant now,
                                   Pageable page);
 
@@ -28,4 +28,11 @@ public interface WebhookDeliveryRepository extends JpaRepository<WebhookDelivery
     @Modifying
     @Query("delete from WebhookDelivery d where d.endpointId = :endpointId")
     int deleteByEndpoint(@Param("endpointId") Long endpointId);
+
+    /** Claims a due delivery until {@code until}: 1 if this caller has it now, 0 if another has it or it is done. */
+    @Modifying
+    @Query("update WebhookDelivery d set d.claimedUntil = :until where d.id = :id and d.state = :pending"
+            + " and (d.claimedUntil is null or d.claimedUntil < :now)")
+    int claim(@Param("id") Long id, @Param("pending") WebhookDelivery.State pending, @Param("now") Instant now,
+              @Param("until") Instant until);
 }

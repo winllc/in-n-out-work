@@ -1225,7 +1225,17 @@ logged. It acts for the administrator who created it and **never sees more than 
 are loaded again on every call, so a token whose creator is no longer an administrator sees only what that
 person may (themselves and the people they are responsible for, and coworkers as
 `application.privacy.coworker-visibility` says), and one whose creator has left the directory is refused.
-Revoked and expired tokens stop at once. The API's security chain accepts bearer tokens and nothing else: it
+Revoked and expired tokens stop at once. **Every call checks the owner live in the directory** (not the user
+cache): their entry must still exist and match `application.user-ldap-filter` and
+`APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, must not be disabled (Active Directory `userAccountControl` bit 0x2,
+389/OpenLDAP `nsAccountLock=true`), locked out (Active Directory `msDS-User-Account-Control-Computed` bit 0x10;
+OpenLDAP ppolicy `pwdAccountLockedTime`, permanently `000001010000Z` or within
+`APPLICATION_LDAP_ACCOUNTSTATUS_LOCKOUTDURATION`, 15m: set it to your policy's `pwdLockoutDuration`) or expired
+(Active Directory `accountExpires`), and must still be an administrator; otherwise, or when the directory cannot
+be read, the token is refused. A usable account is remembered for at most `APPLICATION_LDAP_ACCOUNTSTATUS_CACHESECONDS`
+(60, the maximum; 0 turns it off); refusals are never remembered. The same check applies to webhook owners and to
+scheduled reports' owners and recipients. `APPLICATION_LDAP_ACCOUNTSTATUS_BUILTINCHECKS=false` turns the built-in
+attribute checks off (the filters still apply). The API's security chain accepts bearer tokens and nothing else: it
 reads and creates no session, so it needs no CSRF token, and a browser's session cookie signs nothing in on it;
 it serves GETs only. Audited: `api.token-created` and `api.token-revoked` (with scopes, expiry and owner), each
 read as `data.exported` (`details.via` `api`, the actor the token), refused tokens as a failed `auth.login`
@@ -1253,7 +1263,13 @@ so de-duplicate on it), `X-ReadyRoom-Timestamp` (Unix seconds) and
 secret (`whsec_...`, shown once when the webhook is added), of `<timestamp>.<raw body>`. To verify: recompute it
 over the exact bytes received, compare in constant time, and refuse a timestamp more than five minutes from your
 clock. Deliveries are queued in the database once the change commits, and sent within seconds by one replica at
-a time; anything but a 2xx answer (a redirect included) is retried after 30 seconds, 2, 10 and 30 minutes, then
+a time, each claimed (`claimed_until`, a conditional update) just before it is sent so that no two replicas send it
+at once. A try is cut off after `APPLICATION_WEBHOOKS_ATTEMPTTIMEOUT` (30s) altogether, whatever the receiver does
+(a handshake or answer sent a byte at a time included); a run starts no try after `APPLICATION_WEBHOOKS_RUNBUDGET`
+(40s); one endpoint gets at most `APPLICATION_WEBHOOKS_PERENDPOINTMAX` (20) tries and
+`APPLICATION_WEBHOOKS_PERENDPOINTBUDGET` (20s) per run, and none more in that run after a try it gave no HTTP
+answer to, so a slow or dead receiver cannot hold the others up. Delivery is at least once (a reply lost after
+the receiver processed it is sent again): receivers de-duplicate on `X-ReadyRoom-Delivery`; anything but a 2xx answer (a redirect included) is retried after 30 seconds, 2, 10 and 30 minutes, then
 1, 2, 4 and 8 hours, up to `APPLICATION_WEBHOOKS_MAXATTEMPTS` (8) tries, then marked failed. The page shows each
 webhook's recent deliveries (state, tries, last status, error); the log is kept
 `APPLICATION_WEBHOOKS_DELIVERYLOGDAYS` (30) days. A webhook acts for the administrator who added it: while they
@@ -1271,11 +1287,13 @@ when a webhook is saved and again on every delivery, and the connection is made 
 
 | Variable | Default | |
 |---|---|---|
-| `APPLICATION_WEBHOOKS_SECRETKEY` | (none: webhooks off) | The key the signing secrets are encrypted with in the database (AES-256-GCM), 32 characters or more, the same on every replica. The Helm chart generates one and keeps it. If it changes, existing webhooks must be added again. |
+| `APPLICATION_WEBHOOKS_SECRETKEY` | (none: webhooks off) | The key the signing secrets are encrypted with in the database (AES-256-GCM), 32 characters or more, the same on every replica and across upgrades (Helm: `webhooks.enabled` and `webhooks.secretKey`; never generated). If it changes, existing webhooks must be added again. |
 | `APPLICATION_WEBHOOKS_ALLOWEDCIDRS` | (none) | Internal ranges webhooks may be sent to |
 | `APPLICATION_WEBHOOKS_MAXATTEMPTS` | `8` | Tries per delivery |
 | `APPLICATION_WEBHOOKS_DELIVERYLOGDAYS` | `30` | Days delivered and failed deliveries are kept |
 | `APPLICATION_WEBHOOKS_CONNECTTIMEOUT`, `_READTIMEOUT` | `5s`, `10s` | |
+| `APPLICATION_WEBHOOKS_ATTEMPTTIMEOUT`, `_RUNBUDGET`, `_PERENDPOINTMAX`, `_PERENDPOINTBUDGET` | `30s`, `40s`, `20`, `20s` | A try's overall deadline, and one run's limits |
+| `APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, `_LOCKOUTDURATION`, `_CACHESECONDS`, `_BUILTINCHECKS` | (none), `15m`, `60`, `true` | The live account check of token, webhook and scheduled report owners (above) |
 | `APPLICATION_API_MAXTOKENDAYS`, `_DEFAULTRATEPERMINUTE`, `_MAXRATEPERMINUTE`, `_MAXRANGEDAYS`, `_MAXPAGESIZE` | `366`, `120`, `1200`, `366`, `500` | |
 
 Audited: `webhook.created`, `webhook.disabled`, `webhook.enabled`, `webhook.deleted` (the secret appears only as
@@ -1288,9 +1306,9 @@ its first characters). With the Helm chart's NetworkPolicy on, egress to port 44
 Nothing to do by hand. Flyway adds `api_tokens`, `webhook_endpoints`, `webhook_deliveries` (V9),
 `report_schedules` and `user_records.time_zone` (V10); nothing existing changes. What operators may want:
 
-- **Webhooks** stay off until `APPLICATION_WEBHOOKS_SECRETKEY` is set (the Helm chart generates one and keeps it;
-  with the release bundle, set it in `.env`). With the chart's NetworkPolicy on, egress to port 443 is opened for
-  them (`webhooks.ports`).
+- **Webhooks** stay off until `APPLICATION_WEBHOOKS_SECRETKEY` is set (Helm: `webhooks.enabled: true` with
+  `webhooks.secretKey`, a value or your Secret; with the release bundle, set it in `.env`). With the chart's
+  NetworkPolicy on, egress to port 443 is then opened for them (`webhooks.ports`).
 - **Site time zones**: set `APPLICATION_REPORTS_SITETIMEZONES` where people work in more than one zone; until then
   reports look as before (everyone in `APPLICATION_TIMEZONE`).
 - **Calendar colours**: the organization calendar's and requested statuses' default colours are darker (see

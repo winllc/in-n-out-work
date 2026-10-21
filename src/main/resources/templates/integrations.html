@@ -159,7 +159,8 @@
                     </p>
                     <div th:if="${!webhooksConfigured}" class="alert alert-info" role="status" id="webhooks-not-configured">
                         Webhooks are off: set <code>APPLICATION_WEBHOOKS_SECRETKEY</code> (32 characters or more, the
-                        same on every replica), which their signing secrets are encrypted with. The Helm chart sets one.
+                        same on every replica), which their signing secrets are encrypted with; with the Helm chart,
+                        <code>webhooks.enabled</code> and <code>webhooks.secretKey</code>.
                     </div>
                     <form th:if="${webhooksConfigured}" th:action="@{/app/admin/integrations/webhooks}" method="post"
                           id="create-webhook-form">

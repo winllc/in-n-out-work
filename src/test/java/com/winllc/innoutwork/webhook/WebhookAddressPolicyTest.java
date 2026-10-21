@@ -68,6 +68,43 @@ class WebhookAddressPolicyTest {
         assertThrows(WebhookRefusedException.class, () -> STRICT.resolve(address));
     }
 
+    /** Refused whatever the allow-list says, even one allowing every address. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "168.63.129.16",              // Azure wire server (metadata)
+            "fd20:ce::254",               // metadata
+            "::ffff:0:a00:1",             // SIIT, IPv4-translated (::ffff:0:0:0/96)
+            "::ffff:0:5db8:d822",         // SIIT, even of a public address
+            "2001:0:5ef5:79fb::1",        // Teredo
+            "2001::1",                    // Teredo
+            "64:ff9b:1::a00:1",           // local-use translation (64:ff9b:1::/48)
+            "64:ff9b:1:ffff::1"})
+    void metadataTranslatorsAndTunnelsAreRefusedWhateverTheAllowList(String address) throws Exception {
+        WebhookAddressPolicy allowingAll = policy(List.of("0.0.0.0/0", "::/0"), Map.of());
+        assertNotNull(allowingAll.refusal(InetAddress.getByName(address)), address);
+    }
+
+    /** IPv4 inside IPv6 is checked as the IPv4 address it carries. */
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "64:ff9b::a00:1",             // NAT64 of 10.0.0.1
+            "64:ff9b::7f00:1",            // NAT64 of 127.0.0.1
+            "2002:a00:1::1",              // 6to4 of 10.0.0.1
+            "2001:db9::5efe:a00:1",       // ISATAP of 10.0.0.1
+            "fe80::200:5efe:7f00:1",      // ISATAP of 127.0.0.1
+            "2600:1::5efe:a9fe:a9fe",     // ISATAP of 169.254.169.254
+            "::a00:1",                    // IPv4-compatible 10.0.0.1
+            "::7f00:1"})                  // IPv4-compatible 127.0.0.1
+    void embeddedIpv4AddressesGoThroughTheSameChecks(String address) throws Exception {
+        assertNotNull(STRICT.refusal(InetAddress.getByName(address)), address);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"64:ff9b::5db8:d822", "2002:5db8:d822::1", "2600:1::5efe:5db8:d822"})
+    void embeddedPublicIpv4IsAllowed(String address) throws Exception {
+        assertNull(STRICT.refusal(InetAddress.getByName(address)), address);
+    }
+
     @Test
     void aHostWithAnyInternalAddressIsRefused() {
         WebhookRefusedException e = assertThrows(WebhookRefusedException.class, () -> STRICT.resolve("mixed.example.com"));

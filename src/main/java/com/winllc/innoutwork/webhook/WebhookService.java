@@ -6,7 +6,6 @@ import com.winllc.innoutwork.audit.AuditEntry;
 import com.winllc.innoutwork.audit.AuditLog;
 import com.winllc.innoutwork.audit.TokenSecrets;
 import com.winllc.innoutwork.config.ApplicationProperties;
-import com.winllc.innoutwork.constant.UserRoleEnum;
 import com.winllc.innoutwork.model.WebhookDelivery;
 import com.winllc.innoutwork.model.WebhookEndpoint;
 import com.winllc.innoutwork.repository.WebhookDeliveryRepository;
@@ -20,9 +19,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
-import com.winllc.innoutwork.security.AppUserDetailsService;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import com.winllc.innoutwork.security.DirectoryAccounts;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -85,7 +82,7 @@ public class WebhookService {
     private final WebhookTransport transport;
     private final ApplicationProperties.Webhooks settings;
     private final AccessPolicy accessPolicy;
-    private final UserDetailsService users;
+    private final DirectoryAccounts accounts;
     private final AuditLog audit;
     private final TransactionTemplate newTransaction;
     private final Clock clock;
@@ -98,15 +95,15 @@ public class WebhookService {
     @org.springframework.beans.factory.annotation.Autowired
     public WebhookService(WebhookEndpointRepository endpoints, WebhookDeliveryRepository deliveries,
                           WebhookAddressPolicy policy, WebhookTransport transport, ApplicationProperties properties,
-                          AccessPolicy accessPolicy, AppUserDetailsService users, ObjectProvider<AuditLog> audit,
+                          AccessPolicy accessPolicy, DirectoryAccounts accounts, ObjectProvider<AuditLog> audit,
                           PlatformTransactionManager transactions) {
-        this(endpoints, deliveries, policy, transport, properties, accessPolicy, users,
+        this(endpoints, deliveries, policy, transport, properties, accessPolicy, accounts,
                 audit.getIfAvailable(() -> AuditLog.NOOP), transactions, Clock.systemUTC());
     }
 
     WebhookService(WebhookEndpointRepository endpoints, WebhookDeliveryRepository deliveries,
                    WebhookAddressPolicy policy, WebhookTransport transport, ApplicationProperties properties,
-                   AccessPolicy accessPolicy, UserDetailsService users, AuditLog audit,
+                   AccessPolicy accessPolicy, DirectoryAccounts accounts, AuditLog audit,
                    PlatformTransactionManager transactions, Clock clock) {
         this.endpoints = endpoints;
         this.deliveries = deliveries;
@@ -114,7 +111,7 @@ public class WebhookService {
         this.transport = transport;
         this.settings = properties.getWebhooks();
         this.accessPolicy = accessPolicy;
-        this.users = users;
+        this.accounts = accounts;
         this.audit = audit;
         this.newTransaction = new TransactionTemplate(transactions);
         this.newTransaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -253,7 +250,7 @@ public class WebhookService {
 
     private List<WebhookEndpoint> active() {
         return activeEndpoints.get("all", k -> endpoints.findByDisabledAtIsNull().stream()
-                .filter(e -> ownerIsAdmin(e.getOwnerDn()))
+                .filter(e -> ownerMayReceive(e.getOwnerDn()))
                 .toList());
     }
 
@@ -282,34 +279,106 @@ public class WebhookService {
 
     // --- sending ----------------------------------------------------------------------------------------------
 
-    /** Sends what is due, oldest first, a batch at a time. @return how many were tried */
+    /** How one try ended, for the run's per-endpoint limits. */
+    enum Outcome {
+        /** Answered 2xx. */
+        DELIVERED,
+        /** Answered, but not 2xx. */
+        ANSWERED,
+        /** No HTTP answer at all (refused address, network or TLS failure, past the deadline). */
+        NO_ANSWER,
+        /** Not sent (endpoint gone or disabled, owner may no longer act, directory unreadable). */
+        NOT_SENT
+    }
+
+    /**
+     * One sending run: what is due, oldest first, within limits so that no receiver can hold the others up.
+     * <ul>
+     *   <li>No new try starts after application.webhooks.run-budget (each try is itself cut off at
+     *       application.webhooks.attempt-timeout);</li>
+     *   <li>one endpoint gets at most application.webhooks.per-endpoint-max tries and
+     *       application.webhooks.per-endpoint-budget of time per run, and none more in the run after a try it gave
+     *       no HTTP answer to;</li>
+     *   <li>each delivery is claimed (a conditional update, in its own transaction) just before it is sent, so two
+     *       replicas, or a run after a lost lock, never send it at once; the claim ends with the try, or lapses.</li>
+     * </ul>
+     * Delivery is at least once: receivers de-duplicate on X-ReadyRoom-Delivery (the payload's id).
+     *
+     * @return how many were tried
+     */
     public int deliverDue() {
         if (!isConfigured()) {
             return 0;
         }
+        long runDeadline = System.nanoTime() + settings.getRunBudget().toNanos();
+        Map<Long, Integer> tries = new java.util.HashMap<>();
+        Map<Long, Long> spent = new java.util.HashMap<>();
+        java.util.Set<Long> silent = new java.util.HashSet<>();
         List<WebhookDelivery> due = deliveries.findDue(WebhookDelivery.State.PENDING, clock.instant(),
                 PageRequest.of(0, BATCH));
+        int tried = 0;
         for (WebhookDelivery delivery : due) {
-            attempt(delivery);
+            if (System.nanoTime() >= runDeadline) {
+                break;
+            }
+            Long endpoint = delivery.getEndpointId();
+            if (silent.contains(endpoint) || tries.getOrDefault(endpoint, 0) >= settings.getPerEndpointMax()
+                    || spent.getOrDefault(endpoint, 0L) >= settings.getPerEndpointBudget().toNanos()) {
+                continue;
+            }
+            if (!claim(delivery)) {
+                continue;
+            }
+            long started = System.nanoTime();
+            Outcome outcome;
+            try {
+                outcome = attempt(delivery);
+            } finally {
+                spent.merge(endpoint, System.nanoTime() - started, Long::sum);
+                tries.merge(endpoint, 1, Integer::sum);
+            }
+            if (outcome == Outcome.NO_ANSWER) {
+                silent.add(endpoint);
+            }
+            tried++;
         }
-        return due.size();
+        return tried;
     }
 
-    void attempt(WebhookDelivery delivery) {
+    /** Takes {@code delivery} for this try; false when another replica or run has it, or it is no longer due. */
+    boolean claim(WebhookDelivery delivery) {
+        Instant now = clock.instant();
+        Instant until = now.plus(settings.getAttemptTimeout().multipliedBy(2)).plusSeconds(30);
+        Integer claimed = newTransaction.execute(s -> deliveries.claim(delivery.getId(), WebhookDelivery.State.PENDING,
+                now, until));
+        return claimed != null && claimed == 1;
+    }
+
+    Outcome attempt(WebhookDelivery delivery) {
         Instant now = clock.instant();
         Optional<WebhookEndpoint> found = endpoints.findById(delivery.getEndpointId());
         String problem = null;
         Integer status = null;
         if (found.isEmpty() || !found.get().isEnabled()) {
             finish(delivery, null, now, WebhookDelivery.State.FAILED, null, "the endpoint is disabled or deleted");
-            return;
+            return Outcome.NOT_SENT;
         }
         WebhookEndpoint endpoint = found.get();
-        if (!ownerIsAdmin(endpoint.getOwnerDn())) {
-            finish(delivery, endpoint, now, WebhookDelivery.State.FAILED, null,
-                    "the administrator who created this endpoint no longer is one");
-            return;
+        DirectoryAccounts.Account owner = accounts.check(endpoint.getOwnerDn());
+        if (owner.status() == DirectoryAccounts.Status.UNAVAILABLE) {
+            // Fail closed, but not for good: tried again later, like a receiver that did not answer.
+            boolean last = delivery.getAttempts() + 1 >= settings.getMaxAttempts();
+            finish(delivery, endpoint, now, last ? WebhookDelivery.State.FAILED : WebhookDelivery.State.PENDING, null,
+                    "not sent: the directory could not be read to check the endpoint's administrator");
+            return Outcome.NOT_SENT;
         }
+        if (!owner.isAdmin()) {
+            finish(delivery, endpoint, now, WebhookDelivery.State.FAILED, null,
+                    "the administrator who created this endpoint can no longer act ("
+                            + (owner.active() ? "no longer an administrator" : owner.status().reason()) + ")");
+            return Outcome.NOT_SENT;
+        }
+        Outcome outcome = Outcome.NO_ANSWER;
         try {
             byte[] body = delivery.getPayload().getBytes(StandardCharsets.UTF_8);
             long timestamp = now.getEpochSecond();
@@ -322,8 +391,9 @@ public class WebhookService {
             status = transport.post(endpoint.getUrl(), headers, body);
             if (status >= 200 && status < 300) {
                 finish(delivery, endpoint, now, WebhookDelivery.State.DELIVERED, status, null);
-                return;
+                return Outcome.DELIVERED;
             }
+            outcome = Outcome.ANSWERED;
             problem = "answered HTTP " + status;
         } catch (WebhookRefusedException e) {
             problem = "refused: " + e.getMessage();
@@ -339,11 +409,13 @@ public class WebhookService {
                 LogSafe.of(problem));
         finish(delivery, endpoint, now, last ? WebhookDelivery.State.FAILED : WebhookDelivery.State.PENDING, status,
                 problem);
+        return outcome;
     }
 
     private void finish(WebhookDelivery delivery, WebhookEndpoint endpoint, Instant now, WebhookDelivery.State state,
                         Integer status, String problem) {
         delivery.setAttempts(delivery.getAttempts() + 1);
+        delivery.setClaimedUntil(null);
         delivery.setLastAttemptAt(now);
         delivery.setLastStatus(status);
         delivery.setLastError(cut(problem));
@@ -381,13 +453,13 @@ public class WebhookService {
 
     // --- helpers ----------------------------------------------------------------------------------------------
 
-    private boolean ownerIsAdmin(String ownerDn) {
-        try {
-            return users.loadUserByUsername(ownerDn).getAuthorities().stream()
-                    .anyMatch(a -> UserRoleEnum.ADMIN.name().equals(a.getAuthority()));
-        } catch (UsernameNotFoundException e) {
-            return false;
-        }
+    /**
+     * Whether events may be queued for an endpoint of {@code ownerDn}'s: they are still an administrator, read live
+     * (DirectoryAccounts), or the directory cannot be read just now (sending checks again, and refuses).
+     */
+    private boolean ownerMayReceive(String ownerDn) {
+        DirectoryAccounts.Account owner = accounts.check(ownerDn);
+        return owner.isAdmin() || owner.status() == DirectoryAccounts.Status.UNAVAILABLE;
     }
 
     private void requireAdmin(Authentication who) {

@@ -12,7 +12,7 @@ import com.winllc.innoutwork.model.WebhookEndpoint;
 import com.winllc.innoutwork.repository.WebhookDeliveryRepository;
 import com.winllc.innoutwork.repository.WebhookEndpointRepository;
 import com.winllc.innoutwork.security.AccessPolicy;
-import com.winllc.innoutwork.security.AppUserDetailsService;
+import com.winllc.innoutwork.security.DirectoryAccounts;
 import com.winllc.innoutwork.service.CheckInOutService;
 import com.winllc.innoutwork.service.InvalidRequestException;
 import com.winllc.innoutwork.support.FullApplicationTest;
@@ -88,7 +88,7 @@ class WebhookDeliveryTest extends FullApplicationTest {
     @Autowired WebhookDeliveryRepository deliveries;
     @Autowired ApplicationProperties properties;
     @Autowired AccessPolicy accessPolicy;
-    @Autowired AppUserDetailsService users;
+    @Autowired DirectoryAccounts accounts;
     @Autowired AuditLog auditLog;
     @Autowired AuditEventRepository audit;
     @Autowired PlatformTransactionManager transactions;
@@ -182,13 +182,13 @@ class WebhookDeliveryTest extends FullApplicationTest {
             throw new UnknownHostException(host);
         });
         WebhookTransport transport = new WebhookTransport(policy, clientTls.getSocketFactory(),
-                Duration.ofSeconds(5), Duration.ofSeconds(5));
+                Duration.ofSeconds(5), Duration.ofSeconds(5), Duration.ofSeconds(30));
         Clock clock = new Clock() {
             @Override public ZoneOffset getZone() { return ZoneOffset.UTC; }
             @Override public Clock withZone(java.time.ZoneId zone) { return this; }
             @Override public Instant instant() { return now.get(); }
         };
-        return new WebhookService(endpoints, deliveries, policy, transport, properties, accessPolicy, users,
+        return new WebhookService(endpoints, deliveries, policy, transport, properties, accessPolicy, accounts,
                 auditLog, transactions, clock);
     }
 
@@ -310,6 +310,28 @@ class WebhookDeliveryTest extends FullApplicationTest {
         webhooks.activeEndpointsForTest();
         webhooks.onEvent(WebhookEvent.of(WebhookEventType.STATUS_CHANGED, Map.of("x", 1)));
         assertEquals(0, deliveries.count());
+    }
+
+    @Test
+    void nothingIsSentForAnEndpointWhoseCreatorIsDisabledInTheDirectory() {
+        WebhookService sender = sender(List.of("127.0.0.0/8"));
+        sender.create("HR", url("localhost"), List.of(WebhookEventType.STATUS_CHANGED), admin());
+        webhooks.activeEndpointsForTest();
+        webhooks.onEvent(WebhookEvent.of(WebhookEventType.STATUS_CHANGED, Map.of("x", 1)));
+        assertEquals(1, deliveries.count());
+        try {
+            setAttribute(ADMIN, "userAccountControl", "514");
+            assertEquals(1, sender.deliverDue());
+            WebhookDelivery d = deliveries.findAll().getFirst();
+            assertEquals(WebhookDelivery.State.FAILED, d.getState());
+            assertTrue(d.getLastError().contains("disabled"), d.getLastError());
+            assertTrue(received.isEmpty(), "nothing sent");
+            webhooks.activeEndpointsForTest(); // the list of endpoints is read again every 30 seconds
+            webhooks.onEvent(WebhookEvent.of(WebhookEventType.STATUS_CHANGED, Map.of("x", 2)));
+            assertEquals(1, deliveries.count(), "nothing new queued while they are disabled");
+        } finally {
+            clearAccountStatus(ADMIN);
+        }
     }
 
     @Test

@@ -24,6 +24,14 @@ public record Cidr(byte[] network, int prefix) {
         } catch (UnknownHostException e) {
             throw new IllegalArgumentException("not an IP address: " + t, e);
         }
+        if (address.contains(":") && bytes.length == 4) {
+            // The JDK reads an IPv4-mapped IPv6 literal (::ffff:a.b.c.d) as IPv4; a range of them stays IPv6.
+            byte[] mapped = new byte[16];
+            mapped[10] = (byte) 0xFF;
+            mapped[11] = (byte) 0xFF;
+            System.arraycopy(bytes, 0, mapped, 12, 4);
+            bytes = mapped;
+        }
         int bits = bytes.length * 8;
         int prefix;
         try {

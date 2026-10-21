@@ -16,9 +16,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import com.winllc.innoutwork.security.DirectoryAccounts;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
@@ -29,7 +27,8 @@ import java.io.IOException;
  * failed {@code auth.login} (method {@code public-api-token}) in the audit trail, collapsed per source and reason:
  * <ul>
  *   <li>a malformed, unknown, revoked or expired token: 401;</li>
- *   <li>a token whose owner is no longer in the directory: 401.</li>
+ *   <li>a token whose owner is no longer in the directory, is disabled, locked out or expired there, or is no
+ *       longer an administrator, read live (DirectoryAccounts; a directory that cannot be read refuses): 401.</li>
  * </ul>
  * Past the token's rate limit: 429 with {@code Retry-After}, the first of each minute audited. A request with no
  * Authorization header goes on unauthenticated, so the OpenAPI document stays readable and everything else gets
@@ -41,15 +40,15 @@ public class ApiTokenFilter extends OncePerRequestFilter {
     static final String METHOD = "public-api-token";
 
     private final ApiTokenService tokens;
-    private final UserDetailsService users;
+    private final DirectoryAccounts accounts;
     private final SecurityAudit securityAudit;
     private final AuditLog audit;
     private final ClientRateLimiter limiter;
 
-    public ApiTokenFilter(ApiTokenService tokens, UserDetailsService users, SecurityAudit securityAudit,
+    public ApiTokenFilter(ApiTokenService tokens, DirectoryAccounts accounts, SecurityAudit securityAudit,
                           AuditLog audit, ClientRateLimiter limiter) {
         this.tokens = tokens;
-        this.users = users;
+        this.accounts = accounts;
         this.securityAudit = securityAudit;
         this.audit = audit == null ? AuditLog.NOOP : audit;
         this.limiter = limiter;
@@ -76,12 +75,17 @@ public class ApiTokenFilter extends OncePerRequestFilter {
         }
         ApiToken token = presented.token();
 
-        UserDetails owner;
-        try {
-            owner = users.loadUserByUsername(token.getOwnerDn());
-        } catch (UsernameNotFoundException e) {
-            refuse(request, response, "token owner not in the directory",
-                    "The administrator this token acts for is no longer in the directory.");
+        // The owner as the directory has them now (not from the user cache): still there, not disabled, locked or
+        // expired, and still an administrator. A directory that cannot be read refuses.
+        DirectoryAccounts.Account owner = accounts.check(token.getOwnerDn());
+        if (!owner.active()) {
+            refuse(request, response, "token owner " + owner.status().reason(),
+                    "The administrator this token acts for can no longer use it.");
+            return;
+        }
+        if (!owner.isAdmin()) {
+            refuse(request, response, "token owner no longer an administrator",
+                    "The administrator this token acts for can no longer use it.");
             return;
         }
 
@@ -106,7 +110,7 @@ public class ApiTokenFilter extends OncePerRequestFilter {
 
         SecurityContext context = SecurityContextHolder.createEmptyContext();
         context.setAuthentication(new ApiTokenAuthentication(token.getId(), token.getName(), token.getOwnerDn(),
-                token.getScopeSet(), owner.getAuthorities()));
+                token.getScopeSet(), owner.details().getAuthorities()));
         SecurityContextHolder.setContext(context);
         try {
             chain.doFilter(request, response);

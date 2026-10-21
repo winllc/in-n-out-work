@@ -65,8 +65,10 @@ data:
   APPLICATION_API_MAXTOKENDAYS: {{ $v.api.maxTokenDays | quote }}
   APPLICATION_API_DEFAULTRATEPERMINUTE: {{ $v.api.defaultRatePerMinute | quote }}
   APPLICATION_API_MAXRATEPERMINUTE: {{ $v.api.maxRatePerMinute | quote }}
+  {{- if $v.webhooks.enabled }}
   {{- with $v.webhooks.allowedCidrs }}
   APPLICATION_WEBHOOKS_ALLOWEDCIDRS: {{ join "," . | quote }}
+  {{- end }}
   {{- end }}
 
   # Database

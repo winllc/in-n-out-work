@@ -12,7 +12,8 @@ import java.util.List;
  * RFC 4180 CSV, UTF-8 with a byte-order mark (so spreadsheet programs read accents right), CRLF line ends. Every
  * text cell is quoted when it needs to be, and guarded against formula injection: a cell that starts with
  * {@code = + - @}, a tab or a carriage return (or their full-width forms) is prefixed with an apostrophe, so a
- * spreadsheet shows it as text instead of running it. Numbers are written as numbers.
+ * spreadsheet shows it as text instead of running it; so is one that starts so after leading blanks (spaces,
+ * no-break spaces, tabs, line breaks), and one starting with {@code |}. Numbers are written as numbers.
  */
 public class CsvTableWriter implements TableWriter {
 
@@ -54,11 +55,26 @@ public class CsvTableWriter implements TableWriter {
         if (value == null || value.isEmpty()) {
             return value;
         }
-        char first = value.charAt(0);
-        return switch (first) {
-            case '=', '+', '-', '@', '\t', '\r', '\n', '＝', '＋', '－', '＠' -> "'" + value;
-            default -> value;
-        };
+        // Spreadsheets skip leading blanks (spaces, no-break spaces, tabs, line breaks) before reading a formula.
+        int i = 0;
+        while (i < value.length() && blank(value.charAt(i))) {
+            i++;
+        }
+        boolean formula = false;
+        if (i < value.length()) {
+            formula = switch (value.charAt(i)) {
+                case '=', '+', '-', '@', '|', '＝', '＋', '－', '＠', '｜' -> true;
+                default -> false;
+            };
+        }
+        // A cell starting with a tab or carriage return is guarded whatever follows, as before.
+        boolean control = value.charAt(0) == '\t' || value.charAt(0) == '\r';
+        return formula || control ? "'" + value : value;
+    }
+
+    private static boolean blank(char c) {
+        return Character.isWhitespace(c) || Character.isSpaceChar(c) || c == ' ' || c == ' '
+                || c == ' ' || c == '﻿';
     }
 
     static String quote(String value) {

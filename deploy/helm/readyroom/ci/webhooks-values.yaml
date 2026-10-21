@@ -1,0 +1,25 @@
+# Webhooks on, their key from your own Secret, with a NetworkPolicy and an internal receiver's range allowed.
+database:
+  host: postgres.example.internal
+  password: example-db-password
+ldap:
+  host: ldap.example.internal
+  bindDn: CN=readyroom-svc,OU=Service Accounts,DC=example,DC=com
+  bindPassword: example-ldap-password
+  userBaseDn: DC=example,DC=com
+  groupBaseDns:
+    - OU=Groups,DC=example,DC=com
+superUserDns:
+  - CN=Jane Admin,OU=Users,DC=example,DC=com
+smtp:
+  host: smtp.example.internal
+  from: readyroom@example.com
+publicUrl: http://readyroom.example.com:8181
+webhooks:
+  enabled: true
+  secretKey:
+    existingSecret: readyroom-webhooks
+  allowedCidrs:
+    - 10.20.0.0/16
+networkPolicy:
+  enabled: true

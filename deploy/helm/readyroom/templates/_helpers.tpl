@@ -269,14 +269,19 @@ rollingUpdate:
 {{- end -}}
 {{- end -}}
 
-{{/* The webhook secret key: your Secret, or this release's (given or generated; see secret.yaml). */}}
+{{/*
+The webhook secret key: your Secret, or this release's from webhooks.secretKey.value. Never generated here: a key
+made at render time would change at every render (helm template, Argo CD), and the stored signing secrets with it.
+*/}}
 {{- define "readyroom.webhookKeyRef" -}}
 {{- $w := .Values.webhooks.secretKey -}}
 {{- if $w.existingSecret -}}
 name: {{ $w.existingSecret }}
 key: {{ $w.existingSecretKey }}
-{{- else -}}
+{{- else if $w.value -}}
 name: {{ include "readyroom.fullname" . }}
 key: webhook-secret-key
+{{- else -}}
+{{- fail "webhooks.enabled needs webhooks.secretKey.value (32 characters or more) or webhooks.secretKey.existingSecret: the key webhook signing secrets are encrypted with, which must stay the same across upgrades" -}}
 {{- end -}}
 {{- end -}}

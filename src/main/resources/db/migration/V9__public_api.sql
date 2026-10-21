@@ -10,6 +10,7 @@
 --
 -- webhook_deliveries: the queue of events to send, one row per event and endpoint, and the delivery log
 -- (attempts, last status and error). Finished rows are deleted after application.webhooks.delivery-log-days.
+-- claimed_until: the replica sending a row holds it until then, so no row is sent twice at once.
 --
 -- New tables only: nothing existing changes.
 -- =====================================================================================================
@@ -61,6 +62,7 @@ CREATE TABLE webhook_deliveries (
     last_error      varchar(500),
     created_at      timestamp(6) with time zone NOT NULL,
     delivered_at    timestamp(6) with time zone,
+    claimed_until   timestamp(6) with time zone,
     CONSTRAINT webhook_deliveries_state_check CHECK (state IN ('PENDING', 'DELIVERED', 'FAILED')),
     CONSTRAINT fk_webhook_deliveries_endpoint FOREIGN KEY (endpoint_id)
         REFERENCES webhook_endpoints (id) ON DELETE CASCADE

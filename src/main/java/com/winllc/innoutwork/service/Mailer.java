@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.service;
 
+import com.winllc.innoutwork.util.LogSafe;
+
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.util.ValueValidatorUtil;
 import jakarta.annotation.PreDestroy;
@@ -80,11 +82,11 @@ public class Mailer {
      */
     public boolean send(String to, String subject, String template, Map<String, Object> model) {
         if (mailSender == null) {
-            log.debug("Not e-mailing \"{}\": no mail server is configured", subject);
+            log.debug("Not e-mailing \"{}\": no mail server is configured", LogSafe.of(subject));
             return false;
         }
         if (!ValueValidatorUtil.isValidEmail(to)) {
-            log.error("Invalid email address: {}", to);
+            log.error("Invalid email address: {}", LogSafe.of(to));
             return false;
         }
         try {
@@ -101,7 +103,7 @@ public class Mailer {
             mailSender.send(message);
             return true;
         } catch (Exception e) {
-            log.error("Failed to send \"{}\" to {}", subject, to, e);
+            log.error("Failed to send \"{}\" to {}", LogSafe.of(subject), LogSafe.of(to), e);
             return false;
         }
     }
@@ -115,11 +117,11 @@ public class Mailer {
     public boolean sendWithAttachment(String to, String subject, String template, Map<String, Object> model,
                                       String filename, byte[] bytes, String contentType) {
         if (mailSender == null) {
-            log.debug("Not e-mailing \"{}\": no mail server is configured", subject);
+            log.debug("Not e-mailing \"{}\": no mail server is configured", LogSafe.of(subject));
             return false;
         }
         if (!ValueValidatorUtil.isValidEmail(to)) {
-            log.error("Invalid email address: {}", to);
+            log.error("Invalid email address: {}", LogSafe.of(to));
             return false;
         }
         try {
@@ -137,7 +139,7 @@ public class Mailer {
             mailSender.send(message);
             return true;
         } catch (Exception e) {
-            log.error("Failed to send \"{}\" to {}", subject, to, e);
+            log.error("Failed to send \"{}\" to {}", LogSafe.of(subject), LogSafe.of(to), e);
             return false;
         }
     }
@@ -149,7 +151,7 @@ public class Mailer {
         }
         Runnable task = () -> {
             if (send(to, subject, template, model)) {
-                log.info("Mail \"{}\" sent to {}", subject, to);
+                log.info("Mail \"{}\" sent to {}", LogSafe.of(subject), LogSafe.of(to));
             }
         };
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
