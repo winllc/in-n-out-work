@@ -8,6 +8,7 @@
     <link rel="stylesheet" th:href="@{/libs/autoComplete/autoComplete.min.css}">
 
     <script th:src="@{/libs/autoComplete/autoComplete.min.js}"></script>
+    <script th:src="@{/libs/fullcalendar/index.global.min.js}"></script>
 </head>
 <body>
 
@@ -74,6 +75,13 @@
             <div id="user-table"></div>
         </div>
     </div>
+
+    <!-- Wrapped rather than putting th:if beside th:replace: th:replace is processed first, so a
+         condition on the same tag would be discarded. The DN is escaped into the path: a group name
+         carries spaces, and may carry anything else a directory allows in a name. -->
+    <th:block th:if="${licenseInfo == null or licenseInfo.isEnabled('calendar')}">
+        <th:block th:replace="~{fragments/calendar :: combined('Group Calendar', '/api/event/group/' + ${#uris.escapePathSegment(groupDn)}, 'Statuses every member of this group set for themselves. Members set their own on their profile; click an entry to open that member. No status can be changed from here.')}"></th:block>
+    </th:block>
 
     <div class="card mt-3" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')" th:if="${canManageGroup == true}"
          id="group-managers">

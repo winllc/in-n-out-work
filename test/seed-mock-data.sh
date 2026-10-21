@@ -339,6 +339,32 @@ DELETE FROM user_records WHERE lower(dn) = lower('cn=${MANAGER_CN},${USERS_OU}')
 INSERT INTO user_records (dn, user_role) VALUES ('cn=${MANAGER_CN},${USERS_OU}', 'MANAGER');
 SQL
 
+# Self-set statuses, the ones people pick for themselves on their calendar. Without these the
+# personal and group calendars have nothing on them, and the feature cannot be seen in the demo.
+# "<status>|<days from today>", handed out in order: the Nth user takes the Nth pair, so the same
+# user always gets the same two entries however often this runs.
+USER_EVENTS=(
+  "WORK_FROM_HOME|-2"
+  "SCHEDULED_LEAVE|1"
+  "TDY|3"
+  "OUT_OF_OFFICE|-1"
+  "LATE_ARRIVAL|2"
+  "WORK_FROM_HOME|4"
+  "SCHEDULED_LEAVE|-3"
+  "TDY|5"
+  "WORK_FROM_HOME|0"
+)
+EVENT_SEQ=0
+
+# emit_event <dn> <status> <days from today>
+emit_event() {
+  local late="NULL"
+  # LATE_ARRIVAL is the one status that carries a time, and the calendar prints it.
+  [[ "$2" == "LATE_ARRIVAL" ]] && late="'10:30'"
+  printf "INSERT INTO user_event_records (dn, date, status, login_by_time) VALUES ('%s', (date_trunc('day', now()) + interval '%s day')::date, '%s', %s);\n" \
+    "$1" "$3" "$2" "$late" >>"$SQL_FILE"
+}
+
 for row in "${USERS[@]}"; do
   IFS='|' read -r cn sn uid dept etype org loc branch status <<<"$row"
   dn="cn=${cn},${USERS_OU}"
@@ -375,6 +401,16 @@ for row in "${USERS[@]}"; do
   co_fut="date_trunc('day', now()) + interval '1 day' + interval '17 hours'"
   emit "$dn" "CHECK_IN"  "$ci_fut" "$etype" "$org" "$loc" "$branch" "$dept" "$uid"
   emit "$dn" "CHECK_OUT" "$co_fut" "$etype" "$org" "$loc" "$branch" "$dept" "$uid"
+
+  # ---- two statuses each, so every group's calendar has entries on several days ----
+  # There is no session id on a status row to delete by, so this user's rows go first.
+  echo "DELETE FROM user_event_records WHERE lower(dn) = lower('${dn}');" >>"$SQL_FILE"
+  for offset in 0 1; do
+    IFS='|' read -r ev_status ev_day \
+      <<<"${USER_EVENTS[$(( (EVENT_SEQ + offset) % ${#USER_EVENTS[@]} ))]}"
+    emit_event "$dn" "$ev_status" "$ev_day"
+  done
+  EVENT_SEQ=$((EVENT_SEQ + 2))
 done
 
 if [[ "$SEED_TRANSPORT" == "network" ]]; then
@@ -394,6 +430,14 @@ if [[ "${SEEDED_ROWS:-0}" == "0" ]]; then
   exit 1
 fi
 echo "    ${SEEDED_ROWS} check-in/out rows present"
+
+SEEDED_EVENTS="$(psql_exec -tAqX -c \
+  "SELECT count(*) FROM user_event_records WHERE lower(dn) LIKE '%,'||lower('${USERS_OU}')" | tr -d '[:space:]')"
+if [[ "${SEEDED_EVENTS:-0}" == "0" ]]; then
+  echo "ERROR: no mock statuses are in the database, so every calendar will be empty." >&2
+  exit 1
+fi
+echo "    ${SEEDED_EVENTS} self-set status rows present"
 
 MANAGER_ROLE="$(psql_exec -tAqX -c \
   "SELECT user_role FROM user_records WHERE lower(dn) = lower('cn=${MANAGER_CN},${USERS_OU}')" \
