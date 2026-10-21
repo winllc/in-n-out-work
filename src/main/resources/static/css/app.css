@@ -16,6 +16,18 @@
     --classification-height: 1.5rem;
 }
 
+/* Tabler's "-darken" colours, used for the hover, focus and active states of the solid buttons, are the colour
+   made 20% transparent, which over a white page is lighter, not darker: the primary button's hover and focus
+   fell to 3.4:1 under its light text (WCAG 1.4.3). Darker for real, for the colours that carry light text. */
+:root,
+[data-bs-theme] {
+    --tblr-primary-darken: color-mix(in oklab, var(--tblr-primary), black 15%);
+    --tblr-secondary-darken: color-mix(in oklab, var(--tblr-secondary), black 15%);
+    --tblr-success-darken: color-mix(in oklab, var(--tblr-success), black 15%);
+    --tblr-info-darken: color-mix(in oklab, var(--tblr-info), black 15%);
+    --tblr-danger-darken: color-mix(in oklab, var(--tblr-danger), black 15%);
+}
+
 .classification-bar {
     position: fixed;
     left: 0;

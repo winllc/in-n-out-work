@@ -57,6 +57,10 @@ test.describe('signed out', () => {
       await page.waitForURL(/\/login/);
     }
     await check(page, 'login', testInfo);
+    // The same page with the primary button in its focus state (as a keyboard user sees it).
+    await page.mouse.move(0, 0);
+    await page.locator('form button[type="submit"]').first().focus();
+    await check(page, 'login-button-focused', testInfo);
   });
 });
 
