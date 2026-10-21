@@ -27,6 +27,10 @@ async function signIn(page, username) {
 async function check(page, name, testInfo) {
   // Let scripts draw tables, calendars and charts first.
   await page.waitForLoadState('networkidle');
+  // And no transition or animation still running: a button changing colour would be measured half-way.
+  await page.evaluate(() => Promise.all(document.getAnimations()
+    .filter(a => a.effect && a.effect.getComputedTiming().iterations !== Infinity)
+    .map(a => a.finished.catch(() => undefined))));
   const results = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   const dir = path.join(__dirname, '..', 'results');
   fs.mkdirSync(dir, { recursive: true });
