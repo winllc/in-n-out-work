@@ -53,6 +53,11 @@ dependencies {
     implementation 'org.springframework.security:spring-security-oauth2-client'
     implementation 'org.springframework.security:spring-security-oauth2-jose'
     implementation 'org.springframework.security:spring-security-saml2-service-provider'
+    // BouncyCastle, which OpenSAML, Shibboleth, Nimbus and the OIDC SDK use at runtime: OpenSAML 5.2.3 brings 1.84
+    // (CVE-2026-8763, CVE-2026-13506). All three pinned, so none is left behind at the old version.
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.86'
+    implementation 'org.bouncycastle:bcpkix-jdk18on:1.86'
+    implementation 'org.bouncycastle:bcutil-jdk18on:1.86'
 
     // --- High availability: sessions in the database, and scheduled jobs that run on one replica at a time ---
     implementation 'org.springframework.boot:spring-boot-starter-session-jdbc'
@@ -101,9 +106,8 @@ dependencies {
     // Docker is unavailable).
     testImplementation 'org.testcontainers:testcontainers-postgresql'
     testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
-    // Certificates, CRLs and OCSP responses made in the tests, so X.509 sign-in is tested with real ones (tests only;
-    // the application itself uses the JDK's providers).
-    testImplementation 'org.bouncycastle:bcpkix-jdk18on:1.86'
+    // The tests make certificates, CRLs and OCSP responses with BouncyCastle (bcpkix, declared above for the SAML and
+    // OIDC libraries), so X.509 sign-in is tested with real ones; the application's own X.509 code uses the JDK's.
     // An in-process Kerberos server, so Windows sign-in is tested with real tickets and a real keytab.
     testImplementation 'org.apache.kerby:kerb-simplekdc:2.1.2'
     testImplementation platform('org.junit:junit-bom:6.1.3')

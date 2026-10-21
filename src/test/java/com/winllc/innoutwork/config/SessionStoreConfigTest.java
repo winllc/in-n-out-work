@@ -203,6 +203,36 @@ class SessionStoreConfigTest {
         assertEquals(1, replica().findByPrincipalName(DN).size());
     }
 
+    /**
+     * A browser's certificate sign-in, stored as the sign-in leaves it (CertificateCredentialsFilter): the
+     * certificate's subject, issuer and serial instead of the certificate, whose JDK classes the reader refuses.
+     */
+    @Test
+    void aCertificateSignInSurvivesTheDatabaseWithoutItsCertificate() throws Exception {
+        java.security.cert.X509Certificate certificate;
+        try (com.winllc.innoutwork.support.TestPki pki = new com.winllc.innoutwork.support.TestPki("CN=Test CA,O=Example")) {
+            certificate = pki.leaf(DN).issue(); // a real one: the JDK's X509CertImpl
+        }
+        org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken signedIn =
+                new org.springframework.security.web.authentication.preauth.PreAuthenticatedAuthenticationToken(
+                        alice(), certificate, alice().getAuthorities());
+        assertNull(read(new SecurityContextImpl(signedIn)), "as the X.509 filter makes it, it cannot be stored");
+
+        FindByIndexNameSessionRepository<Session> writer = replica();
+        Session session = writer.createSession();
+        session.setAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY, new SecurityContextImpl(
+                com.winllc.innoutwork.security.x509.CertificateCredentialsFilter.withoutCertificate(signedIn, certificate)));
+        writer.save(session);
+
+        SecurityContextImpl read = replica().findById(session.getId())
+                .getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY);
+        assertNotNull(read);
+        assertEquals(DN, read.getAuthentication().getName());
+        com.winllc.innoutwork.security.x509.SignedInCertificate kept =
+                (com.winllc.innoutwork.security.x509.SignedInCertificate) read.getAuthentication().getCredentials();
+        assertEquals(certificate.getSerialNumber().toString(16), kept.serial());
+    }
+
     private static byte[] serialize(Object value) throws IOException {
         ByteArrayOutputStream bytes = new ByteArrayOutputStream();
         try (ObjectOutputStream out = new ObjectOutputStream(bytes)) {

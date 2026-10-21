@@ -169,6 +169,7 @@ public class SecurityConfig {
                 .subjectPrincipalRegex("(.*)") // full subject DN is used as the username
                 .userDetailsService(appUserDetailsService)
         );
+        X509SignIn.keepNoCertificate(http);
     }
 
     /**
