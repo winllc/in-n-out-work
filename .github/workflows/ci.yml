@@ -139,6 +139,58 @@ jobs:
           # Without the volume, ReadyRoom must never make up an installation id.
           helm template readyroom "$CHART" -f "$CHART/ci/ha-values.yaml" | grep -A1 "ENS_LICENSE_EXPECT_INSTALLATION_ID" | grep -q '"true"'
 
+  accessibility:
+    # axe-core (WCAG 2.0 and 2.1, A and AA rules) through Playwright against ReadyRoom's main pages, at desktop and
+    # 320-pixel widths, signed in as an administrator, a manager and a user: a serious or critical violation fails
+    # the job. The application runs from the test classpath with seeded data (./gradlew a11yServer: an in-memory
+    # directory and database and the test license key). Every finding is kept as an artifact for the conformance
+    # report (docs/accessibility/).
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          java-version: "21"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+
+      - name: Start ReadyRoom with seeded data
+        run: |
+          ./gradlew a11yServer --no-daemon > "$RUNNER_TEMP/a11y-server.log" 2>&1 &
+          for i in $(seq 1 90); do
+            if grep -q "A11Y SERVER READY" "$RUNNER_TEMP/a11y-server.log"; then exit 0; fi
+            sleep 5
+          done
+          cat "$RUNNER_TEMP/a11y-server.log"
+          exit 1
+
+      # The runner's Node; the packages are pinned in a11y/package-lock.json.
+      - name: Install Playwright and axe-core
+        working-directory: a11y
+        run: |
+          npm ci --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Check the pages
+        working-directory: a11y
+        run: npx playwright test
+
+      - name: Keep the findings
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: accessibility
+          path: |
+            a11y/results/
+            a11y/test-results/
+            ${{ runner.temp }}/a11y-server.log
+          if-no-files-found: warn
+
   windows-client:
     # The Windows client (powershell/): PSScriptAnalyzer and the Pester tests, with Pester and PSScriptAnalyzer
     # pinned by version and SHA-256 in Invoke-ClientChecks.ps1. Linux runs everything that does not need Windows;

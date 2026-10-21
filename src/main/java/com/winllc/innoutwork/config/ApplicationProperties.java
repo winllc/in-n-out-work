@@ -64,12 +64,14 @@ public class ApplicationProperties {
     private int checkOutAfterMinutes = 240;
     @Min(0)
     private int extraTimeBeforeAbsentNotificationMinutes = 60;
+    // Calendar event backgrounds, behind white text: each at least 4.5:1 against it (WCAG 1.4.3). The organization
+    // calendar was orange (2:1) and requests gray (3.9:1) before.
     private String calendarStatusEventColor = "blue";
     private String calendarAbsentStatusEventColor = "purple";
     private String calendarActivityEventColor = "green";
-    private String calendarGlobalEventColor = "orange";
+    private String calendarGlobalEventColor = "#a84400";
     /** Days of a status request still waiting for approval. */
-    private String calendarRequestedEventColor = "gray";
+    private String calendarRequestedEventColor = "#5c636a";
     /**
      * The From address of absence alert e-mails. No default: required (MailConfig checks it) once a mail server
      * is configured.

@@ -1282,6 +1282,46 @@ Audited: `webhook.created`, `webhook.disabled`, `webhook.enabled`, `webhook.dele
 its first characters). With the Helm chart's NetworkPolicy on, egress to port 443 is opened for webhooks
 (`webhooks.ports`).
 
+
+### Upgrading to the release with the public API, exports and the accessibility work
+
+Nothing to do by hand. Flyway adds `api_tokens`, `webhook_endpoints`, `webhook_deliveries` (V9),
+`report_schedules` and `user_records.time_zone` (V10); nothing existing changes. What operators may want:
+
+- **Webhooks** stay off until `APPLICATION_WEBHOOKS_SECRETKEY` is set (the Helm chart generates one and keeps it;
+  with the release bundle, set it in `.env`). With the chart's NetworkPolicy on, egress to port 443 is opened for
+  them (`webhooks.ports`).
+- **Site time zones**: set `APPLICATION_REPORTS_SITETIMEZONES` where people work in more than one zone; until then
+  reports look as before (everyone in `APPLICATION_TIMEZONE`).
+- **Calendar colours**: the organization calendar's and requested statuses' default colours are darker (see
+  [Accessibility](#accessibility)); colours you configured are kept.
+- The public API is reachable at `/api/v1` once an administrator creates a token; nothing is reachable without
+  one but its OpenAPI document. Put `/api/v1` behind the same ingress rules as the rest of the application.
+
+---
+
+## Accessibility
+
+ReadyRoom targets WCAG 2.1 level AA (Section 508). Every push runs axe-core (the WCAG 2.0 and 2.1 A and AA rules)
+through Playwright against the main pages, at desktop and 320-pixel widths, as an administrator, a manager and a
+user (the `accessibility` job in CI); a serious or critical violation fails the build. To run it locally:
+
+```bash
+./gradlew a11yServer          # ReadyRoom with seeded test data on http://localhost:8199 (carol, alice, bob / password)
+cd a11y && npm ci && npx playwright install chromium && npx playwright test
+```
+
+Findings of every impact are written to `a11y/results/`. The self-audit, with what was fixed and what still falls
+short, is [`docs/accessibility/wcag-2.1-aa-self-audit.md`](docs/accessibility/wcag-2.1-aa-self-audit.md), and a
+draft conformance report (ITI VPAT 2.5, 508 edition) for ENS to complete is
+[`docs/accessibility/vpat-2.5-draft.md`](docs/accessibility/vpat-2.5-draft.md). Repairs to what third-party widgets
+draw (tables, calendars) are in `static/js/a11y.js`; colour overrides for contrast at the end of `static/css/app.css`.
+The interface is English only; translation is planned.
+
+**Changed defaults:** the calendar colours of organization events (`APPLICATION_CALENDARGLOBALEVENTCOLOR`, was
+`orange`, now `#a84400`) and of requested statuses (`APPLICATION_CALENDARREQUESTEDEVENTCOLOR`, was `gray`, now
+`#5c636a`), so their white text is readable. Configured colours are kept.
+
 ---
 
 ## Database migrations
@@ -1815,12 +1855,18 @@ src/main/java/com/winllc/innoutwork/
   security/    AppUserDetailsService, PermissionEvaluator
   license/     ENS license wiring: features, gate, license screen, job guard, size limit
   audit/       The audit trail (ens-audit/1): store, hash chain, outputs, audit log page, pull API
+  api/         The public API (/api/v1): tokens, its security chain, controllers, OpenAPI
+  webhook/     Signed webhooks: endpoints, SSRF guard, delivery queue and sender
+  export/      CSV and XLSX writers, report downloads, scheduled reports
 src/main/java/com/enssolutions/license/  The ENS portal's license verifier, copied unchanged
 Dockerfile     Production image, built from source; the license lives in the /var/lib/ens volume
 docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from source
 docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
+a11y/          Accessibility checks: axe-core through Playwright (CI's accessibility job)
+docs/api/      The public API's OpenAPI document, checked against the code by the build
+docs/accessibility/  WCAG 2.1 AA self-audit and the draft conformance report (VPAT)
 src/main/resources/db/migration/  Flyway migrations, run at startup (see db/README.md)
 db/legacy/     The psql scripts used before Flyway, for reference; db/perf/ the volume seed
 deploy/bundle/ The customer release bundle: production compose, env template, install/upgrade

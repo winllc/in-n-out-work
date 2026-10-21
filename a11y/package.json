@@ -1,0 +1,12 @@
+{
+  "name": "readyroom-a11y",
+  "private": true,
+  "description": "Automated accessibility checks of ReadyRoom's pages: axe-core (WCAG 2.0/2.1 A and AA rules) through Playwright. Fails on serious and critical violations.",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.56.1"
+  }
+}

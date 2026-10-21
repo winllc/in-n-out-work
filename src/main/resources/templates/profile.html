@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
       layout:decorate="~{layout}">
 <head>
@@ -222,6 +222,8 @@
             if (!calendarEl) return; // calendar not licensed
 
             const calendar = new FullCalendar.Calendar(calendarEl, {
+                // Its full height, without an inner scrolling region a keyboard could not reach (WCAG 2.1.1).
+                height: 'auto',
                 initialView: 'dayGridMonth',
                 themeSystem: 'bootstrap5',
                 headerToolbar: {

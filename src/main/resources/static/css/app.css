@@ -252,3 +252,64 @@ body {
     position: relative;
     height: 16rem;
 }
+
+/* ---------------------------------------------------------------------------------------------------------------
+ * Accessibility (WCAG 2.1 AA, checked by axe-core in CI: a11y/). Text colours at least 4.5:1 against their
+ * background: Tabler's light badges (bg-*-lt) and coloured text use its mid-tone palette, which is 2.4 to 4.4:1 on
+ * the tints; these are the same hues, darker. Links inside text are underlined, not told apart by colour alone.
+ * --------------------------------------------------------------------------------------------------------------- */
+.bg-green-lt, .text-green { color: #1d6f2b !important; }
+.bg-blue-lt, .text-blue { color: #0559a8 !important; }
+.bg-red-lt, .text-red, .text-danger { color: #a82424 !important; }
+.bg-secondary-lt, .bg-muted-lt { color: #525866 !important; }
+.bg-purple-lt, .text-purple { color: #82299a !important; }
+.bg-orange-lt, .text-orange { color: #a84400 !important; }
+.bg-yellow-lt, .text-yellow, .text-warning { color: #8a5a00 !important; }
+.bg-cyan-lt, .text-cyan { color: #0f6b7a !important; }
+.bg-teal-lt, .text-teal { color: #08694b !important; }
+.bg-azure-lt, .text-azure { color: #1e64a8 !important; }
+.bg-indigo-lt, .text-indigo { color: #2c45c0 !important; }
+.bg-pink-lt, .text-pink { color: #a51f4f !important; }
+.bg-lime-lt, .text-lime { color: #4a7a0b !important; }
+.text-success { color: #1d6f2b !important; }
+
+/* White text on green buttons: 5.4:1. */
+.btn-success {
+    --tblr-btn-bg: #1d7a30;
+    --tblr-btn-border-color: #1d7a30;
+    --tblr-btn-hover-bg: #186628;
+    --tblr-btn-hover-border-color: #186628;
+    --tblr-btn-active-bg: #145521;
+    --tblr-btn-active-border-color: #145521;
+}
+
+/* Links in running text: underlined (WCAG 1.4.1). */
+.page-body p a:not(.btn), .page-body .small a:not(.btn), .page-body .form-hint a:not(.btn),
+.page-body .alert a:not(.btn), .page-body .text-secondary a:not(.btn) {
+    text-decoration: underline;
+}
+
+/* The calendar's days of other months: readable, not faded to 1.5:1. */
+.fc .fc-day-other .fc-daygrid-day-top { opacity: 1; }
+.fc .fc-day-other .fc-daygrid-day-number { color: #525866; }
+
+/* An empty table's message. */
+.tabulator .tabulator-tableholder .tabulator-placeholder .tabulator-placeholder-contents { color: #525866; }
+
+/* Keyboard focus is always visible, including on scrollable regions made focusable by a11y.js. */
+[data-a11y-scroll]:focus-visible { outline: 2px solid #0559a8; outline-offset: 2px; }
+
+/* Outline danger buttons on the page's grey: 6:1. */
+.btn-outline-danger { --tblr-btn-color: #a82424; --tblr-btn-border-color: #a82424; }
+/* Table column titles, on their header and its hover and sorted shades. */
+.tabulator .tabulator-header .tabulator-col .tabulator-col-title { color: #374151; }
+/* A page link that leads nowhere (the first or last page): inactive, so exempt from contrast, but still legible. */
+.page-item.disabled .page-link { color: #525866; }
+
+/* Form fields and checkboxes: borders at 3:1 against the page, so a field can be found (WCAG 1.4.11). */
+.form-control, .form-select, .form-check-input { border-color: #868e96; }
+/* The skip link, shown when it has keyboard focus. */
+.a11y-skip-link:focus {
+    position: fixed !important; top: .5rem; left: .5rem; z-index: 2000;
+    padding: .5rem 1rem; background: #fff; color: #0559a8; border: 2px solid #0559a8; border-radius: 4px;
+}
