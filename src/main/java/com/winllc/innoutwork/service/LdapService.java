@@ -3,6 +3,7 @@ package com.winllc.innoutwork.service;
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.config.TopLevelGroupProperties;
 import com.winllc.innoutwork.data.LdapDn;
+import com.winllc.innoutwork.util.LogSafe;
 import com.winllc.innoutwork.data.LdapGroup;
 import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.data.UserStatus;
@@ -543,12 +544,14 @@ public class LdapService {
         try {
             members = readMembers(dn.toString());
         } catch (Exception e) {
-            log.error("Failed to get members for group: {}", dn.toString(), e);
+            // The DN comes from a request path, so it goes through LogSafe like every other
+            // request value: a line break in it would otherwise forge a log line of its own.
+            log.error("Failed to get members for group: {}", LogSafe.of(dn.toString()), e);
         }
 
         // An empty membership is a legitimate result and also the usual cause of an
         // empty user table, so make the two distinguishable from the log.
-        log.debug("Group {} has {} member(s)", dn, members.size());
+        log.debug("Group {} has {} member(s)", LogSafe.of(dn.toString()), members.size());
 
         return members.stream()
                 .map(LdapDn::toString)

@@ -201,8 +201,8 @@ class MyReportsPageDirectoryTest {
     static class TestSecurityConfig {
         @Bean
         SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-            http.csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
+            // CSRF is left on, as it is in the rest of the suite: these tests only ever GET.
+            http.authorizeHttpRequests(auth -> auth.anyRequest().authenticated())
                 .x509(x509 -> x509.subjectPrincipalRegex("(.*)").userDetailsService(userDetailsService()));
             return http.build();
         }
