@@ -166,17 +166,22 @@ public class AuditController {
         return "redirect:" + LicensingConfiguration.AUDIT_SCREEN;
     }
 
+    /**
+     * Creates a token and shows it once, in this response itself: not through a redirect's flash attribute, which
+     * would put the secret in the browser session, and sessions are kept in the database. Spring Security marks
+     * the response no-store; reloading it asks to post again (and would make another token), never shows this one.
+     */
     @PostMapping("/tokens")
     public String createToken(Authentication authentication, HttpServletRequest request,
                               HttpServletResponse response, @RequestParam(defaultValue = "") String name,
-                              RedirectAttributes flash) {
+                              Model model) {
         if (!isAdmin(authentication)) {
             return refuse(request, response);
         }
         AuditTokenService.Created created = tokens.create(name, authentication.getName());
-        flash.addFlashAttribute("newToken", created.token());
-        flash.addFlashAttribute("newTokenName", created.record().getName());
-        return "redirect:" + LicensingConfiguration.AUDIT_SCREEN + "#tokens";
+        model.addAttribute("newToken", created.token());
+        model.addAttribute("newTokenName", created.record().getName());
+        return list(authentication, request, response, Map.of(), 0, model);
     }
 
     @PostMapping("/tokens/{id}/revoke")

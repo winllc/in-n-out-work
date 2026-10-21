@@ -386,10 +386,24 @@ class AuditWebTest {
     @Test
     void aTokenPullsEventsAfterACursorAndRevokingItShutsItOut() throws Exception {
         MvcResult created = mockMvc.perform(post("/app/admin/audit/tokens").with(ADMIN).param("name", "Splunk"))
-                .andExpect(status().is3xxRedirection())
+                .andExpect(status().isOk())
                 .andReturn();
-        String token = (String) created.getFlashMap().get("newToken");
+        String token = (String) created.getModelAndView().getModel().get("newToken");
         assertNotNull(token);
+        assertTrue(created.getResponse().getContentAsString().contains(token), "shown once, in this response");
+        assertTrue(created.getFlashMap().isEmpty(), "never a flash attribute");
+        jakarta.servlet.http.HttpSession session = created.getRequest().getSession(false);
+        if (session != null) {
+            // Sessions are kept in the database: nothing in them may hold the secret.
+            for (String attribute : java.util.Collections.list(session.getAttributeNames())) {
+                java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+                try (java.io.ObjectOutputStream out = new java.io.ObjectOutputStream(bytes)) {
+                    out.writeObject(session.getAttribute(attribute));
+                }
+                assertFalse(bytes.toString(java.nio.charset.StandardCharsets.ISO_8859_1).contains(token),
+                        attribute + " holds the token");
+            }
+        }
         assertTrue(token.matches("ensat_[A-Za-z0-9_-]{43}"), token);
         AuditEventRecord tokenCreated = last("audit.token-created");
         assertFalse(allLines().contains(token), "the token is never recorded, only its prefix");
