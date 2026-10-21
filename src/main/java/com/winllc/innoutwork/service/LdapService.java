@@ -1072,10 +1072,7 @@ public class LdapService {
         if (input == null) {
             return "";
         }
-        return input.replace("\\", "\\5c")
-                .replace("*", "\\2a")
-                .replace("(", "\\28")
-                .replace(")", "\\29")
-                .replace("\0", "\\00");
+        // Spring LDAP's RFC 4515 encoding (backslash, *, (, ) and NUL), which code scanning also knows as safe.
+        return org.springframework.ldap.support.LdapEncoder.filterEncode(input);
     }
 }
