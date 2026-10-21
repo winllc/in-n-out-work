@@ -31,6 +31,18 @@ import java.util.Map;
  * ({@link ApplicationProperties.AccountStatus}). A directory that cannot be read refuses (fails closed). A usable
  * account is remembered for at most application.ldap.account-status.cache-seconds (60); refusals are never
  * remembered.
+ *
+ * <p>Locked out, where any doubt means locked:
+ * <ul>
+ *   <li><b>Active Directory:</b> msDS-User-Account-Control-Computed bit 0x10 when the server returns it. Otherwise a
+ *       non-zero lockoutTime is locked unless the domain's lockoutDuration (read from the domain's root entry) is known,
+ *       non-zero and not "never", and has passed since then.</li>
+ *   <li><b>OpenLDAP ppolicy:</b> a pwdAccountLockedTime is locked unless the pwdLockoutDuration of the account's
+ *       policy (its pwdPolicySubentry) is known, non-zero, and has passed. No pwdPolicySubentry (the default policy,
+ *       which cannot be read), an unreadable policy or a duration of 0 mean locked; for the first, an operator may
+ *       set application.ldap.account-status.lockout-duration as the default policy's duration.</li>
+ *   <li><b>389 Directory Server:</b> an accountUnlockTime in the future, or 19700101000000Z (until unlocked).</li>
+ * </ul>
  */
 @Service
 public class DirectoryAccounts {
@@ -39,7 +51,11 @@ public class DirectoryAccounts {
 
     /** The attributes the built-in checks read, as they are named in the directories that have them. */
     static final List<String> STATUS_ATTRIBUTES = List.of("userAccountControl", "msDS-User-Account-Control-Computed",
-            "accountExpires", "nsAccountLock", "pwdAccountLockedTime");
+            "lockoutTime", "accountExpires", "nsAccountLock", "accountUnlockTime", "pwdAccountLockedTime",
+            "pwdPolicySubentry");
+
+    /** 389 Directory Server's accountUnlockTime for an account locked until an administrator unlocks it. */
+    static final String LOCKED_UNTIL_UNLOCKED_389 = "19700101000000Z";
 
     /** OpenLDAP ppolicy's value for an account locked until an administrator unlocks it. */
     static final String PERMANENTLY_LOCKED = "000001010000Z";
@@ -131,7 +147,13 @@ public class DirectoryAccounts {
         if (entry.isEmpty()) {
             return new Account(Status.NOT_FOUND, null);
         }
-        Status status = settings.isBuiltInChecks() ? status(entry.get().status()) : Status.ACTIVE;
+        Status status;
+        try {
+            status = settings.isBuiltInChecks() ? status(entry.get().status(), ldapDn) : Status.ACTIVE;
+        } catch (RuntimeException e) {
+            log.warn("Could not read the lockout policy of {}: {}", LogSafe.of(dn), LogSafe.of(e.getMessage()));
+            return new Account(Status.UNAVAILABLE, null);
+        }
         if (status != Status.ACTIVE) {
             return new Account(status, null);
         }
@@ -143,8 +165,16 @@ public class DirectoryAccounts {
         }
     }
 
-    /** The built-in checks, on the status attributes read (lower-cased names). */
+    /** The built-in checks on the status attributes read (lower-cased names), with no policy to read. */
     Status status(Map<String, String> attributes) {
+        return status(attributes, null);
+    }
+
+    /**
+     * The built-in checks, on the status attributes read (lower-cased names). Lockout policies are read from the
+     * directory when needed; a read that fails throws, and the caller refuses.
+     */
+    Status status(Map<String, String> attributes, LdapDn dn) {
         long uac = number(attributes.get("useraccountcontrol"));
         if ((uac & 0x2) != 0) {
             return Status.DISABLED;
@@ -152,33 +182,131 @@ public class DirectoryAccounts {
         if ("true".equalsIgnoreCase(trim(attributes.get("nsaccountlock")))) {
             return Status.DISABLED;
         }
-        long computed = number(attributes.get("msds-user-account-control-computed"));
-        if ((computed & 0x10) != 0) {
+        if (adLocked(attributes, dn) || openLdapLocked(attributes) || ds389Locked(attributes)) {
             return Status.LOCKED;
-        }
-        String lockedAt = trim(attributes.get("pwdaccountlockedtime"));
-        if (lockedAt != null && !lockedAt.isEmpty()) {
-            if (PERMANENTLY_LOCKED.equals(lockedAt)) {
-                return Status.LOCKED;
-            }
-            Instant at = generalizedTime(lockedAt);
-            // Unreadable, or within the policy's lockout duration: locked.
-            if (at == null || !clock.instant().isAfter(at.plus(settings.getLockoutDuration()))) {
-                return Status.LOCKED;
-            }
         }
         String expires = trim(attributes.get("accountexpires"));
         if (expires != null && !expires.isEmpty()) {
             long value = number(expires);
             if (value != 0 && value != Long.MAX_VALUE && value > 0) {
-                // 100-nanosecond intervals since 1601-01-01.
-                Instant at = Instant.ofEpochSecond(value / 10_000_000L - 11_644_473_600L);
+                Instant at = filetime(value);
                 if (!at.isAfter(clock.instant())) {
                     return Status.EXPIRED;
                 }
             }
         }
         return Status.ACTIVE;
+    }
+
+    /** Active Directory: see the class comment. */
+    private boolean adLocked(Map<String, String> attributes, LdapDn dn) {
+        String computed = trim(attributes.get("msds-user-account-control-computed"));
+        if (computed != null && !computed.isEmpty()) {
+            return (number(computed) & 0x10) != 0;
+        }
+        long lockoutTime = number(attributes.get("lockouttime"));
+        if (lockoutTime == 0) {
+            return false;
+        }
+        Duration duration = adLockoutDuration(dn);
+        return duration == null || !clock.instant().isAfter(filetime(lockoutTime).plus(duration));
+    }
+
+    /**
+     * The domain's lockoutDuration (a negative count of 100-nanosecond intervals, on the domain's root entry): null
+     * when it cannot be found, is 0 (until an administrator unlocks) or is "never" (Long.MIN_VALUE).
+     */
+    private Duration adLockoutDuration(LdapDn dn) {
+        String domain = domainOf(dn);
+        if (domain == null) {
+            return null;
+        }
+        String value = ldapService.readAttributes(domain, List.of("lockoutDuration"))
+                .map(a -> a.get("lockoutduration")).orElse(null);
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        long intervals;
+        try {
+            intervals = Long.parseLong(value.trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+        if (intervals == 0 || intervals == Long.MIN_VALUE) {
+            return null;
+        }
+        return Duration.ofNanos(Math.abs(intervals) / 10_000_000L * 1_000_000_000L
+                + Math.abs(intervals) % 10_000_000L * 100);
+    }
+
+    /** The DC= components of {@code dn}: the domain's root entry. */
+    static String domainOf(LdapDn dn) {
+        if (dn == null) {
+            return null;
+        }
+        try {
+            javax.naming.ldap.LdapName name = new javax.naming.ldap.LdapName(dn.toString());
+            List<String> dcs = new java.util.ArrayList<>();
+            for (javax.naming.ldap.Rdn rdn : name.getRdns()) {
+                if (rdn.getType().equalsIgnoreCase("dc")) {
+                    dcs.add(0, rdn.toString());
+                }
+            }
+            return dcs.isEmpty() ? null : String.join(",", dcs);
+        } catch (javax.naming.InvalidNameException e) {
+            return null;
+        }
+    }
+
+    /** OpenLDAP ppolicy: see the class comment. */
+    private boolean openLdapLocked(Map<String, String> attributes) {
+        String lockedAt = trim(attributes.get("pwdaccountlockedtime"));
+        if (lockedAt == null || lockedAt.isEmpty()) {
+            return false;
+        }
+        if (PERMANENTLY_LOCKED.equals(lockedAt)) {
+            return true;
+        }
+        Instant at = generalizedTime(lockedAt);
+        if (at == null) {
+            return true;
+        }
+        Duration duration;
+        String policy = trim(attributes.get("pwdpolicysubentry"));
+        if (policy == null || policy.isEmpty()) {
+            duration = settings.getLockoutDuration();
+        } else {
+            String value = ldapService.readAttributes(policy, List.of("pwdLockoutDuration"))
+                    .map(a -> a.get("pwdlockoutduration")).orElse(null);
+            duration = null;
+            if (value != null && !value.isBlank()) {
+                try {
+                    duration = Duration.ofSeconds(Long.parseLong(value.trim()));
+                } catch (NumberFormatException ignored) {
+                    // unreadable: locked
+                }
+            }
+        }
+        return duration == null || duration.isZero() || duration.isNegative()
+                || !clock.instant().isAfter(at.plus(duration));
+    }
+
+    /** 389 Directory Server: see the class comment. */
+    private boolean ds389Locked(Map<String, String> attributes) {
+        String unlock = trim(attributes.get("accountunlocktime"));
+        if (unlock == null || unlock.isEmpty()) {
+            return false;
+        }
+        if (LOCKED_UNTIL_UNLOCKED_389.equals(unlock)) {
+            return true;
+        }
+        Instant at = generalizedTime(unlock);
+        return at == null || at.isAfter(clock.instant());
+    }
+
+    /** Windows FILETIME: 100-nanosecond intervals since 1601-01-01. */
+    private static Instant filetime(long value) {
+        return Instant.ofEpochSecond(value / 10_000_000L - 11_644_473_600L);
     }
 
     private static String trim(String s) {

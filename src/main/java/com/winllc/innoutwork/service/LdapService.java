@@ -448,6 +448,36 @@ public class LdapService {
     }
 
     /**
+     * Some attributes of any entry, read now (a base-scope search, so operational and constructed attributes come back
+     * when asked for): by lower-cased name, the first value of each; empty when there is no such entry.
+     *
+     * @throws org.springframework.ldap.NamingException when the directory cannot be read: callers refuse then
+     */
+    public Optional<Map<String, String>> readAttributes(String dn, List<String> names) {
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.OBJECT_SCOPE);
+        controls.setCountLimit(1);
+        controls.setReturningAttributes(names.toArray(String[]::new));
+        try {
+            List<Map<String, String>> found = ldapTemplate.search(dn, "(objectClass=*)", controls,
+                    (ContextMapper<Map<String, String>>) ctx -> {
+                        DirContextAdapter adapter = (DirContextAdapter) ctx;
+                        Map<String, String> values = new HashMap<>();
+                        for (String name : names) {
+                            String value = adapter.getStringAttribute(name);
+                            if (value != null) {
+                                values.put(name.toLowerCase(Locale.ROOT), value);
+                            }
+                        }
+                        return values;
+                    });
+            return found.stream().findFirst();
+        } catch (NameNotFoundException e) {
+            return Optional.empty();
+        }
+    }
+
+    /**
      * The one user entry (matching the configured user filter) whose {@code attribute} equals {@code value};
      * empty when there is none, or more than one, since then it is not clear who is meant.
      */

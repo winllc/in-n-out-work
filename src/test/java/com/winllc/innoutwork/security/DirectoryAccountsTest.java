@@ -6,6 +6,10 @@ import com.winllc.innoutwork.support.FullApplicationTest;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.ldap.core.LdapTemplate;
+
+import javax.naming.directory.BasicAttribute;
+import javax.naming.directory.BasicAttributes;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -56,19 +60,54 @@ class DirectoryAccountsTest extends FullApplicationTest {
         assertEquals(DirectoryAccounts.Status.NOT_FOUND, accounts.check("not a dn").status());
     }
 
+    private static final String DOMAIN = "dc=winllc,dc=com";
+    private static final String POLICY = "cn=lockout,ou=Policies,dc=winllc,dc=com";
+
+    /** An OpenLDAP password policy entry with this pwdLockoutDuration (seconds), or none for an empty one. */
+    private static void policy(String seconds) {
+        LdapTemplate ldap = DIRECTORY.ldapTemplate();
+        try {
+            ldap.lookup("ou=Policies,dc=winllc,dc=com");
+        } catch (RuntimeException e) {
+            BasicAttributes ou = new BasicAttributes(true);
+            ou.put(new BasicAttribute("objectClass", "organizationalUnit"));
+            ou.put(new BasicAttribute("ou", "Policies"));
+            ldap.bind("ou=Policies,dc=winllc,dc=com", null, ou);
+        }
+        try {
+            ldap.unbind(POLICY);
+        } catch (RuntimeException ignored) {
+            // not there
+        }
+        BasicAttributes entry = new BasicAttributes(true);
+        BasicAttribute classes = new BasicAttribute("objectClass");
+        classes.add("device");
+        classes.add("pwdPolicy");
+        entry.put(classes);
+        entry.put(new BasicAttribute("cn", "lockout"));
+        entry.put(new BasicAttribute("pwdAttribute", "userPassword"));
+        if (seconds != null) {
+            entry.put(new BasicAttribute("pwdLockoutDuration", seconds));
+        }
+        ldap.bind(POLICY, null, entry);
+    }
+
+    @AfterEach
+    void restoreDirectory() {
+        removeAttribute(DOMAIN, "lockoutDuration");
+        try {
+            DIRECTORY.ldapTemplate().unbind(POLICY);
+        } catch (RuntimeException ignored) {
+            // not there
+        }
+    }
+
     @Test
-    void activeDirectoryDisabledLockedAndExpiredAccounts() {
+    void activeDirectoryDisabledAndExpiredAccounts() {
         setAttribute(BOB, "userAccountControl", "514");
         assertEquals(DirectoryAccounts.Status.DISABLED, accounts.check(BOB).status());
         setAttribute(BOB, "userAccountControl", "512");
         assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status());
-
-        // lockoutTime stays set after an automatic unlock: it is not what decides; the computed bit is.
-        setAttribute(BOB, "lockoutTime", "133000000000000000");
-        assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status());
-        setAttribute(BOB, "msDS-User-Account-Control-Computed", "16");
-        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status());
-        setAttribute(BOB, "msDS-User-Account-Control-Computed", "0");
 
         setAttribute(BOB, "accountExpires", filetime(Instant.now().minus(Duration.ofDays(1))));
         assertEquals(DirectoryAccounts.Status.EXPIRED, accounts.check(BOB).status());
@@ -81,17 +120,101 @@ class DirectoryAccountsTest extends FullApplicationTest {
     }
 
     @Test
-    void openLdapAnd389LockedAndDisabledAccounts() {
+    void activeDirectoryLockoutTheComputedBitDecidesWhenThere() {
+        setAttribute(BOB, "msDS-User-Account-Control-Computed", "16");
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status());
+        // lockoutTime stays set after an automatic unlock; with the computed attribute it does not decide.
+        setAttribute(BOB, "msDS-User-Account-Control-Computed", "0");
+        setAttribute(BOB, "lockoutTime", filetime(Instant.now().minus(Duration.ofMinutes(1))));
+        assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status());
+    }
+
+    @Test
+    void activeDirectoryLockoutTimeWithoutTheComputedBitNeedsAKnownElapsedDuration() {
+        setAttribute(BOB, "lockoutTime", "0");
+        assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status(), "never locked");
+
+        setAttribute(BOB, "lockoutTime", filetime(Instant.now().minus(Duration.ofHours(2))));
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "the domain's duration is unknown");
+
+        setAttribute(DOMAIN, "lockoutDuration", "-18000000000"); // 30 minutes
+        assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status(), "unlocked automatically");
+        setAttribute(BOB, "lockoutTime", filetime(Instant.now().minus(Duration.ofMinutes(5))));
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "within the 30 minutes");
+
+        setAttribute(BOB, "lockoutTime", filetime(Instant.now().minus(Duration.ofDays(2))));
+        setAttribute(DOMAIN, "lockoutDuration", "0");
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "0: until an administrator unlocks");
+        setAttribute(DOMAIN, "lockoutDuration", "-9223372036854775808");
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "never unlocks by itself");
+    }
+
+    @Test
+    void openLdapPermanentAndDefaultPolicyLocksAreLocked() {
         setAttribute(BOB, "nsAccountLock", "true");
         assertEquals(DirectoryAccounts.Status.DISABLED, accounts.check(BOB).status());
         removeAttribute(BOB, "nsAccountLock");
 
         setAttribute(BOB, "pwdAccountLockedTime", "000001010000Z");
         assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "permanently locked");
+        // No pwdPolicySubentry: the default policy, whose duration cannot be read.
+        setAttribute(BOB, "pwdAccountLockedTime", generalized(Instant.now().minus(Duration.ofDays(2))));
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "default policy: locked");
+
+        ApplicationProperties settings = new ApplicationProperties();
+        settings.getLdap().getAccountStatus().setCacheSeconds(0);
+        settings.getLdap().getAccountStatus().setLockoutDuration(Duration.ofMinutes(15));
+        DirectoryAccounts fallback = new DirectoryAccounts(ldapService, users, settings);
+        assertEquals(DirectoryAccounts.Status.ACTIVE, fallback.check(BOB).status(), "the configured fallback has passed");
         setAttribute(BOB, "pwdAccountLockedTime", generalized(Instant.now().minus(Duration.ofMinutes(2))));
-        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "within the lockout duration");
+        assertEquals(DirectoryAccounts.Status.LOCKED, fallback.check(BOB).status(), "within the fallback");
+    }
+
+    @Test
+    void openLdapLocksFollowTheAccountsPolicy() {
+        setAttribute(BOB, "pwdPolicySubentry", POLICY);
         setAttribute(BOB, "pwdAccountLockedTime", generalized(Instant.now().minus(Duration.ofHours(2))));
-        assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status(), "the lockout has run out");
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "the policy entry is missing");
+
+        policy("300");
+        assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status(), "unlocked automatically");
+        setAttribute(BOB, "pwdAccountLockedTime", generalized(Instant.now().minus(Duration.ofMinutes(1))));
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "within the policy's 5 minutes");
+
+        setAttribute(BOB, "pwdAccountLockedTime", generalized(Instant.now().minus(Duration.ofDays(2))));
+        policy("0");
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "0: until an administrator unlocks");
+        policy(null);
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "no duration in the policy");
+    }
+
+    @Test
+    void directoryServer389UnlockTimes() {
+        setAttribute(BOB, "accountUnlockTime", "19700101000000Z");
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "until an administrator unlocks");
+        setAttribute(BOB, "accountUnlockTime", generalized(Instant.now().plus(Duration.ofMinutes(10))));
+        assertEquals(DirectoryAccounts.Status.LOCKED, accounts.check(BOB).status(), "not yet unlocked");
+        setAttribute(BOB, "accountUnlockTime", generalized(Instant.now().minus(Duration.ofMinutes(10))));
+        assertEquals(DirectoryAccounts.Status.ACTIVE, accounts.check(BOB).status(), "unlocked");
+    }
+
+    @Test
+    void anUnreadablePolicyRefusesAsUnreachable() {
+        LdapService flaky = mock(LdapService.class);
+        when(flaky.lookupLiveUser(any(), any(), any())).thenAnswer(i -> ldapService.lookupLiveUser(
+                i.getArgument(0), i.getArgument(1), i.getArgument(2)));
+        when(flaky.readAttributes(any(), any()))
+                .thenThrow(new org.springframework.ldap.CommunicationException(new javax.naming.CommunicationException("down")));
+        ApplicationProperties settings = new ApplicationProperties();
+        settings.getLdap().getAccountStatus().setCacheSeconds(0);
+        DirectoryAccounts failing = new DirectoryAccounts(flaky, users, settings);
+        setAttribute(BOB, "pwdPolicySubentry", POLICY);
+        setAttribute(BOB, "pwdAccountLockedTime", generalized(Instant.now().minus(Duration.ofHours(2))));
+        assertEquals(DirectoryAccounts.Status.UNAVAILABLE, failing.check(BOB).status());
+        removeAttribute(BOB, "pwdAccountLockedTime");
+        removeAttribute(BOB, "pwdPolicySubentry");
+        setAttribute(BOB, "lockoutTime", filetime(Instant.now().minus(Duration.ofHours(2))));
+        assertEquals(DirectoryAccounts.Status.UNAVAILABLE, failing.check(BOB).status());
     }
 
     @Test

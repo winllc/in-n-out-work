@@ -484,9 +484,8 @@ public class ApplicationProperties {
      * application.ldap.account-status: how ReadyRoom decides, live from the directory, that the person an API token,
      * a webhook or a scheduled report acts for may still act (security.DirectoryAccounts). Their entry must still
      * match application.user-ldap-filter and {@link #filter}, and, unless {@link #builtInChecks} is off, not be:
-     * disabled (Active Directory userAccountControl bit 0x2; 389/OpenLDAP nsAccountLock=true), locked out (Active
-     * Directory msDS-User-Account-Control-Computed bit 0x10; OpenLDAP ppolicy pwdAccountLockedTime, permanently
-     * 000001010000Z or set within {@link #lockoutDuration}) or expired (Active Directory accountExpires).
+     * disabled (Active Directory userAccountControl bit 0x2; 389/OpenLDAP nsAccountLock=true), locked out or expired
+     * (security.DirectoryAccounts says exactly how; any doubt means locked).
      */
     @Data
     public static class AccountStatus {
@@ -494,9 +493,12 @@ public class ApplicationProperties {
         private boolean builtInChecks = true;
         /** An LDAP filter an account must also match to be usable, e.g. (!(employeeType=terminated)); empty: none. */
         private String filter = "";
-        /** OpenLDAP ppolicy: the policy's pwdLockoutDuration; a pwdAccountLockedTime newer than this locks. */
-        @NotNull
-        private Duration lockoutDuration = Duration.ofMinutes(15);
+        /**
+         * OpenLDAP ppolicy: the lockout duration to assume for an account with no pwdPolicySubentry (one under the
+         * server's default policy, which ReadyRoom cannot read). Unset (the default): such a locked account stays
+         * refused until its pwdAccountLockedTime is removed.
+         */
+        private Duration lockoutDuration;
         /** How long a usable account is remembered (refusals never are): 0 to 60 seconds. */
         @Min(value = 0, message = "application.ldap.account-status.cache-seconds must be 0 to 60")
         @Max(value = 60, message = "application.ldap.account-status.cache-seconds must be 0 to 60")

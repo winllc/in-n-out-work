@@ -1228,10 +1228,13 @@ person may (themselves and the people they are responsible for, and coworkers as
 Revoked and expired tokens stop at once. **Every call checks the owner live in the directory** (not the user
 cache): their entry must still exist and match `application.user-ldap-filter` and
 `APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, must not be disabled (Active Directory `userAccountControl` bit 0x2,
-389/OpenLDAP `nsAccountLock=true`), locked out (Active Directory `msDS-User-Account-Control-Computed` bit 0x10;
-OpenLDAP ppolicy `pwdAccountLockedTime`, permanently `000001010000Z` or within
-`APPLICATION_LDAP_ACCOUNTSTATUS_LOCKOUTDURATION`, 15m: set it to your policy's `pwdLockoutDuration`) or expired
-(Active Directory `accountExpires`), and must still be an administrator; otherwise, or when the directory cannot
+389/OpenLDAP `nsAccountLock=true`) or expired (Active Directory `accountExpires`), and must not be locked out,
+where any doubt means locked: Active Directory `msDS-User-Account-Control-Computed` bit 0x10 when the server returns
+it, otherwise a non-zero `lockoutTime` unless the domain's `lockoutDuration` is known, not 0 or "never", and has
+passed; OpenLDAP ppolicy `pwdAccountLockedTime` unless the account's policy (`pwdPolicySubentry`) has a known,
+non-zero `pwdLockoutDuration` that has passed (no `pwdPolicySubentry`, an unreadable policy or a duration of 0 mean
+locked; `APPLICATION_LDAP_ACCOUNTSTATUS_LOCKOUTDURATION`, unset by default, may give the default policy's duration);
+389 Directory Server `accountUnlockTime` in the future or `19700101000000Z`. and must still be an administrator; otherwise, or when the directory cannot
 be read, the token is refused. A usable account is remembered for at most `APPLICATION_LDAP_ACCOUNTSTATUS_CACHESECONDS`
 (60, the maximum; 0 turns it off); refusals are never remembered. The same check applies to webhook owners and to
 scheduled reports' owners and recipients. `APPLICATION_LDAP_ACCOUNTSTATUS_BUILTINCHECKS=false` turns the built-in
@@ -1293,7 +1296,7 @@ when a webhook is saved and again on every delivery, and the connection is made 
 | `APPLICATION_WEBHOOKS_DELIVERYLOGDAYS` | `30` | Days delivered and failed deliveries are kept |
 | `APPLICATION_WEBHOOKS_CONNECTTIMEOUT`, `_READTIMEOUT` | `5s`, `10s` | |
 | `APPLICATION_WEBHOOKS_ATTEMPTTIMEOUT`, `_RUNBUDGET`, `_PERENDPOINTMAX`, `_PERENDPOINTBUDGET` | `30s`, `40s`, `20`, `20s` | A try's overall deadline, and one run's limits |
-| `APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, `_LOCKOUTDURATION`, `_CACHESECONDS`, `_BUILTINCHECKS` | (none), `15m`, `60`, `true` | The live account check of token, webhook and scheduled report owners (above) |
+| `APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, `_LOCKOUTDURATION`, `_CACHESECONDS`, `_BUILTINCHECKS` | (none), (unset), `60`, `true` | The live account check of token, webhook and scheduled report owners (above) |
 | `APPLICATION_API_MAXTOKENDAYS`, `_DEFAULTRATEPERMINUTE`, `_MAXRATEPERMINUTE`, `_MAXRANGEDAYS`, `_MAXPAGESIZE` | `366`, `120`, `1200`, `366`, `500` | |
 
 Audited: `webhook.created`, `webhook.disabled`, `webhook.enabled`, `webhook.deleted` (the secret appears only as

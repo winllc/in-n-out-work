@@ -70,7 +70,8 @@ public abstract class FullApplicationTest {
     protected static void clearAccountStatus(String... dns) {
         for (String dn : dns) {
             for (String a : java.util.List.of("userAccountControl", "msDS-User-Account-Control-Computed",
-                    "accountExpires", "nsAccountLock", "pwdAccountLockedTime", "lockoutTime")) {
+                    "accountExpires", "nsAccountLock", "pwdAccountLockedTime", "lockoutTime", "pwdPolicySubentry",
+                    "accountUnlockTime")) {
                 removeAttribute(dn, a);
             }
         }
