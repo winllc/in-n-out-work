@@ -1,0 +1,839 @@
+{
+  "openapi" : "3.1.0",
+  "info" : {
+    "description" : "Read-only access to ReadyRoom for HR, payroll and workforce systems: the people ReadyRoom tracks and their status, attendance records, and absences and leave.\n\nEvery call needs an API token (Authorization: Bearer ensapi_...). An administrator creates it under Administration, Integrations, chooses its scopes, expiry and rate limit, and sees it once. A token reads what that administrator may read at the time of the call, and never more. Past its rate limit a call gets 429 with Retry-After. Times are ISO-8601 with an offset, in each person's time zone.\n\nSigned webhooks for absence alerts and status changes are described in the README (Public API and webhooks).",
+    "title" : "ReadyRoom API",
+    "version" : "1"
+  },
+  "servers" : [ {
+    "url" : "https://readyroom.example.com",
+    "description" : "This ReadyRoom"
+  } ],
+  "security" : [ {
+    "apiToken" : [ ]
+  } ],
+  "tags" : [ {
+    "description" : "Attendance records by date range",
+    "name" : "Attendance"
+  }, {
+    "description" : "Absences, leave and leave requests",
+    "name" : "Absences"
+  }, {
+    "description" : "Tracked people and their status today",
+    "name" : "People"
+  } ],
+  "paths" : {
+    "/api/v1/absences" : {
+      "get" : {
+        "description" : "Each day from the first to the last (both included) that has a status other than a standard working day on the calendar of someone whose details the token's owner may see: approved leave and telework, statuses people set, and absences managers recorded. Needs the absences:read scope.",
+        "operationId" : "absences",
+        "parameters" : [ {
+          "description" : "First day, YYYY-MM-DD",
+          "in" : "query",
+          "name" : "from",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "description" : "Last day, YYYY-MM-DD, included",
+          "in" : "query",
+          "name" : "to",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "description" : "Only this person (DN)",
+          "in" : "query",
+          "name" : "dn",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Page, from 1",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1
+          }
+        }, {
+          "description" : "Items a page",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 100
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiPageApiAbsence"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "A parameter is missing or wrong"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "No token, or a malformed, unknown, revoked or expired one"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "The token lacks the scope, its owner may not see that person, or the feature is not licensed"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Over the token's rate limit; see Retry-After"
+          }
+        },
+        "summary" : "Absence and leave days by date range",
+        "tags" : [ "Absences" ]
+      }
+    },
+    "/api/v1/absences/requests" : {
+      "get" : {
+        "description" : "Requests for leave, telework and other statuses that cover any day from the first to the last, of people whose details the token's owner may see, with their decision. Notes and comments are left out. Needs the absences:read scope.",
+        "operationId" : "leaveRequests",
+        "parameters" : [ {
+          "description" : "First day, YYYY-MM-DD",
+          "in" : "query",
+          "name" : "from",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "description" : "Last day, YYYY-MM-DD, included",
+          "in" : "query",
+          "name" : "to",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "description" : "Only this person (DN)",
+          "in" : "query",
+          "name" : "dn",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Only requests in this state: REQUESTED, APPROVED, REJECTED or CANCELLED",
+          "in" : "query",
+          "name" : "state",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Page, from 1",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1
+          }
+        }, {
+          "description" : "Items a page",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 100
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiPageApiLeaveRequest"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "A parameter is missing or wrong"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "No token, or a malformed, unknown, revoked or expired one"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "The token lacks the scope, its owner may not see that person, or the feature is not licensed"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Over the token's rate limit; see Retry-After"
+          }
+        },
+        "summary" : "Leave requests covering a date range",
+        "tags" : [ "Absences" ]
+      }
+    },
+    "/api/v1/attendance/events" : {
+      "get" : {
+        "description" : "Check-ins, locks, unlocks and check-outs from the first day to the last (both included, days in the application's time zone), oldest first, of the people whose details the token's owner may see. Needs the attendance:read scope.",
+        "operationId" : "events",
+        "parameters" : [ {
+          "description" : "First day, YYYY-MM-DD",
+          "in" : "query",
+          "name" : "from",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "description" : "Last day, YYYY-MM-DD, included",
+          "in" : "query",
+          "name" : "to",
+          "required" : true,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "description" : "Only this person (DN)",
+          "in" : "query",
+          "name" : "dn",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Page, from 1",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1
+          }
+        }, {
+          "description" : "Items a page",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 100
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiPageApiAttendanceEvent"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "A parameter is missing or wrong"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "No token, or a malformed, unknown, revoked or expired one"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "The token lacks the scope, its owner may not see that person, or the feature is not licensed"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Over the token's rate limit; see Retry-After"
+          }
+        },
+        "summary" : "Attendance events by date range",
+        "tags" : [ "Attendance" ]
+      }
+    },
+    "/api/v1/people" : {
+      "get" : {
+        "description" : "Everyone ReadyRoom tracks, by DN, a page at a time. The token's owner sees the times and calendar status of the people whose details they may see (themselves, the people they are responsible for, everyone for an administrator); of anyone else what a coworker sees under the privacy settings. Needs the people:read scope.",
+        "operationId" : "people",
+        "parameters" : [ {
+          "description" : "Part of the person's DN or name, any case",
+          "in" : "query",
+          "name" : "q",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Exact location (site), any case",
+          "in" : "query",
+          "name" : "location",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Exact organization, any case",
+          "in" : "query",
+          "name" : "organization",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "description" : "Page, from 1",
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 1
+          }
+        }, {
+          "description" : "Items a page",
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32",
+            "default" : 100
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiPageApiPerson"
+                }
+              }
+            },
+            "description" : "OK"
+          },
+          "400" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "A parameter is missing or wrong"
+          },
+          "401" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "No token, or a malformed, unknown, revoked or expired one"
+          },
+          "403" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "The token lacks the scope, its owner may not see that person, or the feature is not licensed"
+          },
+          "429" : {
+            "content" : {
+              "application/json" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description" : "Over the token's rate limit; see Retry-After"
+          }
+        },
+        "summary" : "People and their status today",
+        "tags" : [ "People" ]
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "ApiAbsence" : {
+        "type" : "object",
+        "description" : "A day on someone's calendar with a status other than a standard working day",
+        "properties" : {
+          "date" : {
+            "type" : "string",
+            "format" : "date",
+            "example" : "2026-10-23"
+          },
+          "dn" : {
+            "type" : "string",
+            "example" : "CN=Jane Doe,OU=Users,DC=example,DC=com"
+          },
+          "loginByTime" : {
+            "type" : "string",
+            "description" : "For LATE_ARRIVAL: the expected arrival time",
+            "example" : "10:30"
+          },
+          "name" : {
+            "type" : "string",
+            "example" : "Jane Doe"
+          },
+          "requestId" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "The approved request it comes from, for source request",
+            "example" : 4512
+          },
+          "source" : {
+            "type" : "string",
+            "description" : "request: an approved leave request; self: set by the person; manager: recorded by a manager in answer to an absence alert",
+            "example" : "request"
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "OUT_OF_OFFICE, WORK_FROM_HOME, TDY, SCHEDULED_LEAVE, UNSCHEDULED_LEAVE, ABSENT_EXCUSED, ABSENT_UNEXCUSED, ABSENT, EARLY_LEAVE or LATE_ARRIVAL",
+            "example" : "SCHEDULED_LEAVE"
+          },
+          "statusName" : {
+            "type" : "string",
+            "example" : "Scheduled leave"
+          }
+        }
+      },
+      "ApiAttendanceEvent" : {
+        "type" : "object",
+        "description" : "One attendance event from the Windows client, or an automatic check-out",
+        "properties" : {
+          "action" : {
+            "type" : "string",
+            "description" : "CHECK_IN, LOCK, UNLOCK or CHECK_OUT",
+            "example" : "CHECK_IN"
+          },
+          "date" : {
+            "type" : "string",
+            "format" : "date",
+            "description" : "The day it counts towards, in the person's time zone",
+            "example" : "2026-10-21"
+          },
+          "dn" : {
+            "type" : "string",
+            "example" : "CN=Jane Doe,OU=Users,DC=example,DC=com"
+          },
+          "forced" : {
+            "type" : "boolean",
+            "description" : "A check-out made automatically after a long lock",
+            "example" : false
+          },
+          "id" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Stable id",
+            "example" : 918273
+          },
+          "name" : {
+            "type" : "string",
+            "example" : "Jane Doe"
+          },
+          "timeZone" : {
+            "type" : "string",
+            "example" : "America/New_York"
+          },
+          "timestamp" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "When (ISO-8601, in the person's time zone)",
+            "example" : "2026-10-21T08:02:11-04:00"
+          }
+        }
+      },
+      "ApiError" : {
+        "description" : "An error: a stable code and a sentence for people.",
+        "properties" : {
+          "error" : {
+            "type" : "string",
+            "description" : "A stable code: unauthorized, forbidden, rate_limited, bad_request, not_licensed, ...",
+            "example" : "bad_request"
+          },
+          "message" : {
+            "type" : "string",
+            "description" : "What went wrong, for people",
+            "example" : "from must be on or before to"
+          }
+        }
+      },
+      "ApiLeaveRequest" : {
+        "type" : "object",
+        "description" : "A request for a status over a range of days, and its decision",
+        "properties" : {
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "decidedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "decidedBy" : {
+            "type" : "string",
+            "description" : "Who approved or rejected it"
+          },
+          "dn" : {
+            "type" : "string",
+            "example" : "CN=Jane Doe,OU=Users,DC=example,DC=com"
+          },
+          "fromDate" : {
+            "type" : "string",
+            "format" : "date",
+            "example" : "2026-10-23"
+          },
+          "id" : {
+            "type" : "integer",
+            "format" : "int64",
+            "example" : 4512
+          },
+          "name" : {
+            "type" : "string",
+            "example" : "Jane Doe"
+          },
+          "state" : {
+            "type" : "string",
+            "description" : "REQUESTED, APPROVED, REJECTED or CANCELLED",
+            "example" : "APPROVED"
+          },
+          "status" : {
+            "type" : "string",
+            "example" : "SCHEDULED_LEAVE"
+          },
+          "statusName" : {
+            "type" : "string",
+            "example" : "Scheduled leave"
+          },
+          "toDate" : {
+            "type" : "string",
+            "format" : "date",
+            "description" : "The last day, included",
+            "example" : "2026-10-24"
+          }
+        }
+      },
+      "ApiPageApiAbsence" : {
+        "type" : "object",
+        "description" : "One page of results. Pages count from 1.",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "This page's items",
+            "items" : {
+              "$ref" : "#/components/schemas/ApiAbsence"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "This page, from 1",
+            "example" : 1
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The most items a page holds",
+            "example" : 100
+          },
+          "totalItems" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Items across every page",
+            "example" : 1234
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Pages in all",
+            "example" : 13
+          }
+        }
+      },
+      "ApiPageApiAttendanceEvent" : {
+        "type" : "object",
+        "description" : "One page of results. Pages count from 1.",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "This page's items",
+            "items" : {
+              "$ref" : "#/components/schemas/ApiAttendanceEvent"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "This page, from 1",
+            "example" : 1
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The most items a page holds",
+            "example" : 100
+          },
+          "totalItems" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Items across every page",
+            "example" : 1234
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Pages in all",
+            "example" : 13
+          }
+        }
+      },
+      "ApiPageApiLeaveRequest" : {
+        "type" : "object",
+        "description" : "One page of results. Pages count from 1.",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "This page's items",
+            "items" : {
+              "$ref" : "#/components/schemas/ApiLeaveRequest"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "This page, from 1",
+            "example" : 1
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The most items a page holds",
+            "example" : 100
+          },
+          "totalItems" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Items across every page",
+            "example" : 1234
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Pages in all",
+            "example" : 13
+          }
+        }
+      },
+      "ApiPageApiPerson" : {
+        "type" : "object",
+        "description" : "One page of results. Pages count from 1.",
+        "properties" : {
+          "items" : {
+            "type" : "array",
+            "description" : "This page's items",
+            "items" : {
+              "$ref" : "#/components/schemas/ApiPerson"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "This page, from 1",
+            "example" : 1
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "The most items a page holds",
+            "example" : 100
+          },
+          "totalItems" : {
+            "type" : "integer",
+            "format" : "int64",
+            "description" : "Items across every page",
+            "example" : 1234
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32",
+            "description" : "Pages in all",
+            "example" : 13
+          }
+        }
+      },
+      "ApiPerson" : {
+        "type" : "object",
+        "description" : "A tracked person and their status today. Times are present only for people whose details the token's owner may see; for others the status is what a coworker sees (privacy settings), possibly null.",
+        "properties" : {
+          "checkedInAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "First check-in today (ISO-8601, the person's time zone)",
+            "example" : "2026-10-21T08:02:11-04:00"
+          },
+          "checkedOutAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Last check-out today"
+          },
+          "details" : {
+            "type" : "boolean",
+            "description" : "Whether the times and calendar status are shown (the owner may see this person's details)"
+          },
+          "dn" : {
+            "type" : "string",
+            "description" : "Directory DN: the person's id in this API",
+            "example" : "CN=Jane Doe,OU=Users,DC=example,DC=com"
+          },
+          "email" : {
+            "type" : "string"
+          },
+          "employeeType" : {
+            "type" : "string"
+          },
+          "lastStatusChangeAt" : {
+            "type" : "string",
+            "format" : "date-time",
+            "description" : "Last change of presence today"
+          },
+          "location" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string",
+            "description" : "Common name",
+            "example" : "Jane Doe"
+          },
+          "organization" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string",
+            "description" : "IN, AWAY, OUT or NONE (not seen today), or a calendar status such as WORK_FROM_HOME or SCHEDULED_LEAVE; IN or OUT only, or null, under stricter privacy settings",
+            "example" : "IN"
+          },
+          "timeZone" : {
+            "type" : "string",
+            "description" : "The IANA time zone the person's times are given in",
+            "example" : "America/New_York"
+          }
+        }
+      }
+    },
+    "securitySchemes" : {
+      "apiToken" : {
+        "bearerFormat" : "ensapi_ token",
+        "description" : "An API token, created by an administrator and shown once",
+        "scheme" : "bearer",
+        "type" : "http"
+      }
+    }
+  }
+}

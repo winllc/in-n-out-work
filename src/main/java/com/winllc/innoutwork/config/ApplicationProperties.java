@@ -96,6 +96,10 @@ public class ApplicationProperties {
     private Retention retention = new Retention();
     @Valid
     private Ha ha = new Ha();
+    @Valid
+    private Api api = new Api();
+    @Valid
+    private Webhooks webhooks = new Webhooks();
 
     /**
      * How long check-in and status records are kept (service.RetentionService). Audit events have their own retention
@@ -182,6 +186,87 @@ public class ApplicationProperties {
      * so it usually cannot sign in; it is identified by the session id its logon was answered with instead.
      * See CheckInOutRestService.
      */
+    /** The public API, /api/v1 (api.*), and its tokens. See the README's "Public API". */
+    @Data
+    public static class Api {
+        /** The longest a token may be valid for, in days; each token's own expiry is chosen when it is made. */
+        @Min(value = 1, message = "application.api.max-token-days (APPLICATION_API_MAXTOKENDAYS) must be at least 1")
+        @Max(value = 3660, message = "application.api.max-token-days (APPLICATION_API_MAXTOKENDAYS) must be at most 3660")
+        private int maxTokenDays = 366;
+
+        /** Requests a minute a new token is given unless the administrator chooses otherwise. */
+        @Min(value = 1, message = "application.api.default-rate-per-minute (APPLICATION_API_DEFAULTRATEPERMINUTE) must be at least 1")
+        private int defaultRatePerMinute = 120;
+
+        /** The most requests a minute any token may be given. */
+        @Min(value = 1, message = "application.api.max-rate-per-minute (APPLICATION_API_MAXRATEPERMINUTE) must be at least 1")
+        private int maxRatePerMinute = 1200;
+
+        /** The most days one attendance or absence query may cover. */
+        @Min(value = 1, message = "application.api.max-range-days (APPLICATION_API_MAXRANGEDAYS) must be at least 1")
+        private int maxRangeDays = 366;
+
+        /** The most items one page may hold. */
+        @Min(value = 1, message = "application.api.max-page-size (APPLICATION_API_MAXPAGESIZE) must be at least 1")
+        @Max(value = 5000, message = "application.api.max-page-size (APPLICATION_API_MAXPAGESIZE) must be at most 5000")
+        private int maxPageSize = 500;
+    }
+
+    /** Signed outbound webhooks (webhook.*): absence alerts and status changes, to HTTPS endpoints. */
+    @Data
+    public static class Webhooks {
+        /**
+         * The key webhook signing secrets are encrypted with in the database (AES-256-GCM): 32 characters or more,
+         * the same on every replica. Empty (the default): webhooks cannot be created or sent. The Helm chart makes
+         * one and keeps it.
+         */
+        private String secretKey = "";
+
+        /**
+         * Address ranges (CIDR) on a private, loopback or link-local network that webhooks may still be sent to,
+         * e.g. 10.20.0.0/16 for an internal SIEM. Empty (the default): only public addresses. Cloud metadata
+         * addresses are refused whatever this says.
+         */
+        private List<String> allowedCidrs = new ArrayList<>();
+
+        /** Tries per delivery, the first included, before it is given up as failed. */
+        @Min(value = 1, message = "application.webhooks.max-attempts (APPLICATION_WEBHOOKS_MAXATTEMPTS) must be 1 to 20")
+        @Max(value = 20, message = "application.webhooks.max-attempts (APPLICATION_WEBHOOKS_MAXATTEMPTS) must be 1 to 20")
+        private int maxAttempts = 8;
+
+        /** How long delivered and failed deliveries are kept in the delivery log, in days. */
+        @Min(value = 1, message = "application.webhooks.delivery-log-days (APPLICATION_WEBHOOKS_DELIVERYLOGDAYS) must be at least 1")
+        private int deliveryLogDays = 30;
+
+        @NotNull
+        private Duration connectTimeout = Duration.ofSeconds(5);
+
+        @NotNull
+        private Duration readTimeout = Duration.ofSeconds(10);
+
+        /** Whether webhooks can be used: a secret key of 32 characters or more is set. */
+        public boolean isConfigured() {
+            return secretKey != null && secretKey.length() >= 32;
+        }
+
+        @AssertTrue(message = "application.webhooks.secret-key (APPLICATION_WEBHOOKS_SECRETKEY) must be empty or at"
+                + " least 32 characters")
+        public boolean isSecretKeyValid() {
+            return secretKey == null || secretKey.isEmpty() || secretKey.length() >= 32;
+        }
+
+        @AssertTrue(message = "application.webhooks.allowed-cidrs (APPLICATION_WEBHOOKS_ALLOWEDCIDRS) must be CIDR"
+                + " ranges such as 10.20.0.0/16 or fd00:1::/64")
+        public boolean isAllowedCidrsValid() {
+            try {
+                allowedCidrs.forEach(com.winllc.innoutwork.webhook.Cidr::parse);
+                return true;
+            } catch (IllegalArgumentException e) {
+                return false;
+            }
+        }
+    }
+
     /**
      * Running several replicas, and what happens around a time the whole service was down (service.ServiceOutages).
      */

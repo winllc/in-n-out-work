@@ -29,6 +29,7 @@ import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Predicate;
@@ -153,25 +154,50 @@ public class AccessPolicy {
         }, coworkerVisibility);
     }
 
+    /**
+     * Everyone whose details {@code viewer} may see, for queries that select them in the database: empty for an
+     * administrator (everyone), otherwise their own DN and the DNs of the people they are responsible for, as the
+     * directory and their records spell them. Nobody for someone not signed in.
+     */
+    public Optional<Set<String>> detailDns(Authentication viewer) {
+        if (!signedIn(viewer)) {
+            return Optional.of(Set.of());
+        }
+        if (isAdmin(viewer)) {
+            return Optional.empty();
+        }
+        Set<String> people = new LinkedHashSet<>();
+        people.add(viewer.getName());
+        people.addAll(responsiblePeople(viewer.getName()));
+        return Optional.of(people);
+    }
+
     /** The people {@code me} is responsible for, by lower-cased normalised DN: see the class comment. */
     private Set<String> responsibleFor(String me) {
         Set<String> people = new LinkedHashSet<>();
+        responsiblePeople(me).forEach(dn -> people.add(key(dn)));
+        log.debug("{} is responsible for {} people", me, people.size());
+        return people;
+    }
+
+    /** The people {@code me} is responsible for, by DN as the directory and their records spell it. */
+    private List<String> responsiblePeople(String me) {
+        List<String> people = new ArrayList<>();
 
         for (String groupDn : managedGroupDns(me)) {
-            ldapService.getGroupMembers(new LdapDn(groupDn)).forEach(member -> people.add(key(member)));
+            people.addAll(ldapService.getGroupMembers(new LdapDn(groupDn)));
         }
         if (validDn(me)) {
             userService.findDirectReports(new LdapDn(me)).stream()
                     .map(LdapUser::getDn)
-                    .forEach(report -> people.add(key(report)));
+                    .forEach(people::add);
         }
         for (UserRecord record : userRecordRepository.findByAlternateManagersLike(mentioning(me))) {
             if (record.getAltManagerList().stream().anyMatch(m -> sameDn(m, me))) {
-                people.add(key(record.getDn()));
+                people.add(record.getDn());
             }
         }
-
-        log.debug("{} is responsible for {} people", me, people.size());
+        people.removeIf(java.util.Objects::isNull);
         return people;
     }
 

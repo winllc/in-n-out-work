@@ -187,4 +187,15 @@ public interface CheckInOutRecordRepository extends JpaRepository<CheckInOutReco
     List<LastSeen> findLastSeenByLowercaseDnInBetween(@Param("dns") Collection<String> dns,
                                                       @Param("from") ZonedDateTime from,
                                                       @Param("to") ZonedDateTime to);
+
+    /** Everyone's events from {@code from} until (not including) {@code to}, a page at a time: the public API. */
+    @Query("select r from CheckInOutRecord r where r.dn is not null and r.timestamp >= :from and r.timestamp < :to")
+    Page<CheckInOutRecord> findPageFromUntil(@Param("from") ZonedDateTime from, @Param("to") ZonedDateTime to,
+                                             Pageable pageable);
+
+    /** {@link #findPageFromUntil} for the people given, by lower-cased DN. */
+    @Query("select r from CheckInOutRecord r where lower(r.dn) in :dns and r.timestamp >= :from and r.timestamp < :to")
+    Page<CheckInOutRecord> findPageByLowercaseDnInFromUntil(@Param("dns") Collection<String> dns,
+                                                            @Param("from") ZonedDateTime from,
+                                                            @Param("to") ZonedDateTime to, Pageable pageable);
 }

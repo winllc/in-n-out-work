@@ -1073,11 +1073,11 @@ append-only in the database itself: a trigger refuses every UPDATE (see [Databas
 
 | Category | Actions |
 |---|---|
-| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout`, `auth.consent-acknowledged` (the notice-and-consent banner, with the client address), `auth.session-expired` (`reason` `idle`, `absolute` or `concurrent`) |
+| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `public-api-token`, `session-id`; the attempted name on failure), `auth.logout`, `auth.consent-acknowledged` (the notice-and-consent banner, with the client address), `auth.session-expired` (`reason` `idle`, `absolute` or `concurrent`) |
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
-| account | `person.created` (a new tracked person, at first sign-in or lookup), `person.erased` (an administrator's erasure of their data, with counts), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
-| configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |
-| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes changed, never their text, and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download, a person's data export) |
+| account | `person.created` (a new tracked person, at first sign-in or lookup), `person.erased` (an administrator's erasure of their data, with counts), `account.role-changed`, `account.permission-granted`, `account.permission-revoked`, `api.token-created`, `api.token-revoked` |
+| configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed`, `webhook.created`, `webhook.enabled`, `webhook.disabled`, `webhook.deleted` |
+| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes changed, never their text, and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download, a person's data export, each public API read with `details.via` `api`) |
 | license | `license.installed`, `license.rejected`, `license.mode-changed` (also across restarts), `license.limit-exceeded` |
 | system | `system.started`, `system.stopped`, `job.completed` / `job.failed` (one per run, with counts and duration), `job.skipped` (once per license mode change) |
 | audit | `audit.exported`, `audit.verified`, `audit.token-created`, `audit.token-revoked`, `audit.pruned`, `audit.delivery-failed`, `audit.delivery-recovered` |
@@ -1143,6 +1143,100 @@ whole trail, so expect duplicates by `id`.
 
 ---
 
+## Public API and webhooks
+
+ReadyRoom has a versioned, read-only REST API for HR, payroll and workforce systems, and sends signed webhooks
+for absence alerts and status changes. Both are set up by an administrator on *Administration &rarr;
+Integrations* (`/app/admin/integrations`). Outlook and HRIS imports are planned (Wave 4).
+
+**The API** is `/api/v1`. Its OpenAPI 3 document is served at `/api/v1/openapi` (JSON) and
+`/api/v1/openapi.yaml` without a token, with the public base URL (`APPLICATION_BASE_URL`) as its server; a
+copy is kept in [`docs/api/readyroom-api-v1.json`](docs/api/readyroom-api-v1.json), which the build checks
+against the code (and CI keeps as an artifact).
+
+| Endpoint | Scope | What |
+|---|---|---|
+| `GET /api/v1/people?q=&location=&organization=&page=&size=` | `people:read` | Tracked people and their status today |
+| `GET /api/v1/attendance/events?from=&to=&dn=&page=&size=` | `attendance:read` | Check-ins, locks, unlocks and check-outs, oldest first |
+| `GET /api/v1/absences?from=&to=&dn=&page=&size=` | `absences:read` | Days with leave, telework, an absence or another status |
+| `GET /api/v1/absences/requests?from=&to=&dn=&state=&page=&size=` | `absences:read` | Leave requests covering the range, with their decision (no notes) |
+
+Dates are `YYYY-MM-DD`, both ends included, at most `APPLICATION_API_MAXRANGEDAYS` (366) days; pages count
+from 1 and hold up to `APPLICATION_API_MAXPAGESIZE` (500) items. Times are ISO-8601 with an offset, in each
+person's time zone. Errors are `{"error": "...", "message": "..."}`.
+
+```bash
+curl -H "Authorization: Bearer ensapi_..." \
+  "https://readyroom.example.com/api/v1/attendance/events?from=2026-10-01&to=2026-10-31&size=500"
+```
+
+**Tokens** (`ensapi_...`) are created by administrators only, each with a name, its scopes, an expiry (1 to
+`APPLICATION_API_MAXTOKENDAYS`, 366, days) and a rate limit (requests a minute, up to
+`APPLICATION_API_MAXRATEPERMINUTE`; past it, `429` with `Retry-After`; counted per replica). A token is shown
+once, in the page that creates it (never through the session), and only its SHA-256 is stored; it is never
+logged. It acts for the administrator who created it and **never sees more than they may see now**: their roles
+are loaded again on every call, so a token whose creator is no longer an administrator sees only what that
+person may (themselves and the people they are responsible for, and coworkers as
+`application.privacy.coworker-visibility` says), and one whose creator has left the directory is refused.
+Revoked and expired tokens stop at once. The API's security chain accepts bearer tokens and nothing else: it
+reads and creates no session, so it needs no CSRF token, and a browser's session cookie signs nothing in on it;
+it serves GETs only. Audited: `api.token-created` and `api.token-revoked` (with scopes, expiry and owner), each
+read as `data.exported` (`details.via` `api`, the actor the token), refused tokens as a failed `auth.login`
+(method `public-api-token`, with the reason), and a token's first request over its limit in a minute as
+`access.denied` (`rate_limited`). The API answers in the license states the features it reads are licensed in
+(attendance, calendar).
+
+**Webhooks** are HTTPS `POST`s of JSON:
+
+```json
+{"id": "4c1e...", "type": "status.changed", "createdAt": "2026-10-21T12:02:11Z",
+ "data": {"person": {"dn": "CN=Jane Doe,OU=Users,DC=example,DC=com", "name": "Jane Doe"},
+          "kind": "presence", "status": "IN", "action": "CHECK_IN", "at": "2026-10-21T08:02:11-04:00", "forced": false}}
+```
+
+| Event | When | `data` |
+|---|---|---|
+| `absence.alert` | someone is not in by their expected time plus the grace period, and their managers were alerted | `person`, `date`, `expectedBy`, `managersNotified` |
+| `status.changed` | a check-in, lock, unlock or check-out (`kind` `presence`: `status` `IN`, `AWAY` or `OUT`, `action`, `at`, `forced`), or a status put on someone's calendar (`kind` `calendar`: `status`, `statusName`, `dates`, `source` `request`, `self` or `manager`) | as described |
+| `ping` | an administrator presses *Send test* | `message` |
+
+Each delivery carries `X-ReadyRoom-Event`, `X-ReadyRoom-Delivery` (the event id: delivery is at least once,
+so de-duplicate on it), `X-ReadyRoom-Timestamp` (Unix seconds) and
+`X-ReadyRoom-Signature: t=<timestamp>,v1=<hex>`, where the hex is HMAC-SHA256, keyed with the endpoint's signing
+secret (`whsec_...`, shown once when the webhook is added), of `<timestamp>.<raw body>`. To verify: recompute it
+over the exact bytes received, compare in constant time, and refuse a timestamp more than five minutes from your
+clock. Deliveries are queued in the database once the change commits, and sent within seconds by one replica at
+a time; anything but a 2xx answer (a redirect included) is retried after 30 seconds, 2, 10 and 30 minutes, then
+1, 2, 4 and 8 hours, up to `APPLICATION_WEBHOOKS_MAXATTEMPTS` (8) tries, then marked failed. The page shows each
+webhook's recent deliveries (state, tries, last status, error); the log is kept
+`APPLICATION_WEBHOOKS_DELIVERYLOGDAYS` (30) days. A webhook acts for the administrator who added it: while they
+are no longer one, nothing is sent to it.
+
+**Where webhooks may go.** `https://` only, with no user name or password in the URL. Every address the host
+resolves to must be public: loopback, private (RFC 1918, unique local), link-local, shared (100.64/10),
+reserved, documentation, benchmarking, broadcast and multicast addresses are refused, including IPv4 ones
+inside IPv6 (mapped, NAT64, 6to4). An internal receiver is allowed by listing its range in
+`APPLICATION_WEBHOOKS_ALLOWEDCIDRS` (comma separated, e.g. `10.20.0.0/16`); cloud metadata addresses
+(169.254.169.254, fd00:ec2::254, 100.100.100.200, 169.254.170.2) are refused whatever it says. The check runs
+when a webhook is saved and again on every delivery, and the connection is made to the address just checked
+(TLS still verifies the certificate against the host name), so a name that later resolves somewhere internal
+(DNS rebinding) is not sent to. Webhooks connect directly, without a proxy; the JVM's trust store applies.
+
+| Variable | Default | |
+|---|---|---|
+| `APPLICATION_WEBHOOKS_SECRETKEY` | (none: webhooks off) | The key the signing secrets are encrypted with in the database (AES-256-GCM), 32 characters or more, the same on every replica. The Helm chart generates one and keeps it. If it changes, existing webhooks must be added again. |
+| `APPLICATION_WEBHOOKS_ALLOWEDCIDRS` | (none) | Internal ranges webhooks may be sent to |
+| `APPLICATION_WEBHOOKS_MAXATTEMPTS` | `8` | Tries per delivery |
+| `APPLICATION_WEBHOOKS_DELIVERYLOGDAYS` | `30` | Days delivered and failed deliveries are kept |
+| `APPLICATION_WEBHOOKS_CONNECTTIMEOUT`, `_READTIMEOUT` | `5s`, `10s` | |
+| `APPLICATION_API_MAXTOKENDAYS`, `_DEFAULTRATEPERMINUTE`, `_MAXRATEPERMINUTE`, `_MAXRANGEDAYS`, `_MAXPAGESIZE` | `366`, `120`, `1200`, `366`, `500` | |
+
+Audited: `webhook.created`, `webhook.disabled`, `webhook.enabled`, `webhook.deleted` (the secret appears only as
+its first characters). With the Helm chart's NetworkPolicy on, egress to port 443 is opened for webhooks
+(`webhooks.ports`).
+
+---
+
 ## Database migrations
 
 ReadyRoom migrates its own schema with [Flyway](https://documentation.red-gate.com/flyway) when it starts,
@@ -1169,6 +1263,7 @@ index an interrupted script left invalid is rebuilt.
 | `V2__status_requests.sql` | The `status_requests` table, and `user_event_records.request_id`, the approved request a calendar day comes from (see [Statuses and approvals](#statuses-and-approvals)). Existing rows are untouched. |
 | `V3__admin_managed_delegates.sql` | `user_records.alternate_managers` widened to 2000 characters, and `alternate_managers_review_pending`, set on every person who had delegates they chose themselves (see [Delegates](#delegates)). |
 | `V4__retention_summaries.sql` | `attendance_summaries` and `attendance_summary_statuses` (monthly roll-ups the retention purge writes), `retention_state` (one row: how far it has purged), and an index on `notification_records.notification_date` |
+| `V9__public_api.sql` | `api_tokens` (public API tokens, by SHA-256), `webhook_endpoints` (signing secrets encrypted) and `webhook_deliveries` (the queue and delivery log); see [Public API and webhooks](#public-api-and-webhooks). New tables only. |
 
 **Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
 Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the

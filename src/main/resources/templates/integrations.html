@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout}">
+<head>
+    <meta charset="UTF-8">
+    <title>Integrations</title>
+</head>
+<body>
+
+<span layout:fragment="page-title">Integrations</span>
+
+<div layout:fragment="content">
+
+    <div th:if="${notice}" class="alert alert-success" role="status" id="integrations-notice" th:text="${notice}"></div>
+    <div th:if="${error}" class="alert alert-danger" role="alert" id="integrations-error" th:text="${error}"></div>
+
+    <div th:if="${newToken}" class="alert alert-warning" role="status" id="new-token">
+        <div class="mb-2">
+            <strong>New API token <span th:text="${newTokenName}"></span>.</strong>
+            Copy it now: it is shown only this once, and only its hash is kept.
+        </div>
+        <div class="input-group">
+            <input type="text" class="form-control font-monospace secret-value" id="new-token-value" readonly
+                   aria-label="The new API token" th:value="${newToken}">
+            <button class="btn copy-secret" type="button" data-target="new-token-value">
+                <i class="ti ti-copy me-1" aria-hidden="true"></i>Copy
+            </button>
+        </div>
+    </div>
+
+    <div th:if="${newSecret}" class="alert alert-warning" role="status" id="new-secret">
+        <div class="mb-2">
+            <strong>Signing secret for <span th:text="${newSecretName}"></span>.</strong>
+            Copy it now into the receiving system: it is shown only this once.
+        </div>
+        <div class="input-group">
+            <input type="text" class="form-control font-monospace secret-value" id="new-secret-value" readonly
+                   aria-label="The new webhook signing secret" th:value="${newSecret}">
+            <button class="btn copy-secret" type="button" data-target="new-secret-value">
+                <i class="ti ti-copy me-1" aria-hidden="true"></i>Copy
+            </button>
+        </div>
+    </div>
+
+    <div class="row row-cards">
+        <!-- API tokens -->
+        <div class="col-12">
+            <section class="card" id="tokens" aria-labelledby="tokens-title">
+                <div class="card-header">
+                    <h2 class="card-title" id="tokens-title">API tokens</h2>
+                    <div class="card-actions">
+                        <a class="btn btn-sm" th:href="${openApiUrl}" id="openapi-link">
+                            <i class="ti ti-file-code me-1" aria-hidden="true"></i>OpenAPI document
+                        </a>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary">
+                        Tokens for <code>/api/v1</code>: HR, payroll and workforce systems read people and their
+                        status, attendance and absences with <code>Authorization: Bearer &lt;token&gt;</code>.
+                        A token acts for you: it reads what you may read at the time of each call, within its
+                        scopes, and never more.
+                    </p>
+                    <form th:action="@{/app/admin/integrations/tokens}" method="post" id="create-token-form">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label" for="token-name">Name</label>
+                                <input type="text" class="form-control" id="token-name" name="name" maxlength="200"
+                                       placeholder="e.g. Payroll export" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="token-days">Valid for (days)</label>
+                                <input type="number" class="form-control" id="token-days" name="days" min="1"
+                                       th:max="${apiSettings.maxTokenDays}" value="90" required>
+                            </div>
+                            <div class="col-md-2">
+                                <label class="form-label" for="token-rate">Requests a minute</label>
+                                <input type="number" class="form-control" id="token-rate" name="ratePerMinute" min="1"
+                                       th:max="${apiSettings.maxRatePerMinute}"
+                                       th:value="${apiSettings.defaultRatePerMinute}" required>
+                            </div>
+                            <fieldset class="col-md-4">
+                                <legend class="form-label">Scopes</legend>
+                                <label class="form-check" th:each="s : ${scopes}">
+                                    <input class="form-check-input" type="checkbox" name="scope" th:value="${s.id}">
+                                    <span class="form-check-label"><code th:text="${s.id}"></code>
+                                        <span th:text="${s.description}"></span></span>
+                                </label>
+                            </fieldset>
+                        </div>
+                        <button type="submit" class="btn btn-primary mt-3" id="create-token">
+                            <i class="ti ti-key me-1" aria-hidden="true"></i>Create token
+                        </button>
+                    </form>
+                </div>
+                <div class="table-responsive">
+                    <table class="table card-table table-vcenter" id="token-table">
+                        <caption class="visually-hidden">API tokens</caption>
+                        <thead>
+                        <tr>
+                            <th scope="col">Name</th>
+                            <th scope="col">Scopes</th>
+                            <th scope="col">Acts for</th>
+                            <th scope="col">Expires</th>
+                            <th scope="col">Limit</th>
+                            <th scope="col">Last used</th>
+                            <th scope="col"><span class="visually-hidden">Actions</span></th>
+                        </tr>
+                        </thead>
+                        <tbody>
+                        <tr th:if="${#lists.isEmpty(tokens)}">
+                            <td colspan="7" class="text-secondary">No tokens yet.</td>
+                        </tr>
+                        <tr th:each="t : ${tokens}" th:id="${'token-' + t.id}">
+                            <td>
+                                <span th:text="${t.name}">Payroll</span>
+                                <code class="small" th:text="${t.tokenPrefix + '…'}">ensapi_abcd…</code>
+                                <span class="badge bg-secondary-lt" th:if="${t.revoked}">revoked</span>
+                                <span class="badge bg-secondary-lt" th:if="${!t.revoked and !t.active}">expired</span>
+                            </td>
+                            <td><code th:text="${t.scopes}"></code></td>
+                            <td th:text="${T(com.winllc.innoutwork.api.ApiTokenService).ownerName(t)}"></td>
+                            <td><time class="local-time" th:attr="datetime=${t.expiresAt.toString()}"
+                                      th:text="${t.expiresAt.toString()}"></time></td>
+                            <td th:text="${t.rateLimitPerMinute + '/min'}"></td>
+                            <td>
+                                <time class="local-time" th:if="${t.lastUsedAt != null}"
+                                      th:attr="datetime=${t.lastUsedAt.toString()}" th:text="${t.lastUsedAt.toString()}"></time>
+                                <span th:if="${t.lastUsedAt == null}" class="text-secondary">Never</span>
+                            </td>
+                            <td class="text-end">
+                                <form th:if="${!t.revoked}" th:action="@{/app/admin/integrations/tokens/{id}/revoke(id=${t.id})}"
+                                      method="post" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger"
+                                            th:attr="aria-label=${'Revoke ' + t.name}">Revoke</button>
+                                </form>
+                            </td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <!-- Webhooks -->
+        <div class="col-12">
+            <section class="card" id="webhooks" aria-labelledby="webhooks-title">
+                <div class="card-header">
+                    <h2 class="card-title" id="webhooks-title">Webhooks</h2>
+                </div>
+                <div class="card-body">
+                    <p class="text-secondary">
+                        Signed HTTPS posts when someone is not in by their expected time (absence alerts) and when
+                        someone's status changes. Each delivery carries
+                        <code>X-ReadyRoom-Signature: t=&lt;time&gt;,v1=&lt;HMAC-SHA256&gt;</code>; failed deliveries
+                        are retried with backoff. Only public addresses are allowed<span th:if="${!#lists.isEmpty(allowedCidrs)}">,
+                        and <code th:text="${#strings.listJoin(allowedCidrs, ', ')}"></code></span>.
+                    </p>
+                    <div th:if="${!webhooksConfigured}" class="alert alert-info" role="status" id="webhooks-not-configured">
+                        Webhooks are off: set <code>APPLICATION_WEBHOOKS_SECRETKEY</code> (32 characters or more, the
+                        same on every replica), which their signing secrets are encrypted with. The Helm chart sets one.
+                    </div>
+                    <form th:if="${webhooksConfigured}" th:action="@{/app/admin/integrations/webhooks}" method="post"
+                          id="create-webhook-form">
+                        <div class="row g-3">
+                            <div class="col-md-3">
+                                <label class="form-label" for="webhook-name">Name</label>
+                                <input type="text" class="form-control" id="webhook-name" name="name" maxlength="200"
+                                       th:value="${webhookName}" placeholder="e.g. HR system">
+                            </div>
+                            <div class="col-md-5">
+                                <label class="form-label" for="webhook-url">URL (https)</label>
+                                <input type="url" class="form-control" id="webhook-url" name="url" maxlength="2000"
+                                       th:value="${webhookUrl}" placeholder="https://hr.example.com/readyroom" required>
+                            </div>
+                            <fieldset class="col-md-4">
+                                <legend class="form-label">Events</legend>
+                                <label class="form-check" th:each="e : ${eventTypes}">
+                                    <input class="form-check-input" type="checkbox" name="event" th:value="${e.id}" checked>
+                                    <span class="form-check-label"><code th:text="${e.id}"></code>
+                                        <span th:text="${e.description}"></span></span>
+                                </label>
+                            </fieldset>
+                        </div>
+                        <button type="submit" class="btn btn-primary mt-3" id="create-webhook">
+                            <i class="ti ti-webhook me-1" aria-hidden="true"></i>Add webhook
+                        </button>
+                    </form>
+                </div>
+                <div class="list-group list-group-flush" id="webhook-list">
+                    <div class="list-group-item text-secondary" th:if="${#lists.isEmpty(endpoints)}">No webhooks yet.</div>
+                    <div class="list-group-item" th:each="w : ${endpoints}" th:id="${'webhook-' + w.id}">
+                        <div class="d-flex flex-wrap align-items-center gap-2">
+                            <div class="me-auto">
+                                <h3 class="h4 mb-1">
+                                    <span th:text="${w.name}">HR</span>
+                                    <span class="badge bg-secondary-lt" th:if="${!w.enabled}">disabled</span>
+                                </h3>
+                                <div class="small text-secondary">
+                                    <code th:text="${w.url}"></code> &middot;
+                                    <code th:text="${w.events}"></code> &middot;
+                                    secret <code th:text="${w.secretPrefix + '…'}"></code>
+                                </div>
+                                <div class="small text-secondary" th:if="${w.lastError != null}">
+                                    Last error: <span th:text="${w.lastError}"></span>
+                                </div>
+                            </div>
+                            <form th:action="@{/app/admin/integrations/webhooks/{id}/ping(id=${w.id})}" method="post"
+                                  th:if="${w.enabled and webhooksConfigured}">
+                                <button type="submit" class="btn btn-sm" th:attr="aria-label=${'Send a test delivery to ' + w.name}">Send test</button>
+                            </form>
+                            <form th:action="@{/app/admin/integrations/webhooks/{id}/disable(id=${w.id})}" method="post"
+                                  th:if="${w.enabled}">
+                                <button type="submit" class="btn btn-sm" th:attr="aria-label=${'Disable ' + w.name}">Disable</button>
+                            </form>
+                            <form th:action="@{/app/admin/integrations/webhooks/{id}/enable(id=${w.id})}" method="post"
+                                  th:if="${!w.enabled}">
+                                <button type="submit" class="btn btn-sm" th:attr="aria-label=${'Enable ' + w.name}">Enable</button>
+                            </form>
+                            <form th:action="@{/app/admin/integrations/webhooks/{id}/delete(id=${w.id})}" method="post">
+                                <button type="submit" class="btn btn-sm btn-outline-danger"
+                                        th:attr="aria-label=${'Delete ' + w.name}">Delete</button>
+                            </form>
+                        </div>
+                        <details class="mt-2">
+                            <summary>Recent deliveries</summary>
+                            <div class="table-responsive">
+                                <table class="table table-sm mt-2">
+                                    <caption class="visually-hidden" th:text="${'Recent deliveries to ' + w.name}"></caption>
+                                    <thead>
+                                    <tr>
+                                        <th scope="col">Event</th>
+                                        <th scope="col">State</th>
+                                        <th scope="col">Tries</th>
+                                        <th scope="col">Last status</th>
+                                        <th scope="col">Last try</th>
+                                        <th scope="col">Error</th>
+                                    </tr>
+                                    </thead>
+                                    <tbody>
+                                    <tr th:if="${#lists.isEmpty(deliveries[w.id])}">
+                                        <td colspan="6" class="text-secondary">Nothing sent yet.</td>
+                                    </tr>
+                                    <tr th:each="d : ${deliveries[w.id]}">
+                                        <td><code th:text="${d.eventType}"></code></td>
+                                        <td th:text="${d.state}"></td>
+                                        <td th:text="${d.attempts}"></td>
+                                        <td th:text="${d.lastStatus}"></td>
+                                        <td><time class="local-time" th:if="${d.lastAttemptAt != null}"
+                                                  th:attr="datetime=${d.lastAttemptAt.toString()}"
+                                                  th:text="${d.lastAttemptAt.toString()}"></time></td>
+                                        <td th:text="${d.lastError}"></td>
+                                    </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </details>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script th:attr="nonce=${cspNonce}">
+        document.querySelectorAll("time.local-time").forEach(function (el) {
+            const when = new Date(el.getAttribute("datetime"));
+            if (!isNaN(when)) {
+                el.textContent = when.toLocaleString();
+                el.title = el.getAttribute("datetime");
+            }
+        });
+        document.querySelectorAll("button.copy-secret").forEach(function (button) {
+            button.addEventListener("click", function () {
+                const field = document.getElementById(button.dataset.target);
+                field.select();
+                if (navigator.clipboard) {
+                    navigator.clipboard.writeText(field.value);
+                } else {
+                    document.execCommand("copy");
+                }
+            });
+        });
+    </script>
+</div>
+</body>
+</html>

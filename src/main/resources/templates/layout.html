@@ -196,6 +196,15 @@
                             <span class="nav-link-title">Privacy</span>
                         </a>
                     </li>
+                    <!-- Public API tokens and webhooks. -->
+                    <li class="nav-item" sec:authorize="hasAuthority('ADMIN')">
+                        <a class="nav-link" th:href="@{/app/admin/integrations}">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <i class="ti ti-plug-connected"></i>
+                            </span>
+                            <span class="nav-link-title">Integrations</span>
+                        </a>
+                    </li>
                     <!-- Open in every license state, like the license screen: the audit trail stays available. -->
                     <li class="nav-item" sec:authorize="hasAuthority('ADMIN')">
                         <a class="nav-link" th:href="@{/app/admin/audit}">

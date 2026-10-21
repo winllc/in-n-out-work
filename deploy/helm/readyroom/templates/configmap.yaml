@@ -53,6 +53,14 @@ data:
   APPLICATION_RETENTION_EVENTSDAYS: {{ $v.retention.eventsDays | quote }}
   APPLICATION_RETENTION_CRON: {{ $v.retention.schedule | quote }}
 
+  # Public API and webhooks
+  APPLICATION_API_MAXTOKENDAYS: {{ $v.api.maxTokenDays | quote }}
+  APPLICATION_API_DEFAULTRATEPERMINUTE: {{ $v.api.defaultRatePerMinute | quote }}
+  APPLICATION_API_MAXRATEPERMINUTE: {{ $v.api.maxRatePerMinute | quote }}
+  {{- with $v.webhooks.allowedCidrs }}
+  APPLICATION_WEBHOOKS_ALLOWEDCIDRS: {{ join "," . | quote }}
+  {{- end }}
+
   # Database
   DB_HOST: {{ include "readyroom.dbHost" . | quote }}
   DB_PORT: {{ $v.database.port | quote }}

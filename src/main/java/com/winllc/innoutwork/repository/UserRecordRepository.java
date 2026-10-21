@@ -62,4 +62,15 @@ public interface UserRecordRepository extends JpaRepository<UserRecord, Long>, P
 
     /** People whose self-chosen delegates still wait for an administrator's review. */
     long countByAlternateManagersReviewPendingTrue();
+
+    /**
+     * Tracked people for the public API, by DN: {@code q} a lower-cased LIKE pattern escaped with '!' (or empty for
+     * all), {@code location} and {@code organization} lower-cased exact values (or empty for any).
+     */
+    @Query("select u from UserRecord u where (:q = '' or lower(u.dn) like :q escape '!')"
+            + " and (:location = '' or lower(u.location) = :location)"
+            + " and (:organization = '' or lower(u.organization) = :organization)")
+    org.springframework.data.domain.Page<UserRecord> search(@Param("q") String q, @Param("location") String location,
+                                                            @Param("organization") String organization,
+                                                            Pageable pageable);
 }

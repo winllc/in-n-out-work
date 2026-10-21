@@ -321,6 +321,10 @@ once. To go to several replicas afterwards, see [Several replicas](#several-repl
 keeps `Recreate`, and absence alerts wait for people whose check-in may have been sent while the pod was
 restarting.
 
+Upgrading to the release with the public API and webhooks (Flyway V9) needs nothing by hand either. The
+chart adds a generated `webhook-secret-key` to its Secret (or uses `webhooks.secretKey`), and with
+`networkPolicy.enabled` opens egress to port 443 for webhooks (`webhooks.ports: []` closes it).
+
 ### Backups
 
 With `backup.enabled`, a CronJob runs `pg_dump` (custom format, with the database image so the version
@@ -408,6 +412,10 @@ delete it.
 | `privacy.coworkerVisibility` | `full` | `APPLICATION_PRIVACY_COWORKERVISIBILITY`: `full`, `status` (in or out only) or `none` |
 | `retention.eventsDays` | `0` | `APPLICATION_RETENTION_EVENTSDAYS`: days to keep check-ins, statuses, requests and alerts (0: forever; else 31 or more), then summarised by month and deleted |
 | `retention.schedule` | `0 17 2 * * *` | `APPLICATION_RETENTION_CRON`: when the purge runs (six-field Spring cron) |
+| `api.maxTokenDays`, `.defaultRatePerMinute`, `.maxRatePerMinute` | `366`, `120`, `1200` | `APPLICATION_API_*`: the longest a public API token may be valid, and its requests a minute (offered, and at most) |
+| `webhooks.secretKey.value` / `.existingSecret` / `.existingSecretKey` | generated / `""` / `webhook-secret-key` | `APPLICATION_WEBHOOKS_SECRETKEY`: the key webhook signing secrets are encrypted with (32+ characters, every replica the same). Empty: generated on install and kept across upgrades |
+| `webhooks.allowedCidrs` | `[]` | `APPLICATION_WEBHOOKS_ALLOWEDCIDRS`: private or loopback ranges webhooks may still go to (cloud metadata never) |
+| `webhooks.ports` | `[443]` | With `networkPolicy.enabled`: ports webhooks may be sent to |
 | `superUserDns` | `[]` | `APPLICATION_SUPERUSERDNS_n`: administrators by DN; at least one |
 | `database.host` | `""` | Required unless embedded |
 | `database.port`, `.name`, `.username` | `5432`, `readyroom`, `readyroom` | |

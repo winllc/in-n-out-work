@@ -268,3 +268,15 @@ rollingUpdate:
   maxUnavailable: 0
 {{- end -}}
 {{- end -}}
+
+{{/* The webhook secret key: your Secret, or this release's (given or generated; see secret.yaml). */}}
+{{- define "readyroom.webhookKeyRef" -}}
+{{- $w := .Values.webhooks.secretKey -}}
+{{- if $w.existingSecret -}}
+name: {{ $w.existingSecret }}
+key: {{ $w.existingSecretKey }}
+{{- else -}}
+name: {{ include "readyroom.fullname" . }}
+key: webhook-secret-key
+{{- end -}}
+{{- end -}}

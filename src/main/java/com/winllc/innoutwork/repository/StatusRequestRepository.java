@@ -55,4 +55,20 @@ public interface StatusRequestRepository extends JpaRepository<StatusRequest, Lo
     @Modifying
     @Query("delete from StatusRequest r where lower(r.requesterDn) = lower(:dn)")
     int deleteByRequester(@Param("dn") String dn);
+
+    /** Requests in {@code states} covering any day from {@code from} to {@code to}, a page at a time. */
+    @Query("select r from StatusRequest r where r.state in :states and r.fromDate <= :to and r.toDate >= :from")
+    org.springframework.data.domain.Page<StatusRequest> findPageOverlapping(
+            @Param("states") java.util.Collection<RequestState> states,
+            @Param("from") LocalDate from, @Param("to") LocalDate to,
+            org.springframework.data.domain.Pageable pageable);
+
+    /** {@link #findPageOverlapping} for the people given, by lower-cased DN. */
+    @Query("select r from StatusRequest r where lower(r.requesterDn) in :dns and r.state in :states"
+            + " and r.fromDate <= :to and r.toDate >= :from")
+    org.springframework.data.domain.Page<StatusRequest> findPageByLowercaseRequesterInOverlapping(
+            @Param("dns") java.util.Collection<String> dns,
+            @Param("states") java.util.Collection<RequestState> states,
+            @Param("from") LocalDate from, @Param("to") LocalDate to,
+            org.springframework.data.domain.Pageable pageable);
 }

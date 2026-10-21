@@ -69,7 +69,9 @@ class FlywayMigrationTest extends PostgresTestSupport {
             "ix_status_requests_requester_lower", "ix_status_requests_state", "ix_status_requests_to_date",
             "ix_user_events_request_id",
             // V4: retention
-            "ux_attendance_summaries_dn_month", "ix_notifications_date");
+            "ux_attendance_summaries_dn_month", "ix_notifications_date",
+            // V9: the public API and webhooks
+            "ux_api_tokens_hash", "ix_webhook_deliveries_due", "ix_webhook_deliveries_endpoint");
 
     @Autowired
     private JdbcTemplate jdbc;
@@ -178,7 +180,8 @@ class FlywayMigrationTest extends PostgresTestSupport {
         assertEquals(1, fresh.queryForObject("SELECT count(*) FROM pg_trigger WHERE tgname = 'audit_events_no_update'",
                 Integer.class));
         assertEquals(List.of("attendance_summary_statuses_summary_id_fkey", "fk_permission_records_user",
-                "fk_user_event_records_request", "spring_session_attributes_fk"), fresh.queryForList(
+                "fk_user_event_records_request", "fk_webhook_deliveries_endpoint", "spring_session_attributes_fk"),
+                fresh.queryForList(
                 "SELECT conname FROM pg_constraint WHERE contype = 'f' ORDER BY conname", String.class));
         assertEquals(0, migrate(db).migrationsExecuted, "a second start has nothing to do");
     }

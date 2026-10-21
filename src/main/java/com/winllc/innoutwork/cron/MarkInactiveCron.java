@@ -35,6 +35,14 @@ public class MarkInactiveCron {
     /** Times the whole service was down; absent in tests that do not need them. */
     private ServiceOutages outages;
 
+    /** Status changes for the webhooks; absent in tests that build this by hand. */
+    private org.springframework.context.ApplicationEventPublisher events;
+
+    @Autowired(required = false)
+    public void setEventPublisher(org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
+    }
+
     @Autowired(required = false)
     public void setAuditLog(AuditLog audit) {
         this.audit = audit;
@@ -115,6 +123,7 @@ public class MarkInactiveCron {
                 checkInOutRecord.setSessionId(record.getSessionId());
                 checkInOutRecord.setForced(true);
                 checkInOutRecordRepository.save(checkInOutRecord);
+                com.winllc.innoutwork.webhook.WebhookEvents.presence(events, checkInOutRecord);
                 checkedOut++;
 
                 // A forced check-out is a record the user did not create, so name who and when.

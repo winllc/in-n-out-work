@@ -68,6 +68,14 @@ public class CheckInOutService {
      * <p>
      * A record must name someone: one without a DN is refused rather than stored as nobody's.
      */
+    /** Status changes for the webhooks; absent in tests that build this by hand. */
+    private org.springframework.context.ApplicationEventPublisher events;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setEventPublisher(org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
+    }
+
     @Transactional
     public CheckInOutRecord saveCheckInOutRecord(CheckInOutRecord record) {
         if (record.getDn() == null || record.getDn().isBlank()) {
@@ -116,6 +124,8 @@ public class CheckInOutService {
 
         // One line per status event across the whole workforce, so this stays at debug.
         log.debug("Recorded {} for {} at {}", saved.getAction(), saved.getDn(), saved.getTimestamp());
+        // status.changed for the webhooks, queued once this transaction commits.
+        com.winllc.innoutwork.webhook.WebhookEvents.presence(events, saved);
 
         if(record.getAction() == CheckInOutEnum.CHECK_IN){
             Optional<UserRecord> recordOptional = lockedUser;
@@ -353,8 +363,9 @@ public class CheckInOutService {
      * the day would be UTC midnight to midnight: 8pm the evening before to 8pm in New York.
      */
     public static ZonedDateTime getDateTimeFromSession(HttpSession session) {
+        // No session (the public API, jobs): now.
         ZonedDateTime selectedDateTime =
-                (ZonedDateTime) session.getAttribute("systemTime");
+                session == null ? null : (ZonedDateTime) session.getAttribute("systemTime");
 
         if (selectedDateTime == null) {
             selectedDateTime = ZonedDateTime.now();

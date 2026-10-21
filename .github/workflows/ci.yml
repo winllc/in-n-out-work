@@ -40,6 +40,15 @@ jobs:
           name: test-results
           path: build/reports/tests/test
 
+      # The public API's OpenAPI 3 document, generated from the controllers by OpenApiDocumentTest (which also
+      # fails the build when docs/api/readyroom-api-v1.json is out of date).
+      - name: Keep the OpenAPI document
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openapi
+          path: build/openapi/
+          if-no-files-found: error
+
   helm:
     # The Helm chart (deploy/helm/readyroom): lint and schema-check it with every example values file.
     runs-on: ubuntu-latest

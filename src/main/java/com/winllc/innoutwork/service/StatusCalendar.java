@@ -24,6 +24,14 @@ public class StatusCalendar {
         this.events = events;
     }
 
+    /** Status changes for the webhooks; absent in tests that build this by hand. */
+    private org.springframework.context.ApplicationEventPublisher publisher;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    public void setEventPublisher(org.springframework.context.ApplicationEventPublisher publisher) {
+        this.publisher = publisher;
+    }
+
     /**
      * Puts {@code status} on each of {@code days} for {@code dn}. A day's entry that the person or an approved
      * request put there is replaced; a status a manager recorded in answer to an absence alert is left beside it.
@@ -49,6 +57,9 @@ public class StatusCalendar {
             events.save(record);
             written++;
         }
+        // status.changed for the webhooks, queued once the caller's transaction commits.
+        com.winllc.innoutwork.webhook.WebhookEvents.calendar(publisher, dn, status, days,
+                requestId != null ? "request" : status.isSelectable() ? "self" : "manager");
         return written;
     }
 

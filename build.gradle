@@ -82,6 +82,10 @@ dependencies {
 
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
+    // --- Public API (/api/v1): its OpenAPI 3 document, generated from the controllers and served at
+    // /api/v1/openapi (no Swagger UI is bundled) ---
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1'
+
     implementation 'nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect'
     implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
 
@@ -123,4 +127,8 @@ springBoot {
 
 test {
     useJUnitPlatform()
+    // ./gradlew test --tests '*OpenApiDocumentTest' -Dopenapi.update=true regenerates docs/api/readyroom-api-v1.json.
+    if (System.getProperty('openapi.update')) {
+        systemProperty 'openapi.update', System.getProperty('openapi.update')
+    }
 }

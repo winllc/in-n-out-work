@@ -167,6 +167,32 @@ retention:
   eventsDays: 0
   schedule: "0 17 2 * * *"
 
+# The public API, /api/v1 (APPLICATION_API_*). Administrators create its tokens under Administration,
+# Integrations, each with scopes, an expiry and a rate limit; see the README ("Public API and webhooks").
+# maxTokenDays: the longest a token may be valid for. defaultRatePerMinute / maxRatePerMinute: requests a
+# minute a new token is offered, and the most any may be given (per replica).
+api:
+  maxTokenDays: 366
+  defaultRatePerMinute: 120
+  maxRatePerMinute: 1200
+
+# Signed webhooks for absence alerts and status changes (APPLICATION_WEBHOOKS_*).
+webhooks:
+  # The key webhook signing secrets are encrypted with in the database: 32 characters or more, the same on every
+  # replica. Empty, with no existingSecret: the chart generates one on install and keeps it across upgrades (in
+  # this release's Secret, key webhook-secret-key). Changing it makes the existing webhooks' secrets unreadable:
+  # their deliveries fail until they are created again.
+  secretKey:
+    value: ""
+    existingSecret: ""
+    existingSecretKey: webhook-secret-key
+  # Private, loopback or link-local ranges (CIDR) webhooks may still be sent to, e.g. ["10.20.0.0/16"] for an
+  # internal SIEM. Empty: public addresses only. Cloud metadata addresses are refused whatever this says.
+  allowedCidrs: []
+  # With networkPolicy.enabled: the ports webhooks may be sent to (to networkPolicy.egress.cidrs). Empty: none.
+  ports:
+    - 443
+
 # Users always treated as administrators, by full DN (APPLICATION_SUPERUSERDNS_n). At least one, or
 # nobody can administer ReadyRoom or reach the license screen.
 superUserDns: []
