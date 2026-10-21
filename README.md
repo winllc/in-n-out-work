@@ -458,6 +458,17 @@ zero-dependency library, copied unchanged into `src/main/java/com/enssolutions/l
 products-page repository, `licensing/java`). No network is involved, so this works the same on an
 air-gapped enclave.
 
+**FIPS-mode Java runtimes.** The library is ens-license 1.2.0, which checks ECDSA P-256 signatures as well
+as Ed25519. From this release ReadyRoom trusts two ENS production keys: the Ed25519 key
+(`dabdc531a28916c5`) and the ECDSA P-256 key (`e0a2e4ff9c4f5bfc`). A Java runtime in FIPS mode (for
+example Red Hat's OpenJDK with FIPS enabled, or BouncyCastle FIPS) has no Ed25519, so there it accepts
+only licenses that carry a P-256 signature; the license screen then says the file is signed only with an
+algorithm this runtime does not provide. Licenses issued before ENS enabled P-256 signing are
+Ed25519-only: they keep working on ordinary runtimes, but a FIPS host needs a re-signed copy, downloaded
+again from the ENS licensing portal or requested from ENS, that carries a P-256 signature. The license itself
+now lives in the database; the license file and state directory are imported once on upgrade (see "Where the
+license lives" below).
+
 **What the license state means.**
 
 | State | Mode | What works |

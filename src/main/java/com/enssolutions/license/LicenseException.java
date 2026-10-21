@@ -1,4 +1,4 @@
-// From the ENS products-page repository, licensing/java (ens-license). Copied unchanged; update it there first.
+// From the ENS products-page repository, licensing/java (ens-license 1.2.0). Copied unchanged; update it there first.
 package com.enssolutions.license;
 
 /** A license file that can't be trusted at all: not a license, or not signed by ENS. */
