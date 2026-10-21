@@ -12,16 +12,20 @@ import com.winllc.innoutwork.model.UserEventRecord;
 import com.winllc.innoutwork.repository.CheckInOutRecordRepository;
 import com.winllc.innoutwork.repository.GlobalCalendarRecordRepository;
 import com.winllc.innoutwork.repository.UserEventRecordRepository;
+import com.winllc.innoutwork.service.LdapService;
 import com.winllc.innoutwork.service.ReportService;
 import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,13 +42,16 @@ public class UserEventRestService {
     private final CheckInOutRecordRepository checkInOutRecordRepository;
     private final GlobalCalendarRecordRepository globalCalendarRecordRepository;
     private final ApplicationProperties properties;
+    private final LdapService ldapService;
 
     public UserEventRestService(UserEventRecordRepository userEventRecordRepository,
-                                CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties, GlobalCalendarRecordRepository globalCalendarRecordRepository) {
+                                CheckInOutRecordRepository checkInOutRecordRepository, ApplicationProperties properties,
+                                GlobalCalendarRecordRepository globalCalendarRecordRepository, LdapService ldapService) {
         this.userEventRecordRepository = userEventRecordRepository;
         this.checkInOutRecordRepository = checkInOutRecordRepository;
         this.properties = properties;
         this.globalCalendarRecordRepository = globalCalendarRecordRepository;
+        this.ldapService = ldapService;
     }
 
 
@@ -105,6 +112,84 @@ public class UserEventRestService {
         allEvents.addAll(globalEvents);
 
         return allEvents;
+    }
+
+    /**
+     * Every member of a group's self-set statuses over a date range, as one combined calendar.
+     * <p>
+     * Membership comes from the directory and the statuses from a single query over the whole
+     * membership, so a group costs one directory read plus one select however many members it has.
+     * Guarded exactly like the group page that draws it.
+     */
+    @GetMapping("/group/{groupDn}")
+    @PreAuthorize("hasAnyAuthority(T(com.winllc.innoutwork.constant.UserRoleEnum).ADMIN, " +
+            "T(com.winllc.innoutwork.constant.UserRoleEnum).MANAGER) " +
+            "or @permissionEvaluator.groupCheck(#groupDn, #authentication)")
+    public List<CalendarEvent> getGroupEvents(Authentication authentication,
+                                              @PathVariable String groupDn,
+                                              @RequestParam Instant from,
+                                              @RequestParam Instant to) {
+
+        LocalDate fromDate = LocalDate.ofInstant(from, ZoneId.systemDefault());
+        LocalDate toDate = LocalDate.ofInstant(to, ZoneId.systemDefault());
+
+        // Lower-cased DN to the directory's spelling: the repository compares lower(dn), and the
+        // spelling is what labels the event and links to the member.
+        Map<String, String> members = new LinkedHashMap<>();
+        for (String memberDn : ldapService.getGroupMembers(LdapDn.builder().dn(groupDn).build())) {
+            if (StringUtils.isNotBlank(memberDn)) {
+                members.putIfAbsent(memberDn.toLowerCase(), memberDn);
+            }
+        }
+
+        if (members.isEmpty()) {
+            // "in ()" is not valid SQL, so an empty membership must not reach the query.
+            log.debug("Group {} has no members, so its calendar is empty", groupDn);
+            return List.of();
+        }
+
+        List<UserEventRecord> records =
+                userEventRecordRepository.findByLowercaseDnInAndDateBetween(members.keySet(), fromDate, toDate);
+
+        log.debug("Group {} calendar: {} status entries for {} member(s) between {} and {}",
+                groupDn, records.size(), members.size(), fromDate, toDate);
+
+        return records.stream()
+                .map(r -> groupEvent(r, members.getOrDefault(r.getDn().toLowerCase(), r.getDn())))
+                .sorted(Comparator.comparing(CalendarEvent::getStart).thenComparing(CalendarEvent::getTitle))
+                .toList();
+    }
+
+    /** One member's status on one day, named and linked back to that member. */
+    private CalendarEvent groupEvent(UserEventRecord record, String memberDn) {
+        UserStatusEnum status = record.getStatus();
+
+        String label = status.getFriendlyName();
+        if (status == UserStatusEnum.LATE_ARRIVAL && record.getLoginByTime() != null) {
+            label = "%s by %s".formatted(label, record.getLoginByTime());
+        }
+
+        CalendarEvent event = new CalendarEvent(record.getDate(), "%s: %s".formatted(nameOf(memberDn), label));
+        // The shared constructor derives the id from the title, which two namesakes on the same
+        // status and day share. Keyed on the member instead, so every event stays distinct -
+        // FullCalendar draws events that share an id as one event.
+        event.setId("%s|%s|%s".formatted(record.getDate(), memberDn.toLowerCase(), status.name()));
+        event.setBackgroundColor(status.isExcusable()
+                ? properties.getCalendarStatusEventColor()
+                : properties.getCalendarAbsentStatusEventColor());
+        event.setUrl("/app/user/details/" + memberDn);
+
+        return event;
+    }
+
+    /** The member's CN, falling back to the raw value so an odd member never loses its row. */
+    private static String nameOf(String memberDn) {
+        try {
+            String cn = LdapDn.builder().dn(memberDn).build().getCn();
+            return StringUtils.isNotBlank(cn) ? cn : memberDn;
+        } catch (IllegalArgumentException e) {
+            return memberDn;
+        }
     }
 
     @PostMapping("/update")

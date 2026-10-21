@@ -289,6 +289,16 @@ class TemplateRenderingTest {
         assertRenders("/render/users", "user-table");
     }
 
+    /** The combined status calendar on the group page, and the library that draws it. */
+    @Test
+    void usersRendersTheGroupCalendar() throws Exception {
+        String path = "/render/users";
+        assertRenders(path, "Group Calendar");
+        assertRenders(path, "id=\"group-calendar\"");
+        assertRenders(path, "/libs/fullcalendar/index.global.min.js");
+        assertRenders(path, "/api/event/group/");
+    }
+
     @Test
     void profileRenders() throws Exception {
         assertRenders("/render/profile", "My Information");
