@@ -57,11 +57,16 @@ public class LicenseManagerConfig {
         Path licenseFile = Path.of(env("ENS_LICENSE_FILE", "/etc/ens/" + product + ".lic"));
         Path stateDir = Path.of(env("ENS_LICENSE_STATE_DIR", "/var/lib/ens/" + product));
         // As LicenseManager.fromEnvironment(..., dataSource), plus the guard against a new id for an old installation.
+        boolean newId = Boolean.parseBoolean(env("ENS_LICENSE_NEW_INSTALLATION_ID", "false"));
+        if (newId) {
+            log.error("ENS_LICENSE_NEW_INSTALLATION_ID is set: if the database has no installation id and no license,"
+                    + " a new id is made, and licenses bound to an earlier one stop working. Unset it after this start.");
+        }
         JdbcLicenseStore store = new JdbcLicenseStore(dataSource, product)
                 .importingFileStateOnFirstUse(licenseFile, stateDir);
         return new LicenseManager(product, LicenseVerifier.trusting(EnsKeys.PUBLIC_KEYS),
-                new FirstInstallationIdGuard(store, dataSource, stateDir,
-                        Boolean.parseBoolean(env("ENS_LICENSE_NEW_INSTALLATION_ID", "false"))),
+                new FirstInstallationIdGuard(store, dataSource, stateDir, product,
+                        Boolean.parseBoolean(env("ENS_LICENSE_EXPECT_INSTALLATION_ID", "false")), newId),
                 released, Clock.systemUTC(), Optional.ofNullable(System.getenv("ENS_LICENSE")));
     }
 

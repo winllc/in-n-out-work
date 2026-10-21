@@ -110,7 +110,11 @@ licensing portal to bind a license to this installation. ReadyRoom keeps it, the
 state in its database, so **back up the database**. The license PVC (`persistence.license`) is only read on
 the first start of a release that keeps them in the database: it imports what an earlier release kept there.
 After that upgrade has started once, set `persistence.license.enabled=false` (needed for several replicas,
-below); a new installation can do so from the start.
+below). Without the volume the chart sets `ENS_LICENSE_EXPECT_INSTALLATION_ID=true`: ReadyRoom then never
+makes up an installation id when its database has none, so a fresh or rebuilt database behind an existing
+installation cannot silently break a bound license. A new installation either starts once with the volume on,
+or sets `license.newInstallationId: true` for its first start (honoured only while the database holds no
+license; unset it afterwards).
 
 ### Several replicas
 
@@ -448,6 +452,7 @@ delete it.
 | `audit.splunk.url`, `.index`, `.sourcetype`, `.insecure` | `""`, `""`, `ens:audit`, `false` | `ENS_AUDIT_SPLUNK_*` |
 | `audit.splunk.token` / `.existingSecret` / `.existingSecretKey` | `""` / `""` / `splunk-token` | `ENS_AUDIT_SPLUNK_TOKEN` |
 | `audit.syslog.host`, `.port`, `.protocol`, `.facility` | `""`, `""`, `tcp`, `local0` | `ENS_AUDIT_SYSLOG_*` |
+| `license.newInstallationId` | `false` | Accept a new installation id when the database has none and no volume is mounted (`ENS_LICENSE_NEW_INSTALLATION_ID`) |
 | `persistence.license.enabled` | `true` | The license PVC at `/var/lib/ens`, imported into the database on the first start; turn off afterwards for several replicas |
 | `persistence.license.size`, `.storageClass`, `.accessModes`, `.existingClaim` | `100Mi`, `""`, RWO, `""` | |
 | `license.existingSecret` | `""` | Secret with key `license.lic` |

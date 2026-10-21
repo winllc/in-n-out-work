@@ -845,6 +845,9 @@
         },
         "file": {
           "type": "string"
+        },
+        "newInstallationId": {
+          "type": "boolean"
         }
       }
     },

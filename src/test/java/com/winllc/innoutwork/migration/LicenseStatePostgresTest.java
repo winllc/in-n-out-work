@@ -95,7 +95,7 @@ class LicenseStatePostgresTest extends PostgresTestSupport {
             JdbcLicenseStore store = new JdbcLicenseStore(dataSource, LicensedFeature.PRODUCT)
                     .importingFileStateOnFirstUse(empty.resolve("license.lic"), empty);
             LicenseManager guarded = new LicenseManager(LicensedFeature.PRODUCT, VERIFIER,
-                    new FirstInstallationIdGuard(store, dataSource, empty, false), Optional.empty(), Clock.systemUTC(),
+                    new FirstInstallationIdGuard(store, dataSource, empty, LicensedFeature.PRODUCT, false, false), Optional.empty(), Clock.systemUTC(),
                     Optional.empty());
 
             IllegalStateException refused = assertThrows(IllegalStateException.class, guarded::installationId);
@@ -103,7 +103,7 @@ class LicenseStatePostgresTest extends PostgresTestSupport {
             assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM ens_license_installation", Integer.class));
 
             LicenseManager confirmed = new LicenseManager(LicensedFeature.PRODUCT, VERIFIER,
-                    new FirstInstallationIdGuard(store, dataSource, empty, true), Optional.empty(), Clock.systemUTC(),
+                    new FirstInstallationIdGuard(store, dataSource, empty, LicensedFeature.PRODUCT, false, true), Optional.empty(), Clock.systemUTC(),
                     Optional.empty());
             assertTrue(confirmed.installationId().length() > 8, "ENS_LICENSE_NEW_INSTALLATION_ID=true accepts a new id");
         } finally {
@@ -118,8 +118,55 @@ class LicenseStatePostgresTest extends PostgresTestSupport {
         JdbcLicenseStore store = new JdbcLicenseStore(dataSource, LicensedFeature.PRODUCT)
                 .importingFileStateOnFirstUse(empty.resolve("license.lic"), empty);
         LicenseManager licenses = new LicenseManager(LicensedFeature.PRODUCT, VERIFIER,
-                new FirstInstallationIdGuard(store, dataSource, empty, false), Optional.empty(), Clock.systemUTC(),
+                new FirstInstallationIdGuard(store, dataSource, empty, LicensedFeature.PRODUCT, false, false), Optional.empty(), Clock.systemUTC(),
                 Optional.empty());
         assertTrue(licenses.installationId().length() > 8);
+    }
+
+    private LicenseManager guarded(Path stateDir, boolean expect, boolean newId) {
+        JdbcLicenseStore store = new JdbcLicenseStore(dataSource, LicensedFeature.PRODUCT)
+                .importingFileStateOnFirstUse(stateDir.resolve("license.lic"), stateDir);
+        return new LicenseManager(LicensedFeature.PRODUCT, VERIFIER,
+                new FirstInstallationIdGuard(store, dataSource, stateDir, LicensedFeature.PRODUCT, expect, newId),
+                Optional.empty(), Clock.systemUTC(), Optional.empty());
+    }
+
+    /**
+     * A fresh or rebuilt database behind an existing installation runs every migration at once, so it looks new.
+     * Without a license volume (the chart then sets ENS_LICENSE_EXPECT_INSTALLATION_ID) no id is made up.
+     */
+    @Test
+    void withoutTheVolumeAnEmptyDatabaseGetsNoNewId() throws Exception {
+        Path empty = Files.createDirectories(oldVolume.resolve("none"));
+
+        assertThrows(IllegalStateException.class, guarded(empty, true, false)::installationId);
+        assertEquals(0, new JdbcTemplate(dataSource).queryForObject("SELECT count(*) FROM ens_license_installation",
+                Integer.class));
+    }
+
+    /** Several pods, one with the old volume's file: those without it never insert an id of their own. */
+    @Test
+    void onlyThePodWithTheFileSetsTheId() throws Exception {
+        String id = InstallationId.generate(LicensedFeature.PRODUCT);
+        Path withFile = Files.createDirectories(oldVolume.resolve("with"));
+        Files.writeString(withFile.resolve("installation-id"), id + "\n");
+        Path without = Files.createDirectories(oldVolume.resolve("without"));
+
+        assertThrows(IllegalStateException.class, guarded(without, true, false)::installationId);
+        assertEquals(id, guarded(withFile, true, false).installationId());
+        assertEquals(id, guarded(without, true, false).installationId(), "then everyone has the imported one");
+    }
+
+    /** ENS_LICENSE_NEW_INSTALLATION_ID works only while the database holds no license state. */
+    @Test
+    void aNewIdIsRefusedOnceTheDatabaseHoldsLicenseState() throws Exception {
+        Path empty = Files.createDirectories(oldVolume.resolve("confirm"));
+        new JdbcTemplate(dataSource).update("INSERT INTO ens_license_revision (product, license_id, revision)"
+                + " VALUES (?, 'L-1', 3)", LicensedFeature.PRODUCT);
+
+        assertThrows(IllegalStateException.class, guarded(empty, true, true)::installationId);
+
+        new JdbcTemplate(dataSource).update("DELETE FROM ens_license_revision");
+        assertTrue(guarded(empty, true, true).installationId().length() > 8);
     }
 }

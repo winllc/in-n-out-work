@@ -546,8 +546,11 @@ environment variables (not Spring properties) say where they are:
 If the database was migrated by an earlier release, holds no installation id yet, and
 `ENS_LICENSE_STATE_DIR` has no `installation-id` to import (an upgrade straight to several replicas with the
 license volume off), ReadyRoom does not make up a new id, which would silently break a license bound to the
-old one: it stays unlicensed and logs how to fix it, mounting the old volume for one start, or
-`ENS_LICENSE_NEW_INSTALLATION_ID=true` to accept a new id.
+old one: license requests fail and the log says how to fix it, mounting the old volume for one start, or
+`ENS_LICENSE_NEW_INSTALLATION_ID=true` to accept a new id (honoured only while the database holds no license or
+revisions, and logged at ERROR while set). With `ENS_LICENSE_EXPECT_INSTALLATION_ID=true`, which the chart sets
+whenever it mounts no license volume, the same holds whatever the migration history: a fresh or rebuilt database
+behind an existing installation runs every migration at once and would otherwise look like a new installation.
 
 **Upgrading:** keep the license volume mounted for the first start of this release (the release bundle and
 the chart do, unchanged); after that it is not read again and may be removed (the chart:

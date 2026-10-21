@@ -531,6 +531,10 @@ persistence:
     existingClaim: ""
 
 license:
+  # Accept a NEW installation id (licenses bound to the old one stop working). Only for a new installation
+  # started without the license volume, or when the old volume is lost; honoured only while the database holds
+  # no license. Without the volume, ReadyRoom otherwise refuses to make up an id. Unset it after that start.
+  newInstallationId: false
   # Optional. A license file to install when none is installed yet: an init container copies it into
   # the license volume only if that holds no license, so a newer license uploaded on the license screen
   # (/app/admin/license) is never overwritten by a later helm upgrade. Either your own Secret with the

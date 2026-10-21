@@ -24,10 +24,13 @@ import java.util.Optional;
  * <p>
  * "Already had one": the database was migrated before this release (Flyway's history has migrations installed
  * well before {@code V8__ens_license_state}), the database has no installation id yet, and there is no
- * {@code installation-id} file in ENS_LICENSE_STATE_DIR to import. ReadyRoom then runs unlicensed and says
- * why, until the old license volume is mounted for one start (or the operator confirms a new id with
- * {@code ENS_LICENSE_NEW_INSTALLATION_ID=true}). A new installation, whose migrations all ran at once, is not
- * affected.
+ * {@code installation-id} file in ENS_LICENSE_STATE_DIR to import. The same holds, whatever the migration
+ * history, with {@code ENS_LICENSE_EXPECT_INSTALLATION_ID=true}, which the chart sets whenever it mounts no license
+ * volume: a fresh or rebuilt database behind an existing installation runs every migration at once and looks new,
+ * and of several pods the one without the file could otherwise win the insert. ReadyRoom then refuses the license
+ * requests and says why, until the old license volume is mounted for one start, or the operator confirms a new id
+ * with {@code ENS_LICENSE_NEW_INSTALLATION_ID=true} (honoured only while the database holds no license or
+ * revisions). A new installation with its volume mounted is not affected.
  */
 public final class FirstInstallationIdGuard implements LicenseStore {
 
@@ -39,28 +42,61 @@ public final class FirstInstallationIdGuard implements LicenseStore {
     private final JdbcLicenseStore delegate;
     private final DataSource dataSource;
     private final Path stateDir;
+    private final String product;
+    private final boolean expectExisting;
     private final boolean newIdConfirmed;
 
-    public FirstInstallationIdGuard(JdbcLicenseStore delegate, DataSource dataSource, Path stateDir, boolean newIdConfirmed) {
+    /**
+     * @param expectExisting ENS_LICENSE_EXPECT_INSTALLATION_ID: the id must come from the database or the state
+     *                       directory, whatever the migration history says (the chart sets it whenever it mounts no
+     *                       license volume: a fresh or rebuilt database behind an existing installation looks new)
+     * @param newIdConfirmed ENS_LICENSE_NEW_INSTALLATION_ID: the operator accepts a new id; honoured only while the
+     *                       database holds no license and no revisions
+     */
+    public FirstInstallationIdGuard(JdbcLicenseStore delegate, DataSource dataSource, Path stateDir, String product,
+                                    boolean expectExisting, boolean newIdConfirmed) {
         this.delegate = delegate;
         this.dataSource = dataSource;
         this.stateDir = stateDir;
+        this.product = product;
+        this.expectExisting = expectExisting;
         this.newIdConfirmed = newIdConfirmed;
     }
 
     @Override
     public String installationId(String candidate) throws IOException {
-        if (!newIdConfirmed && delegate.storedInstallationId().isEmpty()
-                && !Files.exists(stateDir.resolve("installation-id")) && migratedBeforeLicenseTables()) {
-            String message = "This installation's id was kept in files by an earlier release, and neither the database"
-                    + " nor " + stateDir + " has it: mount the old license volume for one start (Helm:"
-                    + " persistence.license.enabled=true, replicaCount 1) so it is imported, or set"
-                    + " ENS_LICENSE_NEW_INSTALLATION_ID=true to start with a new id (licenses bound to the old one"
-                    + " then stop working)";
-            log.error(message);
-            throw new IOException(message);
+        if (delegate.storedInstallationId().isPresent() || Files.exists(stateDir.resolve("installation-id"))) {
+            return delegate.installationId(candidate); // the id there, or the one imported from the file
         }
-        return delegate.installationId(candidate);
+        if (!expectExisting && !migratedBeforeLicenseTables()) {
+            return delegate.installationId(candidate); // a new installation
+        }
+        if (newIdConfirmed && !hasLicenseRows()) {
+            log.error("ENS_LICENSE_NEW_INSTALLATION_ID is true: this installation gets a NEW id; licenses bound to an"
+                    + " earlier one no longer work here. Unset it once ReadyRoom has started.");
+            return delegate.installationId(candidate);
+        }
+        String message = "This installation's id is in neither the database nor " + stateDir + ": mount the old"
+                + " license volume for one start (Helm: persistence.license.enabled=true, replicaCount 1) so it is"
+                + " imported" + (hasLicenseRows() ? "" : ", or set ENS_LICENSE_NEW_INSTALLATION_ID=true to start with a"
+                + " new id (licenses bound to the old one then stop working)");
+        log.error(message);
+        throw new IOException(message);
+    }
+
+    /** Whether the database holds a license or revisions for this product (state that belongs to some id). */
+    boolean hasLicenseRows() throws IOException {
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement s = c.prepareStatement("SELECT (SELECT count(*) FROM ens_license_file WHERE product = ?)"
+                     + " + (SELECT count(*) FROM ens_license_revision WHERE product = ?)")) {
+            s.setString(1, product);
+            s.setString(2, product);
+            try (ResultSet r = s.executeQuery()) {
+                return r.next() && r.getLong(1) > 0;
+            }
+        } catch (SQLException e) {
+            throw new IOException("The license tables cannot be read: " + e.getMessage(), e);
+        }
     }
 
     boolean migratedBeforeLicenseTables() throws IOException {
