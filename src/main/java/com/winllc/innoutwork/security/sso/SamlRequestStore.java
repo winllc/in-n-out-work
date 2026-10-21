@@ -3,6 +3,7 @@ package com.winllc.innoutwork.security.sso;
 import com.winllc.innoutwork.model.SsoSamlRequest;
 import com.winllc.innoutwork.repository.SsoSamlRequestRepository;
 import com.winllc.innoutwork.security.ConsentBanner;
+import com.winllc.innoutwork.util.LogSafe;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -137,7 +138,7 @@ public class SamlRequestStore implements Saml2AuthenticationRequestRepository<Ab
         String browser = cookie(request, COOKIE_PREFIX + cookieSafe(relayState));
         if (browser == null || !MessageDigest.isEqual(sha256(browser).getBytes(StandardCharsets.US_ASCII),
                 row.getBrowserHash().getBytes(StandardCharsets.US_ASCII))) {
-            log.info("A SAML answer for RelayState {} came from a browser that did not start that sign-in", relayState);
+            log.info("A SAML answer for RelayState {} came from a browser that did not start that sign-in", LogSafe.of(relayState));
             return null;
         }
         return row;
