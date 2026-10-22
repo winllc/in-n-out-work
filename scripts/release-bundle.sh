@@ -77,7 +77,7 @@ short_name() {
 STAGING="$(mktemp -d "${TMPDIR:-/tmp}/release-bundle.XXXXXX")"
 trap 'rm -rf "$STAGING"' EXIT
 B="$STAGING/$NAME"
-mkdir -p "$B/license" "$B/images" "$B/windows-client/tasks"
+mkdir -p "$B/license" "$B/images" "$B/lib" "$B/windows-client/tasks"
 
 escape_sed() { printf '%s' "$1" | sed 's/[&|\\]/\\&/g'; }
 app_image_sed="$(escape_sed "$APP_IMAGE")"
@@ -86,8 +86,11 @@ version_sed="$(escape_sed "$VERSION")"
 sed "s|__READYROOM_IMAGE__|$app_image_sed|g" "$SRC/docker-compose.yml" > "$B/docker-compose.yml"
 sed "s|__VERSION__|$version_sed|g" "$SRC/README.md" > "$B/README.md"
 cp "$SRC/docker-compose.tls.yml" "$SRC/docker-compose.windows-auth.yml" "$SRC/env.template" "$B/"
-cp "$SRC/install.sh" "$SRC/upgrade.sh" "$SRC/backup.sh" "$SRC/restore.sh" "$B/"
-chmod 0755 "$B/install.sh" "$B/upgrade.sh" "$B/backup.sh" "$B/restore.sh"
+cp "$SRC/install.sh" "$SRC/upgrade.sh" "$SRC/backup.sh" "$SRC/restore.sh" "$SRC/compose.sh" "$B/"
+chmod 0755 "$B/install.sh" "$B/upgrade.sh" "$B/backup.sh" "$B/restore.sh" "$B/compose.sh"
+# Docker or Podman: the engine and compose command every script above uses.
+cp "$SRC/lib/engine.sh" "$B/lib/"
+chmod 0644 "$B/lib/engine.sh"
 cp "$SRC/license/README.txt" "$B/license/"
 printf '%s\n' "$VERSION" > "$B/VERSION"
 

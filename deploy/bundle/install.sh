@@ -1,13 +1,16 @@
 #!/usr/bin/env bash
 # ReadyRoom - first install. Safe to run again: it never overwrites .env, the license or the database.
 #
-#     ./install.sh
+#     ./install.sh [--engine docker|podman]
+#
+# Docker or Podman: see lib/engine.sh (CONTAINER_ENGINE=docker|podman also chooses; otherwise Docker if its
+# daemon answers, else Podman).
 #
 # 1. Loads the bundled images (images/*.tar), so no registry access is needed.
 # 2. Creates .env from env.template, with a random database password, and the license/, tls/ and
 #    kerberos/ directories.
 # 3. Stops and lists what to edit while .env still has CHANGE_ME values; run it again afterwards.
-# 4. Starts ReadyRoom with "docker compose up -d".
+# 4. Starts ReadyRoom with "docker compose up -d" (or podman-compose).
 # 5. Copies license/license.lic into the license volume if there is one and the volume has none;
 #    otherwise says where to upload the license (the license screen, /app/admin/license).
 set -euo pipefail
@@ -17,9 +20,11 @@ cd "$(dirname "$0")"
 say() { printf '%s\n' "$*"; }
 die() { printf 'install.sh: %s\n' "$*" >&2; exit 1; }
 
-command -v docker > /dev/null 2>&1 || die "docker is not installed or not on PATH."
-docker compose version > /dev/null 2>&1 || die "the Docker Compose plugin (docker compose) is required."
-docker info > /dev/null 2>&1 || die "cannot reach the Docker daemon (is it running, and may this user use it?)."
+# shellcheck source=lib/engine.sh
+. lib/engine.sh
+engine_args "$@"
+[ "${#ARGS[@]}" -eq 0 ] || die "unexpected argument: ${ARGS[0]} (usage: ./install.sh [--engine docker|podman])"
+engine_select
 
 # --- images ------------------------------------------------------------------------------------------
 load_images() {
@@ -28,7 +33,7 @@ load_images() {
         [ -e "$tar" ] || continue
         found=1
         say "Loading images from $tar ..."
-        docker load -i "$tar"
+        "$ENGINE" load -i "$tar"
     done
     if [ "$found" = 0 ]; then
         say "No images/ archive here; images will be pulled from the registry."
@@ -111,7 +116,7 @@ license_screen() {
 
 install_license() {
     local target=/var/lib/ens/readyroom/license.lic installed=0
-    if docker compose exec -T app test -s "$target" > /dev/null 2>&1; then
+    if service_exec app test -s "$target" < /dev/null > /dev/null 2>&1; then
         installed=1
     fi
     if [ ! -f license/license.lic ]; then
@@ -137,9 +142,10 @@ install_license() {
     fi
     # Written by the app's own user (so it can read and later replace it), then moved into place; the
     # same as "docker compose cp license/license.lic app:$target" without the ownership fix-up.
-    if ! docker compose exec -T app sh -c 'umask 007 && cat > "$1.tmp" && mv "$1.tmp" "$1"' sh "$target" \
+    # shellcheck disable=SC2016 # expanded by the shell in the container
+    if ! service_exec app sh -c 'umask 007 && cat > "$1.tmp" && mv "$1.tmp" "$1"' sh "$target" \
             < license/license.lic; then
-        say "Could not copy license/license.lic into the app container (is it running? docker compose ps)."
+        say "Could not copy license/license.lic into the app container (is it running? ./compose.sh ps)."
         say "Run this script again once it is, or upload the license at $(license_screen)"
         return 0
     fi
@@ -148,15 +154,27 @@ install_license() {
 }
 
 # --- start -------------------------------------------------------------------------------------------
-docker compose config --quiet
-docker compose up -d
+compose config > /dev/null
+compose up -d
 
 say ""
 install_license
 
 port="$(sed -n 's/^READYROOM_PORT=//p' .env | tail -n 1)"
+bind="$(sed -n 's/^READYROOM_BIND_ADDRESS=//p' .env | tail -n 1)"
 say ""
 say "ReadyRoom is starting (the first start takes a minute or two while the database schema is created)."
-say "  Status:  docker compose ps        (app becomes \"healthy\")"
-say "  Logs:    docker compose logs -f app"
-say "  Open:    $(sed -n 's/^APPLICATION_BASE_URL=//p' .env | tail -n 1)   (port ${port:-8181} on this host)"
+say "  Status:  ./compose.sh ps        (app becomes \"healthy\")"
+say "  Logs:    ./compose.sh logs -f app"
+say "  Open:    $(sed -n 's/^APPLICATION_BASE_URL=//p' .env | tail -n 1)   (published on ${bind:-0.0.0.0}:${port:-8181})"
+case "${bind:-0.0.0.0}" in
+    127.*|localhost|::1|\[::1\]) ;;
+    *)
+        if [ "$(sed -n 's/^SSL_ENABLED=//p' .env | tail -n 1)" != true ]; then
+            say ""
+            say "Warning: ReadyRoom is reachable from the network over plain HTTP on port ${port:-8181}. Turn TLS"
+            say "         on (README, \"TLS\") or put a TLS reverse proxy in front of it; for a proxy on this host,"
+            say "         set READYROOM_BIND_ADDRESS=127.0.0.1 in .env and run ./compose.sh up -d."
+        fi
+        ;;
+esac

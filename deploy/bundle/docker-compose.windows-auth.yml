@@ -7,18 +7,20 @@
 #
 # (with TLS as well: COMPOSE_FILE=docker-compose.yml:docker-compose.tls.yml:docker-compose.windows-auth.yml)
 #
-# Put the files in ./kerberos before starting - both must exist, or Docker creates empty directories
+# Put the files in ./kerberos before starting - both must exist, or the engine creates empty directories
 # in their place:
 #   kerberos/krb5.conf     your realm and domain controllers
 #   kerberos/http.keytab   the key for the HTTP/<host> service principal (see "Windows authentication"
 #                          in the ReadyRoom documentation for creating it with setspn and ktpass)
 #
-# Treat the keytab like a password. The container runs as user 185, group 0: chgrp 0 and chmod 0640 it.
+# Treat the keytab like a password. The container runs as user 185, group 0: chgrp 0 and chmod 0640 it
+# (with rootless Podman your own group is group 0 in the container, so chmod 0640 alone is enough).
 
 services:
   app:
     environment:
       APPLICATION_WINDOWSAUTH_KEYTABLOCATION: /etc/in-n-out/http.keytab
     volumes:
-      - ./kerberos/krb5.conf:/etc/krb5.conf:ro
-      - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro
+      # :Z relabels the files for SELinux (RHEL, Fedora); Docker without SELinux ignores it.
+      - ./kerberos/krb5.conf:/etc/krb5.conf:ro,Z
+      - ./kerberos/http.keytab:/etc/in-n-out/http.keytab:ro,Z

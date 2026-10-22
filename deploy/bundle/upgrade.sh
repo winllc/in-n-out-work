@@ -3,11 +3,13 @@
 #
 #     ./upgrade.sh /opt/readyroom-1.2.3     # the directory of the release running now
 #     ./upgrade.sh                          # when .env etc. are already in this directory
+#     ./upgrade.sh --engine podman ...      # Docker or Podman: see lib/engine.sh (default: Docker if
+#                                           # its daemon answers, else Podman; or CONTAINER_ENGINE=)
 #
 # Copies .env, license/, tls/ and kerberos/ from the previous release's directory (anything not already
 # here; nothing is overwritten), loads this release's images and recreates the containers with
-# "docker compose up -d". The database and the license (with this installation's id) live in named
-# Docker volumes shared by every release, so they are kept; the application updates its schema on
+# "docker compose up -d" (or podman-compose). The database and the license (with this installation's id)
+# live in named volumes shared by every release, so they are kept; the application updates its schema on
 # start. If the license volume holds no license yet, license/license.lic is copied in.
 #
 # Back up first, from the current release's directory: ./backup.sh
@@ -18,11 +20,13 @@ cd "$(dirname "$0")"
 say() { printf '%s\n' "$*"; }
 die() { printf 'upgrade.sh: %s\n' "$*" >&2; exit 1; }
 
-command -v docker > /dev/null 2>&1 || die "docker is not installed or not on PATH."
-docker compose version > /dev/null 2>&1 || die "the Docker Compose plugin (docker compose) is required."
-docker info > /dev/null 2>&1 || die "cannot reach the Docker daemon."
+# shellcheck source=lib/engine.sh
+. lib/engine.sh
+engine_args "$@"
+[ "${#ARGS[@]}" -le 1 ] || die "usage: ./upgrade.sh [--engine docker|podman] [previous-release-directory]"
+engine_select
 
-previous="${1:-}"
+previous="${ARGS[0]:-}"
 if [ -n "$previous" ]; then
     [ -d "$previous" ] || die "$previous is not a directory."
     previous="$(cd "$previous" && pwd)"
@@ -62,7 +66,7 @@ license_screen() {
 
 install_license() {
     local target=/var/lib/ens/readyroom/license.lic installed=0
-    if docker compose exec -T app test -s "$target" > /dev/null 2>&1; then
+    if service_exec app test -s "$target" < /dev/null > /dev/null 2>&1; then
         installed=1
     fi
     if [ ! -f license/license.lic ]; then
@@ -88,9 +92,10 @@ install_license() {
     fi
     # Written by the app's own user (so it can read and later replace it), then moved into place; the
     # same as "docker compose cp license/license.lic app:$target" without the ownership fix-up.
-    if ! docker compose exec -T app sh -c 'umask 007 && cat > "$1.tmp" && mv "$1.tmp" "$1"' sh "$target" \
+    # shellcheck disable=SC2016 # expanded by the shell in the container
+    if ! service_exec app sh -c 'umask 007 && cat > "$1.tmp" && mv "$1.tmp" "$1"' sh "$target" \
             < license/license.lic; then
-        say "Could not copy license/license.lic into the app container (is it running? docker compose ps)."
+        say "Could not copy license/license.lic into the app container (is it running? ./compose.sh ps)."
         say "Run this script again once it is, or upload the license at $(license_screen)"
         return 0
     fi
@@ -103,7 +108,7 @@ mkdir -p license tls kerberos
 for tar in images/*.tar; do
     [ -e "$tar" ] || continue
     say "Loading images from $tar ..."
-    docker load -i "$tar"
+    "$ENGINE" load -i "$tar"
 done
 
 # Settings added to env.template since the previous release are not in the old .env. They all have
@@ -134,13 +139,17 @@ case "$compose_file" in
         ;;
 esac
 
-docker compose config --quiet
-docker compose up -d --remove-orphans
+compose config > /dev/null
+compose up -d --remove-orphans
 
 say ""
 install_license
 say ""
-say "Upgraded to ReadyRoom $(cat VERSION). Check: docker compose ps   /   docker compose logs -f app"
+say "Upgraded to ReadyRoom $(cat VERSION). Check: ./compose.sh ps   /   ./compose.sh logs -f app"
+# The address and port come from .env, which an upgrade never changes: a loopback-only install stays so.
+bind="$(sed -n 's/^READYROOM_BIND_ADDRESS=//p' .env | tail -n 1)"
+port="$(sed -n 's/^READYROOM_PORT=//p' .env | tail -n 1)"
+say "Published on ${bind:-0.0.0.0}:${port:-8181} (READYROOM_BIND_ADDRESS and READYROOM_PORT in .env; unset means 0.0.0.0:8181)."
 if [ -n "$previous" ]; then
     say "Run ReadyRoom from $(pwd) from now on; $previous can be removed once you are satisfied."
 fi

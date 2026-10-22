@@ -1,15 +1,18 @@
 # ReadyRoom - production deployment.
 #
 # Everything site-specific lives in .env (made from env.template by install.sh); this file should not
-# need editing. Start, stop and inspect it from this directory:
+# need editing. Start, stop and inspect it from this directory, with Docker or Podman (./compose.sh
+# runs whichever compose command install.sh chose):
 #
-#     docker compose up -d
-#     docker compose ps
-#     docker compose logs -f app
+#     ./compose.sh up -d          # docker compose up -d   /   podman-compose up -d
+#     ./compose.sh ps
+#     ./compose.sh logs -f app
 #
 # What comes up:
 #   postgres   PostgreSQL 16 for ReadyRoom's own records (check-ins, roles, permissions, notes)
-#   app        ReadyRoom on port 8181, published on the host as READYROOM_PORT
+#   app        ReadyRoom on port 8181, published on the host as READYROOM_BIND_ADDRESS:READYROOM_PORT
+#              (default 0.0.0.0:8181, every interface; 127.0.0.1 keeps it to this host, e.g. behind a
+#              reverse proxy here). Keep the port at 1024 or above for rootless Podman.
 #
 # What does not: the LDAP directory / Active Directory and the SMTP server are the customer's own and
 # are configured in .env. Optional pieces are separate files, switched on with COMPOSE_FILE in .env:
@@ -19,12 +22,15 @@
 # The project name is fixed, so the named volumes (the database, the license with this installation's
 # id, and the audit log file) are the same ones whichever directory a release is unpacked into; upgrade.sh
 # relies on this. Never "docker compose down -v": it deletes them.
+#
+# Valid for Docker Compose 2.24 or later and podman-compose 1.3 or later: images are fully qualified (Podman has no
+# default registry) and the optional files' bind mounts carry :Z for SELinux hosts.
 
 name: readyroom
 
 services:
   postgres:
-    image: postgres:16
+    image: docker.io/library/postgres:16
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USERNAME:-readyroom}

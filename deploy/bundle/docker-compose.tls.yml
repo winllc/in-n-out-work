@@ -13,6 +13,7 @@
 # The image contains no keystore or truststore. With SSL_ENABLED=true and either one missing,
 # ReadyRoom refuses to start (and install.sh / upgrade.sh stop before starting it).
 # The container runs as user 185, group 0: make the files readable by group 0 (chgrp 0, chmod 0640).
+# With rootless Podman your own group is group 0 in the container, so chmod 0640 alone is enough.
 
 services:
   app:
@@ -22,4 +23,5 @@ services:
       SERVER_SSL_TRUSTSTORE: file:/etc/in-n-out/tls/truststore.p12
       SERVER_SSL_TRUSTSTORETYPE: PKCS12
     volumes:
-      - ./tls:/etc/in-n-out/tls:ro
+      # :Z relabels the directory for SELinux (RHEL, Fedora); Docker without SELinux ignores it.
+      - ./tls:/etc/in-n-out/tls:ro,Z
