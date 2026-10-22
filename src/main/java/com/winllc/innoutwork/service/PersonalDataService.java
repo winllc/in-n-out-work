@@ -102,6 +102,14 @@ public class PersonalDataService {
         this.audit = audit;
     }
 
+    /** Scheduled reports they own or receive; absent in tests that build this by hand. */
+    private com.winllc.innoutwork.export.ReportScheduleService reportSchedules;
+
+    @Autowired(required = false)
+    public void setReportSchedules(com.winllc.innoutwork.export.ReportScheduleService reportSchedules) {
+        this.reportSchedules = reportSchedules;
+    }
+
     // --- what is held ---------------------------------------------------------------------------------------------
 
     /** How many of each kind of record ReadyRoom holds about {@code dn}, for the erasure page. */
@@ -287,6 +295,9 @@ public class PersonalDataService {
                 groupManagers++;
             }
             counts.put("groupManagerOf", groupManagers);
+            if (reportSchedules != null) {
+                counts.put("reportSchedules", reportSchedules.forget(dn));
+            }
 
             Optional<UserRecord> record = users.findByDnIgnoreCase(dn);
             long access = 0;

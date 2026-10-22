@@ -3,10 +3,8 @@ package com.winllc.innoutwork.audit;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.Instant;
-import java.util.Base64;
 import java.util.List;
 import java.util.Optional;
 
@@ -22,7 +20,6 @@ public class AuditTokenService {
 
     private final AuditApiTokenRepository tokens;
     private final AuditLog audit;
-    private final SecureRandom random = new SecureRandom();
     private final Clock clock;
 
     @Autowired
@@ -45,14 +42,12 @@ public class AuditTokenService {
         if (cleanName.length() > 200) {
             cleanName = cleanName.substring(0, 200);
         }
-        byte[] bytes = new byte[32];
-        random.nextBytes(bytes);
-        String token = PREFIX + Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+        String token = TokenSecrets.generate(PREFIX);
 
         AuditApiToken record = new AuditApiToken();
         record.setName(cleanName);
-        record.setTokenHash(AuditJson.sha256Hex(token));
-        record.setTokenPrefix(token.substring(0, PREFIX.length() + 4));
+        record.setTokenHash(TokenSecrets.hash(token));
+        record.setTokenPrefix(TokenSecrets.prefix(token, PREFIX));
         record.setCreatedBy(createdBy);
         record.setCreatedAt(clock.instant());
         AuditApiToken saved = audit.inTransaction(() -> {
@@ -93,7 +88,7 @@ public class AuditTokenService {
         if (presented == null || !presented.startsWith(PREFIX) || presented.length() > 200) {
             return Optional.empty();
         }
-        Optional<AuditApiToken> found = tokens.findByTokenHash(AuditJson.sha256Hex(presented))
+        Optional<AuditApiToken> found = tokens.findByTokenHash(TokenSecrets.hash(presented))
                 .filter(AuditApiToken::isActive);
         found.ifPresent(t -> {
             Instant now = clock.instant();

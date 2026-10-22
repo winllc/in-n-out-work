@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
       layout:decorate="~{layout}">
 <head>
@@ -28,7 +28,7 @@
                         <div class="text-secondary mb-2"
                              th:text="${af.accounted() + ' of ' + af.expected() + ' expected users'}"></div>
                         <div class="progress progress-sm mb-2" th:if="${af.expected() > 0}">
-                            <div class="progress-bar bg-green" role="progressbar"
+                            <div class="progress-bar bg-green" role="progressbar" aria-label="Accounted for"
                                  th:style="${'width: ' + af.ratePercent() + '%'}"
                                  th:attr="aria-valuenow=${af.ratePercent()}" aria-valuemin="0" aria-valuemax="100"></div>
                         </div>

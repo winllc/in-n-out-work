@@ -59,6 +59,12 @@ public class UserRecord {
 
     private LocalTime averageLoginTime;
     private LocalTime chosenLoginTime;
+    /**
+     * The IANA time zone the person chose on their profile, for their times in reports, exports and the API; null
+     * for their site's (application.reports.site-time-zones) or the application's. V10.
+     */
+    @Column(length = 64)
+    private String timeZone;
 
     // Lazy, so it must stay out of toString/equals/hashCode: those run on detached records (logging,
     // comparisons) where touching it would throw, and PermissionRecord points back here.

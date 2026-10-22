@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout">
 <head>
     <meta charset="utf-8"/>
@@ -7,7 +7,8 @@
     <!-- The CSRF token, for the script below. Forms built with th:action carry it already. -->
     <meta name="_csrf" th:if="${_csrf != null}" th:content="${_csrf.token}"/>
     <meta name="_csrf_header" th:if="${_csrf != null}" th:content="${_csrf.headerName}"/>
-    <title layout:title-pattern="ReadyRoom">ReadyRoom</title>
+    <!-- Each page's own title first, so tabs and history tell pages apart (WCAG 2.4.2). -->
+    <title layout:title-pattern="$CONTENT_TITLE · ReadyRoom">ReadyRoom</title>
 
     <script th:attr="nonce=${cspNonce}">
         // Adds the CSRF token to every same-origin fetch() that can change something, so the pages that write
@@ -50,6 +51,8 @@
     <script th:src="@{/js/custom.js}"></script>
     <!-- Form confirmations and image fallbacks, bound from script: the CSP allows no inline handlers. -->
     <script th:src="@{/js/behaviours.js}"></script>
+    <!-- Accessibility repairs to what the table, calendar and chart libraries draw (WCAG 2.1 AA). -->
+    <script th:src="@{/js/a11y.js}"></script>
 
 </head>
 <!--
@@ -57,6 +60,8 @@
   they are not rendered at all, and the body drops the room app.css reserves for them.
 -->
 <body th:classappend="${licenseInfo != null and licenseInfo.classificationBanners} ? '' : 'no-classification'">
+<!-- Past the navigation to the page's content, for keyboard and screen reader users (WCAG 2.4.1). -->
+<a class="visually-hidden-focusable a11y-skip-link" href="#main-content">Skip to main content</a>
 
 <div class="classification-bar classification-bar-top"
      th:if="${licenseInfo != null and licenseInfo.classificationBanners}"
@@ -162,6 +167,15 @@
                             <span class="nav-link-title">Metrics</span>
                         </a>
                     </li>
+                    <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')"
+                        th:if="${licenseInfo == null or licenseInfo.isEnabled('metrics')}">
+                        <a class="nav-link" th:href="@{/app/reports/schedules}">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <i class="ti ti-calendar-time"></i>
+                            </span>
+                            <span class="nav-link-title">Scheduled reports</span>
+                        </a>
+                    </li>
                     <li class="nav-item" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
                         <a class="nav-link" th:href="@{/app/settings}">
                             <span class="nav-link-icon d-md-none d-lg-inline-block">
@@ -194,6 +208,15 @@
                                 <i class="ti ti-shield-lock"></i>
                             </span>
                             <span class="nav-link-title">Privacy</span>
+                        </a>
+                    </li>
+                    <!-- Public API tokens and webhooks. -->
+                    <li class="nav-item" sec:authorize="hasAuthority('ADMIN')">
+                        <a class="nav-link" th:href="@{/app/admin/integrations}">
+                            <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                <i class="ti ti-plug-connected"></i>
+                            </span>
+                            <span class="nav-link-title">Integrations</span>
                         </a>
                     </li>
                     <!-- Open in every license state, like the license screen: the audit trail stays available. -->
@@ -235,6 +258,7 @@
             <div class="navbar-nav flex-row align-items-center ms-auto">
 
                 <div class="nav-item me-3 d-none d-md-block" sec:authorize="hasAnyAuthority('ADMIN', 'MANAGER')">
+                    <label class="visually-hidden" for="dt">System date</label>
                     <input class="form-control form-control-sm" id="dt" aria-describedby="dtHelp">
                     <div id="dtHelp" class="form-hint text-center mb-0">
                         <span th:text="'System Date ('+${systemTimeZone}+')'"></span>
@@ -340,11 +364,12 @@
         </div>
 
         <div class="page-body">
-            <div class="container-xl">
-                <main layout:fragment="content">
+            <!-- The main landmark wraps the page's content (which replaces the fragment element itself). -->
+            <main class="container-xl" id="main-content" tabindex="-1">
+                <div layout:fragment="content">
                     <!-- Child pages inject content here -->
-                </main>
-            </div>
+                </div>
+            </main>
         </div>
 
         <footer class="footer footer-transparent d-print-none">

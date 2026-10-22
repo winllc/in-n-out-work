@@ -82,6 +82,10 @@ dependencies {
 
     implementation 'org.springframework.boot:spring-boot-starter-mail'
 
+    // --- Public API (/api/v1): its OpenAPI 3 document, generated from the controllers and served at
+    // /api/v1/openapi (no Swagger UI is bundled) ---
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-api:3.1.1'
+
     implementation 'nz.net.ultraq.thymeleaf:thymeleaf-layout-dialect'
     implementation 'org.thymeleaf.extras:thymeleaf-extras-springsecurity6'
 
@@ -123,4 +127,19 @@ springBoot {
 
 test {
     useJUnitPlatform()
+    // ./gradlew test --tests '*OpenApiDocumentTest' -Dopenapi.update=true regenerates docs/api/readyroom-api-v1.json.
+    if (System.getProperty('openapi.update')) {
+        systemProperty 'openapi.update', System.getProperty('openapi.update')
+    }
+}
+// ReadyRoom with seeded data on http://localhost:8199 (-Pa11y.port=...), for the accessibility checks in a11y/
+// (axe-core through Playwright; CI's accessibility job). Test code: an in-memory directory and database and the
+// test license key, never anything shipped.
+tasks.register('a11yServer', JavaExec) {
+    group = 'verification'
+    description = 'Runs ReadyRoom with seeded data for the axe-core accessibility checks (a11y/)'
+    dependsOn 'testClasses'
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'com.winllc.innoutwork.a11y.A11yServer'
+    systemProperty 'a11y.port', (project.findProperty('a11y.port') ?: '8199')
 }

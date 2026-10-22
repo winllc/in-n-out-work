@@ -246,6 +246,20 @@ ens:
       protocol: ${ENS_AUDIT_SYSLOG_PROTOCOL:tcp}
       facility: ${ENS_AUDIT_SYSLOG_FACILITY:local0}
 
+
+# The public API's OpenAPI 3 document (api.OpenApiConfig): /api/v1 only, served at /api/v1/openapi and
+# /api/v1/openapi.yaml. No Swagger UI is bundled.
+springdoc:
+  api-docs:
+    path: /api/v1/openapi
+  paths-to-match: /api/v1/**
+  packages-to-scan: com.winllc.innoutwork.api
+  writer-with-order-by-keys: true
+  writer-with-default-pretty-printer: true
+  override-with-generic-response: false
+  default-produces-media-type: application/json
+  show-actuator: false
+
 management:
   endpoints:
     web:

@@ -52,6 +52,9 @@ public final class AuditRequestInfo {
         if (auth == null || !auth.isAuthenticated() || auth instanceof AnonymousAuthenticationToken) {
             return null;
         }
+        if (auth instanceof ServiceAuthentication service) {
+            return service.auditActor();
+        }
         List<String> roles = auth.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .filter(Objects::nonNull)

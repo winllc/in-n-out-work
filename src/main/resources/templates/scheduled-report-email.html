@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+    <title>ReadyRoom report</title>
+</head>
+<body>
+
+<p th:text="'Hello ' + ${to} + ','"></p>
+
+<p>The scheduled ReadyRoom report <strong th:text="${name}"></strong> is attached: the attendance of
+    <span th:text="${group}"></span> from <span th:text="${from}"></span> to <span th:text="${until}"></span>
+    (<span th:text="${rows}"></span> rows; each person's times are in their own time zone).</p>
+
+<p>It contains personal data. Keep it where only people allowed to see it can, and delete it when you no longer
+    need it.</p>
+
+<p>To change or stop it: <a th:href="${schedulesUrl}" th:text="${schedulesUrl}"></a></p>
+
+</body>
+</html>

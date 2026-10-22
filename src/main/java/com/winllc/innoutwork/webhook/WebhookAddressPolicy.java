@@ -1,0 +1,297 @@
+package com.winllc.innoutwork.webhook;
+
+import java.net.Inet4Address;
+import java.net.Inet6Address;
+import java.net.InetAddress;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.UnknownHostException;
+import java.time.Duration;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+/**
+ * Where webhooks may be sent: the guard against server-side request forgery. A webhook URL must be
+ * {@code https://}, name a host and carry no user name or password. Every address its host resolves to must be a
+ * public one: loopback, unspecified, link-local, private (RFC 1918, unique local), shared (100.64/10), reserved,
+ * benchmarking, broadcast and multicast addresses are refused, including IPv4 ones inside IPv6 (mapped, compatible,
+ * NAT64, 6to4, ISATAP), unless an allow-listed range (application.webhooks.allowed-cidrs) holds them. Cloud metadata
+ * services (169.254.169.254, 169.254.170.2, 168.63.129.16, 100.100.100.200, fd00:ec2::254, fd20:ce::254),
+ * multicast, and IPv6 translation and tunnel ranges (SIIT ::ffff:0:0:0/96, Teredo 2001::/32, 64:ff9b:1::/48) are
+ * refused whatever the allow-list says.
+ *
+ * <p>The check runs when a webhook is saved and again on every delivery, and the delivery connects to the address
+ * that was checked ({@link WebhookTransport}), so a name that resolves to a public address when saved and to an
+ * internal one later (DNS rebinding) is refused then.
+ */
+public class WebhookAddressPolicy {
+
+    /** Looks a host up: {@link InetAddress#getAllByName} outside tests. */
+    @FunctionalInterface
+    public interface HostResolver {
+        InetAddress[] resolve(String host) throws UnknownHostException;
+    }
+
+    static final int MAX_URL = 2000;
+
+    private static final List<Cidr> METADATA = List.of(
+            Cidr.parse("169.254.169.254/32"), Cidr.parse("169.254.170.2/32"), Cidr.parse("100.100.100.200/32"),
+            Cidr.parse("168.63.129.16/32"),   // Azure's wire server
+            Cidr.parse("fd00:ec2::254/128"), Cidr.parse("fd20:ce::254/128"));
+
+    /**
+     * IPv6 ranges that reach IPv4 hosts in ways this guard cannot check (translators and tunnels): refused outright,
+     * whatever the allow-list says. IPv4-mapped addresses (::ffff:0:0/96) are listed for completeness; the JDK
+     * turns them into plain IPv4 addresses, which are then checked as such.
+     */
+    private static final List<Cidr> TUNNELS = List.of(
+            Cidr.parse("::ffff:0:0/96"),      // IPv4-mapped
+            Cidr.parse("::ffff:0:0:0/96"),    // IPv4-translated (SIIT)
+            Cidr.parse("2001::/32"),          // Teredo
+            Cidr.parse("64:ff9b:1::/48"));    // local-use IPv4/IPv6 translation
+
+    private static final List<Cidr> SPECIAL_V4 = List.of(
+            Cidr.parse("0.0.0.0/8"),          // "this network", unspecified
+            Cidr.parse("10.0.0.0/8"),         // private
+            Cidr.parse("100.64.0.0/10"),      // shared address space (carrier-grade NAT)
+            Cidr.parse("127.0.0.0/8"),        // loopback
+            Cidr.parse("169.254.0.0/16"),     // link-local
+            Cidr.parse("172.16.0.0/12"),      // private
+            Cidr.parse("192.0.0.0/24"),       // IETF protocol assignments
+            Cidr.parse("192.0.2.0/24"),       // documentation
+            Cidr.parse("192.168.0.0/16"),     // private
+            Cidr.parse("198.18.0.0/15"),      // benchmarking
+            Cidr.parse("198.51.100.0/24"),    // documentation
+            Cidr.parse("203.0.113.0/24"),     // documentation
+            Cidr.parse("224.0.0.0/4"),        // multicast
+            Cidr.parse("240.0.0.0/4"));       // reserved, and broadcast
+
+    private static final List<Cidr> SPECIAL_V6 = List.of(
+            Cidr.parse("::/128"),             // unspecified
+            Cidr.parse("::1/128"),            // loopback
+            Cidr.parse("fc00::/7"),           // unique local
+            Cidr.parse("fe80::/10"),          // link-local
+            Cidr.parse("fec0::/10"),          // site-local (deprecated)
+            Cidr.parse("ff00::/8"),           // multicast
+            Cidr.parse("2001:db8::/32"),      // documentation
+            Cidr.parse("100::/64"));          // discard
+
+    private final List<Cidr> allowed;
+    private final HostResolver resolver;
+
+    public WebhookAddressPolicy(List<Cidr> allowed, HostResolver resolver) {
+        this.allowed = List.copyOf(allowed);
+        this.resolver = resolver;
+    }
+
+    public static WebhookAddressPolicy of(List<String> allowedCidrs) {
+        return new WebhookAddressPolicy(allowedCidrs.stream().map(Cidr::parse).toList(), InetAddress::getAllByName);
+    }
+
+    /** The URL, if a webhook may be sent to it at all (its host is checked by {@link #resolve}). */
+    public URI checkUrl(String url) throws WebhookRefusedException {
+        if (url == null || url.isBlank()) {
+            throw new WebhookRefusedException("Enter the endpoint's URL.");
+        }
+        if (url.length() > MAX_URL) {
+            throw new WebhookRefusedException("The URL is longer than " + MAX_URL + " characters.");
+        }
+        URI uri;
+        try {
+            uri = new URI(url.trim());
+        } catch (URISyntaxException e) {
+            throw new WebhookRefusedException("That is not a URL.");
+        }
+        if (!"https".equals(uri.getScheme() == null ? null : uri.getScheme().toLowerCase(Locale.ROOT))) {
+            throw new WebhookRefusedException("Webhooks are sent over HTTPS only: the URL must start with https://.");
+        }
+        if (uri.getHost() == null || uri.getHost().isBlank()) {
+            throw new WebhookRefusedException("The URL names no host.");
+        }
+        if (uri.getRawUserInfo() != null) {
+            throw new WebhookRefusedException("The URL may not carry a user name or password.");
+        }
+        if (uri.getRawFragment() != null) {
+            throw new WebhookRefusedException("The URL may not have a #fragment.");
+        }
+        if (uri.getPort() == 0 || uri.getPort() > 65535) {
+            throw new WebhookRefusedException("The URL's port is out of range.");
+        }
+        return uri;
+    }
+
+    /**
+     * Every address {@code host} resolves to, if all of them may be sent to.
+     *
+     * @throws WebhookRefusedException when the host does not resolve, or any of its addresses is refused
+     */
+    public List<InetAddress> resolve(String host) throws WebhookRefusedException {
+        return resolve(host, DEFAULT_RESOLVE_TIMEOUT);
+    }
+
+    /** The longest a lookup may take when no try's deadline bounds it (saving a webhook). */
+    static final Duration DEFAULT_RESOLVE_TIMEOUT = Duration.ofSeconds(10);
+
+    /** Lookups at once. */
+    static final int LOOKUP_THREADS = 4;
+
+    /**
+     * Lookups run here, so that one the system resolver does not answer (it has no timeout of its own that Java can
+     * set, and retries can take minutes) is abandoned at the caller's deadline: a fixed pool of
+     * {@link #LOOKUP_THREADS} with a bounded queue. A lookup the pool cannot take, or that waits in its queue past the
+     * deadline, never started: {@link LookupDeferredException}, which does not count against the endpoint.
+     */
+    private final ThreadPoolExecutor lookups = lookupPool();
+
+    private static ThreadPoolExecutor lookupPool() {
+        ThreadPoolExecutor pool = new ThreadPoolExecutor(LOOKUP_THREADS, LOOKUP_THREADS, 60, TimeUnit.SECONDS,
+                new LinkedBlockingQueue<>(100), r -> {
+                    Thread t = new Thread(r, "webhook-dns");
+                    t.setDaemon(true);
+                    return t;
+                });
+        pool.allowCoreThreadTimeOut(true);
+        return pool;
+    }
+
+    /**
+     * {@link #resolve(String)} within {@code timeout}.
+     *
+     * @throws WebhookRefusedException also when the lookup does not finish in time
+     */
+    public List<InetAddress> resolve(String host, Duration timeout) throws WebhookRefusedException {
+        String bare = host.startsWith("[") && host.endsWith("]") ? host.substring(1, host.length() - 1) : host;
+        InetAddress[] addresses;
+        Future<InetAddress[]> lookup;
+        java.util.concurrent.atomic.AtomicBoolean started = new java.util.concurrent.atomic.AtomicBoolean();
+        try {
+            lookup = lookups.submit(() -> {
+                started.set(true);
+                return resolver.resolve(bare);
+            });
+        } catch (RejectedExecutionException e) {
+            throw new LookupDeferredException("Too many lookups of webhook hosts are waiting; " + bare
+                    + " was not looked up.");
+        }
+        try {
+            addresses = lookup.get(Math.max(1, timeout.toMillis()), TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            lookup.cancel(true);
+            if (!started.get()) {
+                throw new LookupDeferredException("The lookup of " + bare + " waited for a free lookup thread past"
+                        + " its deadline; not tried.");
+            }
+            throw new WebhookRefusedException("The host " + bare + " did not resolve within " + timeout.toSeconds()
+                    + " seconds.");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new WebhookRefusedException("Interrupted while looking up " + bare + ".");
+        } catch (ExecutionException e) {
+            throw new WebhookRefusedException("The host " + bare + " does not resolve.");
+        }
+        if (addresses == null || addresses.length == 0) {
+            throw new WebhookRefusedException("The host " + bare + " does not resolve.");
+        }
+        for (InetAddress address : addresses) {
+            String refusal = refusal(address);
+            if (refusal != null) {
+                throw new WebhookRefusedException("The host " + bare + " resolves to " + address.getHostAddress()
+                        + ", " + refusal + ".");
+            }
+        }
+        return List.of(addresses);
+    }
+
+    /** Why {@code address} may not be sent to, or null when it may. */
+    public String refusal(InetAddress address) {
+        for (Cidr metadata : METADATA) {
+            if (metadata.contains(address)) {
+                return "a cloud metadata address, which webhooks are never sent to";
+            }
+        }
+        for (Cidr tunnel : TUNNELS) {
+            if (tunnel.contains(address)) {
+                return "an IPv6 translation or tunnel address (SIIT, Teredo, NAT64 local use), which webhooks are never"
+                        + " sent to";
+            }
+        }
+        Inet4Address embedded = embeddedIpv4(address);
+        if (embedded != null) {
+            String inner = refusal(embedded);
+            if (inner != null) {
+                return inner;
+            }
+        }
+        if (address.isMulticastAddress()) {
+            return "a multicast address";
+        }
+        if (!special(address)) {
+            return null;
+        }
+        for (Cidr range : allowed) {
+            if (range.contains(address)) {
+                return null;
+            }
+        }
+        return "a loopback, private, link-local or reserved address; to allow it, add its range to "
+                + "application.webhooks.allowed-cidrs";
+    }
+
+    private static boolean special(InetAddress address) {
+        if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()) {
+            return true;
+        }
+        List<Cidr> ranges = address instanceof Inet4Address ? SPECIAL_V4 : SPECIAL_V6;
+        return ranges.stream().anyMatch(r -> r.contains(address));
+    }
+
+    /**
+     * The IPv4 address inside an IPv6 one that carries it: IPv4-mapped (::ffff:0:0/96), IPv4-compatible (::/96),
+     * NAT64 (64:ff9b::/96) and 6to4 (2002::/16). Null otherwise.
+     */
+    static Inet4Address embeddedIpv4(InetAddress address) {
+        if (!(address instanceof Inet6Address)) {
+            return null;
+        }
+        byte[] a = address.getAddress();
+        byte[] v4 = null;
+        if (allZero(a, 0, 10) && ((a[10] == (byte) 0xFF && a[11] == (byte) 0xFF) || (a[10] == 0 && a[11] == 0))) {
+            if (allZero(a, 0, 12) && allZero(a, 12, 15) && (a[15] == 0 || a[15] == 1)) {
+                return null; // :: and ::1, handled as IPv6
+            }
+            v4 = new byte[]{a[12], a[13], a[14], a[15]};
+        } else if (a[0] == 0x00 && a[1] == 0x64 && a[2] == (byte) 0xFF && a[3] == (byte) 0x9B && allZero(a, 4, 12)) {
+            v4 = new byte[]{a[12], a[13], a[14], a[15]};
+        } else if (a[0] == 0x20 && a[1] == 0x02) {
+            v4 = new byte[]{a[2], a[3], a[4], a[5]};
+        } else if ((a[8] == 0 || a[8] == 0x02) && a[9] == 0 && a[10] == 0x5E && a[11] == (byte) 0xFE) {
+            // ISATAP: an interface id of ::5efe:a.b.c.d (or 200:5efe:a.b.c.d) under any prefix.
+            v4 = new byte[]{a[12], a[13], a[14], a[15]};
+        }
+        if (v4 == null) {
+            return null;
+        }
+        try {
+            return (Inet4Address) InetAddress.getByAddress(v4);
+        } catch (UnknownHostException e) {
+            return null;
+        }
+    }
+
+    private static boolean allZero(byte[] a, int from, int to) {
+        for (int i = from; i < to; i++) {
+            if (a[i] != 0) {
+                return false;
+            }
+        }
+        return true;
+    }
+}

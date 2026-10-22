@@ -53,13 +53,23 @@ public class ClientRateLimiter {
 
     /** Counts one more for {@code client} and says whether that keeps it within the limit. */
     public Outcome count(String client) {
-        if (perMinute <= 0) {
+        return count(client, perMinute);
+    }
+
+    /**
+     * Counts one more for {@code client} against a limit of its own (a public API token's), and says whether that
+     * keeps it within it.
+     *
+     * @param limit how many {@code client} may have counted per minute; 0 or less for no limit
+     */
+    public Outcome count(String client, int limit) {
+        if (limit <= 0) {
             return Outcome.WITHIN;
         }
         int count = windows.get(client == null ? "" : client, c -> new AtomicInteger()).incrementAndGet();
-        if (count <= perMinute) {
+        if (count <= limit) {
             return Outcome.WITHIN;
         }
-        return count == perMinute + 1 ? Outcome.FIRST_OVER : Outcome.OVER;
+        return count == limit + 1 ? Outcome.FIRST_OVER : Outcome.OVER;
     }
 }

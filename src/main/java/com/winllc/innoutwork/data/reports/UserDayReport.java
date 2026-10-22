@@ -27,6 +27,12 @@ public class UserDayReport implements Comparable<UserDayReport> {
     private String status;
 
     public static UserDayReport build(LocalDate date, UserEventRecord userEventRecord, List<CheckInOutRecord> records){
+        return build(date, userEventRecord, records, java.time.ZoneId.systemDefault());
+    }
+
+    /** The day's report, its times in {@code zone} (the person's: service.TimeZones). */
+    public static UserDayReport build(LocalDate date, UserEventRecord userEventRecord, List<CheckInOutRecord> records,
+                                      java.time.ZoneId zone){
         UserDayReport dayReport = new UserDayReport();
         dayReport.day = date;
         if(userEventRecord != null){
@@ -38,12 +44,12 @@ public class UserDayReport implements Comparable<UserDayReport> {
         if(!CollectionUtils.isEmpty(records)){
             Optional<CheckInOutRecord> checkInTime = getCheckInTime(records);
             if(checkInTime.isPresent()){
-                dayReport.checkInTime = checkInTime.get().getZonedDateTimestamp();
+                dayReport.checkInTime = checkInTime.get().getTimestamp().withZoneSameInstant(zone);
             }
 
             Optional<CheckInOutRecord> checkOutTime = getCheckOutTime(records);
             if(checkOutTime.isPresent()){
-                dayReport.checkOutTime = checkOutTime.get().getZonedDateTimestamp();
+                dayReport.checkOutTime = checkOutTime.get().getTimestamp().withZoneSameInstant(zone);
             }
         }
 

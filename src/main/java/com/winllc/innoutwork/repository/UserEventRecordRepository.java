@@ -56,4 +56,20 @@ public interface UserEventRecordRepository  extends JpaRepository<UserEventRecor
     /** The days an approved request put on the calendar, from {@code from} on. */
     @Query("select e from UserEventRecord e where e.requestId = :requestId and e.date >= :from")
     List<UserEventRecord> findByRequestIdFrom(@Param("requestId") Long requestId, @Param("from") LocalDate from);
+
+    /** Days with a status other than {@code standard} between two days, both included, a page at a time. */
+    @Query("select e from UserEventRecord e where e.status <> :standard and e.date >= :from and e.date <= :to")
+    org.springframework.data.domain.Page<UserEventRecord> findPageOtherThanBetween(
+            @Param("standard") com.winllc.innoutwork.constant.UserStatusEnum standard,
+            @Param("from") LocalDate from, @Param("to") LocalDate to,
+            org.springframework.data.domain.Pageable pageable);
+
+    /** {@link #findPageOtherThanBetween} for the people given, by lower-cased DN. */
+    @Query("select e from UserEventRecord e where lower(e.dn) in :dns and e.status <> :standard"
+            + " and e.date >= :from and e.date <= :to")
+    org.springframework.data.domain.Page<UserEventRecord> findPageByLowercaseDnInOtherThanBetween(
+            @Param("dns") Collection<String> dns,
+            @Param("standard") com.winllc.innoutwork.constant.UserStatusEnum standard,
+            @Param("from") LocalDate from, @Param("to") LocalDate to,
+            org.springframework.data.domain.Pageable pageable);
 }

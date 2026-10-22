@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org">
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
 <body>
 
 <!--
@@ -13,7 +13,9 @@
             <div th:each="entry : ${mix}"
                  class="progress-bar" th:classappend="${entry.colorClass()}" role="progressbar"
                  th:style="${'width: ' + entry.percentOf(total) + '%'}"
-                 th:title="${entry.label() + ': ' + entry.count()}"></div>
+                 th:title="${entry.label() + ': ' + entry.count()}"
+                 th:attr="aria-label=${entry.label() + ': ' + entry.count()},aria-valuenow=${entry.percentOf(total)}"
+                 aria-valuemin="0" aria-valuemax="100"></div>
         </div>
         <div class="row g-1">
             <div class="col-12 d-flex align-items-center" th:each="entry : ${mix}">

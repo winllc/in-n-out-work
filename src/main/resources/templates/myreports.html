@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
       layout:decorate="~{layout}">
 <head>
@@ -194,7 +194,8 @@
                             <div class="progress progress-sm flex-grow-1" th:if="${r.attendance().workingDays() > 0}">
                                 <div class="progress-bar bg-green" role="progressbar"
                                      th:style="${'width: ' + r.attendance().percentOfWorkingDays(r.attendance().checkedIn()) + '%'}"
-                                     th:attr="aria-valuenow=${r.attendance().checkedInPercent()}" aria-valuemin="0" aria-valuemax="100"></div>
+                                     th:attr="aria-valuenow=${r.attendance().checkedInPercent()},aria-label=${'Days checked in, ' + r.name()}"
+                                     aria-valuemin="0" aria-valuemax="100"></div>
                             </div>
                         </div>
                     </td>

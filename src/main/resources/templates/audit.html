@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
       layout:decorate="~{layout}">
 <head>
@@ -168,16 +168,22 @@
                th:text="${'Page ' + (events.number + 1) + ' of ' + events.totalPages}">Page 1 of 1</p>
             <ul class="pagination m-0 ms-auto">
                 <li class="page-item" th:classappend="${events.first} ? 'disabled'">
-                    <a class="page-link" id="audit-prev"
+                    <a class="page-link" id="audit-prev" th:unless="${events.first}"
                        th:href="@{/app/admin/audit} + '?page=' + ${events.number - 1} + ${query.isEmpty() ? '' : '&' + query}">
-                        <i class="ti ti-chevron-left"></i> prev
+                        <i class="ti ti-chevron-left" aria-hidden="true"></i> prev
                     </a>
+                    <span class="page-link" th:if="${events.first}" aria-disabled="true">
+                        <i class="ti ti-chevron-left" aria-hidden="true"></i> prev
+                    </span>
                 </li>
                 <li class="page-item" th:classappend="${events.last} ? 'disabled'">
-                    <a class="page-link" id="audit-next"
+                    <a class="page-link" id="audit-next" th:unless="${events.last}"
                        th:href="@{/app/admin/audit} + '?page=' + ${events.number + 1} + ${query.isEmpty() ? '' : '&' + query}">
-                        next <i class="ti ti-chevron-right"></i>
+                        next <i class="ti ti-chevron-right" aria-hidden="true"></i>
                     </a>
+                    <span class="page-link" th:if="${events.last}" aria-disabled="true">
+                        next <i class="ti ti-chevron-right" aria-hidden="true"></i>
+                    </span>
                 </li>
             </ul>
         </div>
