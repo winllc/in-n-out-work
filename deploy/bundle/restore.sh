@@ -21,7 +21,10 @@ die() { printf 'restore.sh: %s\n' "$*" >&2; exit 1; }
 engine_args "$@"
 dump="${ARGS[0]:-}"
 license="${ARGS[1]:-}"
-[ -n "$dump" ] && [ "${#ARGS[@]}" -le 2 ] || { sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 2; }
+if [ -z "$dump" ] || [ "${#ARGS[@]}" -gt 2 ]; then
+    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' >&2
+    exit 2
+fi
 [ -f "$dump" ] || die "$dump not found."
 [ -z "$license" ] || [ -f "$license" ] || die "$license not found."
 [ -f .env ] || die "no .env here: run this from the directory ReadyRoom was installed from."
