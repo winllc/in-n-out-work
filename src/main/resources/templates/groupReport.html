@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
       layout:decorate="~{layout}">
 <head>
@@ -56,8 +56,29 @@
 <span layout:fragment="page-title">Group Report</span>
 
 <div layout:fragment="page-actions">
+    <!-- CSV and XLSX are made on the server, streamed, and audited there (data.exported). -->
+    <form th:if="${form != null and report != null}" th:action="@{/app/export/group-report}" method="post"
+          class="d-inline-flex gap-2 align-items-center" id="export-report-form">
+        <input type="hidden" name="groupDn" th:value="${form.groupDn}">
+        <input type="hidden" name="fromDate" th:value="${report.fromDate}">
+        <input type="hidden" name="toDate" th:value="${report.toDate}">
+        <label class="visually-hidden" for="export-zones">Times in</label>
+        <select class="form-select" name="zones" id="export-zones" title="Whose time zone the times are in">
+            <option value="person" selected>Each person's time zone</option>
+            <option value="mine">My time zone</option>
+        </select>
+        <button type="submit" class="btn" name="format" value="csv" id="download-csv">
+            <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i>CSV
+        </button>
+        <button type="submit" class="btn" name="format" value="xlsx" id="download-xlsx">
+            <i class="ti ti-file-spreadsheet me-1" aria-hidden="true"></i>Excel
+        </button>
+    </form>
+    <a class="btn" th:href="@{/app/reports/schedules(groupDn=${form != null ? form.groupDn : ''})}" id="schedule-report">
+        <i class="ti ti-calendar-time me-1" aria-hidden="true"></i>Schedule
+    </a>
     <button class="btn btn-primary" id="download-pdf">
-        <i class="ti ti-download me-1"></i>Download PDF
+        <i class="ti ti-download me-1" aria-hidden="true"></i>Download PDF
     </button>
 </div>
 

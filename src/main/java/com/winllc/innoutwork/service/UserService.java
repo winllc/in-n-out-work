@@ -118,10 +118,18 @@ public class UserService {
         UserRecord userRecord = userRecords.findOrCreate(dn, () -> newRecord(dn));
         String oldNotes = userRecord.getNotes();
         LocalTime oldLoginTime = userRecord.getChosenLoginTime();
+        String oldTimeZone = userRecord.getTimeZone();
+        String newTimeZone = form.getTimeZone() == null || form.getTimeZone().isBlank() ? null : form.getTimeZone().trim();
+        if (newTimeZone != null && TimeZones.parse(newTimeZone) == null) {
+            throw InvalidRequestException.badRequest("invalid_time_zone", "Not a time zone: " + newTimeZone);
+        }
         return audit.inTransaction(() -> {
             userRecord.setNotes(form.getNotes());
             if(StringUtils.isNotBlank(form.getLoginTime())) {
                 userRecord.setChosenLoginTime(LocalTime.parse(form.getLoginTime(), DateTimeFormatter.ISO_TIME));
+            }
+            if (form.getTimeZone() != null) {
+                userRecord.setTimeZone(newTimeZone);
             }
             UserRecord saved = userRecordRepository.save(userRecord);
             AuditEntry entry = AuditEntry.of(AuditEntry.Category.DATA, "person.updated")
@@ -131,6 +139,9 @@ public class UserService {
                 // That the notes changed, not what they say: the audit trail is kept when a person's data is erased
                 // (RR-12), so it holds no notes.
                 entry.detail("notesChanged", true);
+            }
+            if (!Objects.equals(oldTimeZone, saved.getTimeZone())) {
+                entry.change("timeZone", oldTimeZone, saved.getTimeZone());
             }
             if (!Objects.equals(oldLoginTime, saved.getChosenLoginTime())) {
                 entry.change("expectedLoginTime", Objects.toString(oldLoginTime, null),

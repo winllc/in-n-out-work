@@ -152,7 +152,7 @@ public class LdapService {
                 PagedResultsCookie cookie = processor.getCookie();
                 if (previousCookie != null && previousCookie.equals(cookie)) {
                     log.warn("Search under {} for {} stopped after {} page(s): the directory returned the "
-                            + "same paging cookie twice, so results may be incomplete", base, filter, pages);
+                            + "same paging cookie twice, so results may be incomplete", LogSafe.of(base), LogSafe.of(filter), pages);
                     break;
                 }
                 previousCookie = cookie;
@@ -162,12 +162,13 @@ public class LdapService {
                     // than returning a truncated answer and saying so.
                     log.warn("Search under {} for {} hit the {}-page limit after {} entries; returning what "
                             + "was read. Raise application.ldap.max-pages if this result set is genuinely "
-                            + "this large", base, filter, maxPages, results.size());
+                            + "this large", LogSafe.of(base), LogSafe.of(filter), maxPages, results.size());
                     break;
                 }
             } while (true);
 
-            log.trace("Search under {} for {} read {} entries in {} page(s)", base, filter, results.size(), pages);
+            log.trace("Search under {} for {} read {} entries in {} page(s)", LogSafe.of(base), LogSafe.of(filter),
+                    results.size(), pages);
             return results;
         }, true, false, false); // read-only context, like the template's own searches; errors propagate as they do there
     }
@@ -382,6 +383,102 @@ public class LdapService {
         return Optional.ofNullable(user);
     }
 
+    /** A user's entry read live, with the attributes that say whether the account is usable. */
+    public record LiveUser(LdapUser user, Map<String, String> status) {
+    }
+
+    /**
+     * {@code dn}'s entry read now from the directory, never from a cache: only if it still matches the user filter
+     * and {@code extraFilter}. Looked up by its DN, or by application.user-dn-attribute when lookups go by attribute.
+     * The entry itself is then read with a base-scope search, which is how Active Directory returns constructed
+     * attributes (msDS-User-Account-Control-Computed).
+     *
+     * @return empty when there is no such entry, or it no longer matches the filters
+     * @throws org.springframework.ldap.NamingException when the directory cannot be read: callers refuse then
+     */
+    public Optional<LiveUser> lookupLiveUser(LdapDn dn, String extraFilter, List<String> statusAttributes) {
+        AndFilter filter = new AndFilter();
+        if (StringUtils.isNotBlank(properties.getUserLdapFilter())) {
+            filter.and(new HardcodedFilter(properties.getUserLdapFilter()));
+        }
+        if (StringUtils.isNotBlank(extraFilter)) {
+            String f = extraFilter.trim();
+            filter.and(new HardcodedFilter(f.startsWith("(") ? f : "(" + f + ")"));
+        }
+        if (filter.encode().equals("")) {
+            filter.and(new PresentFilter("objectclass"));
+        }
+        String entryDn = dn.toString();
+        if (properties.isLookupOnDnAttribute()) {
+            SearchControls find = new SearchControls();
+            find.setSearchScope(SearchControls.SUBTREE_SCOPE);
+            find.setCountLimit(2);
+            find.setReturningAttributes(new String[]{"objectClass"});
+            List<String> found = ldapTemplate.search(properties.getUserBaseDn(),
+                    new EqualsFilter(properties.getUserDnAttribute(), dn.toString()).encode(), find,
+                    (ContextMapper<String>) ctx -> ((DirContextAdapter) ctx).getNameInNamespace());
+            if (found.size() != 1) {
+                return Optional.empty();
+            }
+            entryDn = found.getFirst();
+        }
+        List<String> attributes = new ArrayList<>(List.of(userAttributes()));
+        attributes.addAll(statusAttributes);
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.OBJECT_SCOPE);
+        controls.setCountLimit(1);
+        controls.setReturningAttributes(attributes.toArray(String[]::new));
+        LdapUserContextMapper users = new LdapUserContextMapper(properties);
+        List<LiveUser> entries;
+        try {
+            entries = ldapTemplate.search(entryDn, filter.encode(), controls, (ContextMapper<LiveUser>) ctx -> {
+                DirContextAdapter adapter = (DirContextAdapter) ctx;
+                Map<String, String> status = new HashMap<>();
+                for (String name : statusAttributes) {
+                    String[] values = adapter.getStringAttributes(name);
+                    if (values != null && values.length > 0) {
+                        // Several values (objectClass) are kept space separated.
+                        status.put(name.toLowerCase(Locale.ROOT), String.join(" ", values));
+                    }
+                }
+                return new LiveUser(users.mapFromContext(ctx), status);
+            });
+        } catch (NameNotFoundException e) {
+            return Optional.empty();
+        }
+        return entries.stream().findFirst();
+    }
+
+    /**
+     * Some attributes of any entry, read now (a base-scope search, so operational and constructed attributes come back
+     * when asked for): by lower-cased name, the first value of each; empty when there is no such entry.
+     *
+     * @throws org.springframework.ldap.NamingException when the directory cannot be read: callers refuse then
+     */
+    public Optional<Map<String, String>> readAttributes(String dn, List<String> names) {
+        SearchControls controls = new SearchControls();
+        controls.setSearchScope(SearchControls.OBJECT_SCOPE);
+        controls.setCountLimit(1);
+        controls.setReturningAttributes(names.toArray(String[]::new));
+        try {
+            List<Map<String, String>> found = ldapTemplate.search(dn, "(objectClass=*)", controls,
+                    (ContextMapper<Map<String, String>>) ctx -> {
+                        DirContextAdapter adapter = (DirContextAdapter) ctx;
+                        Map<String, String> values = new HashMap<>();
+                        for (String name : names) {
+                            String value = adapter.getStringAttribute(name);
+                            if (value != null) {
+                                values.put(name.toLowerCase(Locale.ROOT), value);
+                            }
+                        }
+                        return values;
+                    });
+            return found.stream().findFirst();
+        } catch (NameNotFoundException e) {
+            return Optional.empty();
+        }
+    }
+
     /**
      * The one user entry (matching the configured user filter) whose {@code attribute} equals {@code value};
      * empty when there is none, or more than one, since then it is not clear who is meant.
@@ -401,7 +498,8 @@ public class LdapService {
 
         List<LdapUser> users = ldapTemplate.search(query, new LdapUserContextMapper(properties));
         if (users.size() > 1) {
-            log.warn("More than one directory user has {}={}; not choosing between them", attribute, value);
+            log.warn("More than one directory user has {}={}; not choosing between them", LogSafe.of(attribute),
+                    LogSafe.of(value));
             return Optional.empty();
         }
         return users.stream().findFirst();
@@ -426,7 +524,7 @@ public class LdapService {
 
         List<LdapUser> users = ldapTemplate.search(query, new LdapUserContextMapper(properties));
         if (users.size() > 1) {
-            log.warn("More than one directory user matches {}; not choosing between them", filter);
+            log.warn("More than one directory user matches {}; not choosing between them", LogSafe.of(filter));
             return Optional.empty();
         }
         return users.stream().findFirst();
@@ -786,7 +884,7 @@ public class LdapService {
             }
         }
 
-        log.debug("User {} owns {} group(s)", userDn, groups.size());
+        log.debug("User {} owns {} group(s)", LogSafe.of(userDn), groups.size());
         return List.copyOf(groups);
     }
 
@@ -809,7 +907,7 @@ public class LdapService {
         }
 
         // Drives both the "Member Of" list and the permission checks.
-        log.debug("User {} is a member of {} group(s)", userDn, groups.size());
+        log.debug("User {} is a member of {} group(s)", LogSafe.of(userDn), groups.size());
 
         return List.copyOf(groups);
     }
@@ -976,10 +1074,7 @@ public class LdapService {
         if (input == null) {
             return "";
         }
-        return input.replace("\\", "\\5c")
-                .replace("*", "\\2a")
-                .replace("(", "\\28")
-                .replace(")", "\\29")
-                .replace("\0", "\\00");
+        // Spring LDAP's RFC 4515 encoding (backslash, *, (, ) and NUL), which code scanning also knows as safe.
+        return org.springframework.ldap.support.LdapEncoder.filterEncode(input);
     }
 }

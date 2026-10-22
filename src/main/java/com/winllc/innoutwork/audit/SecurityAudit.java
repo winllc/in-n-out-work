@@ -176,15 +176,23 @@ public class SecurityAudit {
     }
 
     /** A pull-API request with a wrong or revoked token: a failed sign-in, collapsed per source. */
-    void apiTokenRefused(HttpServletRequest request) {
-        EnsMetrics.authAttempt("api-token", false);
+    public void apiTokenRefused(HttpServletRequest request) {
+        apiTokenRefused(request, "api-token", "invalid or revoked token");
+    }
+
+    /**
+     * A token refused on an API ({@code method}: {@code api-token} for the audit pull API, {@code public-api-token}
+     * for /api/v1): a failed sign-in, collapsed per source and reason. The token itself is never recorded.
+     */
+    public void apiTokenRefused(HttpServletRequest request, String method, String reason) {
+        EnsMetrics.authAttempt(method, false);
         AuditEntry entry = AuditEntry.of(AuditEntry.Category.AUTHENTICATION, "auth.login")
-                .failure("invalid or revoked token")
+                .failure(reason)
                 .actor(AuditEntry.Actor.anonymous(null))
                 .source(AuditRequestInfo.source(request))
-                .detail("method", "api-token")
+                .detail("method", method)
                 .detail("path", request.getRequestURI());
-        denials.collapse("auth.login|" + request.getRemoteAddr() + "|api-token", entry);
+        denials.collapse("auth.login|" + request.getRemoteAddr() + "|" + method + "|" + reason, entry);
     }
 
     /** The logoff call identifies the user by the session id cached at logon; an unknown one is a failure. */

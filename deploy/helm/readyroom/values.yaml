@@ -167,6 +167,44 @@ retention:
   eventsDays: 0
   schedule: "0 17 2 * * *"
 
+# Reports (APPLICATION_REPORTS_*). siteTimeZones: each site's IANA time zone, as "<location>=<zone>" with the
+# location as the directory spells it, e.g. "New York=America/New_York". A person's times in reports, exports and
+# the API are in their own time zone (their profile), else their site's, else `timezone`. maxRangeDays: the most
+# days one export covers. maxAttachmentBytes / maxRecipients: limits of a scheduled, e-mailed report.
+reports:
+  siteTimeZones: []
+  maxRangeDays: 366
+  maxAttachmentBytes: 10485760
+  maxRecipients: 20
+
+# The public API, /api/v1 (APPLICATION_API_*). Administrators create its tokens under Administration,
+# Integrations, each with scopes, an expiry and a rate limit; see the README ("Public API and webhooks").
+# maxTokenDays: the longest a token may be valid for. defaultRatePerMinute / maxRatePerMinute: requests a
+# minute a new token is offered, and the most any may be given (per replica).
+api:
+  maxTokenDays: 366
+  defaultRatePerMinute: 120
+  maxRatePerMinute: 1200
+
+# Signed webhooks for absence alerts and status changes (APPLICATION_WEBHOOKS_*). Off by default.
+webhooks:
+  # true: webhooks can be added under Administration, Integrations. Needs secretKey below.
+  enabled: false
+  # Required with enabled: the key webhook signing secrets are encrypted with in the database, 32 characters or
+  # more, the same on every replica and across upgrades (e.g. openssl rand -base64 36). Inline, or your own Secret.
+  # The chart never generates it: a key made at render time would change at every render (helm template, Argo CD).
+  # Changing it makes the existing webhooks' secrets unreadable: their deliveries fail until they are added again.
+  secretKey:
+    value: ""
+    existingSecret: ""
+    existingSecretKey: webhook-secret-key
+  # Private, loopback or link-local ranges (CIDR) webhooks may still be sent to, e.g. ["10.20.0.0/16"] for an
+  # internal SIEM. Empty: public addresses only. Cloud metadata addresses are refused whatever this says.
+  allowedCidrs: []
+  # With enabled and networkPolicy.enabled: the ports webhooks may be sent to (to networkPolicy.egress.cidrs).
+  ports:
+    - 443
+
 # Users always treated as administrators, by full DN (APPLICATION_SUPERUSERDNS_n). At least one, or
 # nobody can administer ReadyRoom or reach the license screen.
 superUserDns: []

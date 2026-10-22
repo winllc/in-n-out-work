@@ -1,5 +1,7 @@
 package com.winllc.innoutwork.service;
 
+import com.winllc.innoutwork.util.LogSafe;
+
 import com.winllc.innoutwork.config.ApplicationProperties;
 import com.winllc.innoutwork.util.ValueValidatorUtil;
 import jakarta.annotation.PreDestroy;
@@ -80,11 +82,11 @@ public class Mailer {
      */
     public boolean send(String to, String subject, String template, Map<String, Object> model) {
         if (mailSender == null) {
-            log.debug("Not e-mailing \"{}\": no mail server is configured", subject);
+            log.debug("Not e-mailing \"{}\": no mail server is configured", LogSafe.of(subject));
             return false;
         }
         if (!ValueValidatorUtil.isValidEmail(to)) {
-            log.error("Invalid email address: {}", to);
+            log.error("Invalid email address: {}", LogSafe.of(to));
             return false;
         }
         try {
@@ -101,7 +103,43 @@ public class Mailer {
             mailSender.send(message);
             return true;
         } catch (Exception e) {
-            log.error("Failed to send \"{}\" to {}", subject, to, e);
+            log.error("Failed to send \"{}\" to {}", LogSafe.of(subject), LogSafe.of(to), e);
+            return false;
+        }
+    }
+
+    /**
+     * {@link #send} with a file attached ({@code bytes}, named {@code filename}): scheduled reports. Failures are
+     * logged, never thrown.
+     *
+     * @return whether it was handed to the mail server
+     */
+    public boolean sendWithAttachment(String to, String subject, String template, Map<String, Object> model,
+                                      String filename, byte[] bytes, String contentType) {
+        if (mailSender == null) {
+            log.debug("Not e-mailing \"{}\": no mail server is configured", LogSafe.of(subject));
+            return false;
+        }
+        if (!ValueValidatorUtil.isValidEmail(to)) {
+            log.error("Invalid email address: {}", LogSafe.of(to));
+            return false;
+        }
+        try {
+            Context context = new Context();
+            context.setVariables(model);
+            String html = templates.process(template, context);
+
+            MimeMessage message = mailSender.createMimeMessage();
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
+            helper.setFrom(properties.getNotificationSenderEmail());
+            helper.setTo(to);
+            helper.setSubject(subject);
+            helper.setText(html, true);
+            helper.addAttachment(filename, new org.springframework.core.io.ByteArrayResource(bytes), contentType);
+            mailSender.send(message);
+            return true;
+        } catch (Exception e) {
+            log.error("Failed to send \"{}\" to {}", LogSafe.of(subject), LogSafe.of(to), e);
             return false;
         }
     }
@@ -113,7 +151,7 @@ public class Mailer {
         }
         Runnable task = () -> {
             if (send(to, subject, template, model)) {
-                log.info("Mail \"{}\" sent to {}", subject, to);
+                log.info("Mail \"{}\" sent to {}", LogSafe.of(subject), LogSafe.of(to));
             }
         };
         if (TransactionSynchronizationManager.isSynchronizationActive()) {

@@ -66,6 +66,7 @@ public class ProfileController {
                         "needsApproval", statusPolicy.classify(s) == StatusClass.REQUEST))
                 .toList());
         model.addAttribute("form", form);
+        model.addAttribute("timeZones", com.winllc.innoutwork.service.TimeZones.choices());
         model.addAttribute("userDn", authentication.getName());
         model.addAttribute("userCn", LdapDn.builder().dn(authentication.getName()).build().getCn());
 
@@ -82,9 +83,12 @@ public class ProfileController {
                                 Model model, @ModelAttribute ProfileForm form) {
         log.debug("%s updating profile".formatted(authentication.getName()));
 
-        userRecordService.updateProfile(authentication, form);
-
-        redirectAttributes.addFlashAttribute("message", "Successfully updated profile");
+        try {
+            userRecordService.updateProfile(authentication, form);
+            redirectAttributes.addFlashAttribute("message", "Successfully updated profile");
+        } catch (com.winllc.innoutwork.service.InvalidRequestException e) {
+            redirectAttributes.addFlashAttribute("error", e.getMessage());
+        }
 
         return "redirect:/app/profile";
     }

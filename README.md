@@ -1073,11 +1073,11 @@ append-only in the database itself: a trigger refuses every UPDATE (see [Databas
 
 | Category | Actions |
 |---|---|
-| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `session-id`; the attempted name on failure), `auth.logout`, `auth.consent-acknowledged` (the notice-and-consent banner, with the client address), `auth.session-expired` (`reason` `idle`, `absolute` or `concurrent`) |
+| authentication | `auth.login` (success or failure, `details.method` `ldap`, `x509`, `sso` (Windows), `api-token`, `public-api-token`, `session-id`; the attempted name on failure), `auth.logout`, `auth.consent-acknowledged` (the notice-and-consent banner, with the client address), `auth.session-expired` (`reason` `idle`, `absolute` or `concurrent`) |
 | authorization | `access.denied` for every 403: role refused (`permission_denied`), `license_required`, `license_read_only`, `feature_not_licensed`, `license_limit`, `demo_read_only`. Identical denials (same user, path and reason) within 60 seconds are one event with `details.count`. |
-| account | `person.created` (a new tracked person, at first sign-in or lookup), `person.erased` (an administrator's erasure of their data, with counts), `account.role-changed`, `account.permission-granted`, `account.permission-revoked` |
-| configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed` |
-| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes changed, never their text, and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF download, a person's data export) |
+| account | `person.created` (a new tracked person, at first sign-in or lookup), `person.erased` (an administrator's erasure of their data, with counts), `account.role-changed`, `account.permission-granted`, `account.permission-revoked`, `api.token-created`, `api.token-revoked` |
+| configuration | `settings.changed` (organization parse rules, old and new values), `settings.cache-evicted`, `calendar.org-event-created` / `-deleted` (the organization calendar and holidays), `group.managers-changed`, `webhook.created`, `webhook.enabled`, `webhook.disabled`, `webhook.deleted` |
+| data | `data.purged` (each retention run, with counts), `person.updated` (profile notes changed, never their text, and expected login time, alternate managers), `calendar.status-set` (late arrival and other statuses set directly), `calendar.request-created`, `calendar.request-approved`, `calendar.request-rejected`, `calendar.request-cancelled` (status requests), `absence.alert-responded`, `absence.alerts-dismissed`, `data.exported` (the metrics report, group reports and their PDF, CSV and XLSX downloads, people lists, a person's data export, each public API read with `details.via` `api`, each scheduled report sent with `details.via` `scheduled`), `report.schedule-created`, `report.schedule-deleted`, `report.schedule-disabled` |
 | license | `license.installed`, `license.rejected`, `license.mode-changed` (also across restarts), `license.limit-exceeded` |
 | system | `system.started`, `system.stopped`, `job.completed` / `job.failed` (one per run, with counts and duration), `job.skipped` (once per license mode change) |
 | audit | `audit.exported`, `audit.verified`, `audit.token-created`, `audit.token-revoked`, `audit.pruned`, `audit.delivery-failed`, `audit.delivery-recovered` |
@@ -1143,6 +1143,219 @@ whole trail, so expect duplicates by `id`.
 
 ---
 
+## Reports, exports and time zones
+
+**Downloads.** The group report (*Generate Group Report* on a group's page, managers of the group and
+administrators) downloads as **CSV** or **Excel (XLSX)** besides the PDF: a row per person and day, with their
+status, first check-in, last check-out, minutes in and time zone. A group's members (on its page) and a name search
+(*Find a user*) download as a people list with each person's status today. A download holds exactly what its viewer
+may see on screen: the report's people are those whose details they may see, and a list shows everyone else as
+`application.privacy.coworker-visibility` says (no times). Files are made on the server and streamed as they are
+read, so a large group does not need the memory of the whole report; each download is a form post with the CSRF
+token and is audited as `data.exported` (format, group or search, period) before it starts. Exports cover at most
+`APPLICATION_REPORTS_MAXRANGEDAYS` (366) days; days the retention purge has summarised are marked so, the monthly
+summaries staying on the HTML report.
+
+Cells that a spreadsheet could take for a formula are made harmless: in CSV, text starting with `=`, `+`, `-`,
+`@`, a tab or a carriage return (or their full-width forms) gets a leading apostrophe; XLSX cells are typed text
+(inline strings) or numbers and never hold a formula. CSV is UTF-8 with a byte-order mark.
+
+**Scheduled reports** (*Scheduled reports*, `/app/reports/schedules`, managers and administrators): a group's
+attendance e-mailed as CSV or Excel every day (for the day before), week (Monday, for the week before) or month
+(the 1st, for the month before), at an hour in its owner's time zone. Only someone who may run the group's report
+schedules it, and its recipients (e-mail addresses or DNs) must each be able to run it themselves (an
+administrator, or a manager of the group with the manager role): so a report never reaches anyone who could not
+see it in ReadyRoom. Both are checked again at every run: a schedule whose owner may no longer run it is turned
+off, and recipients who may no longer receive it are skipped; the page shows each schedule's last result. The job
+runs every five minutes on one replica at a time (ShedLock), while the license includes reports and a mail server
+is configured; attachments over `APPLICATION_REPORTS_MAXATTACHMENTBYTES` (10 MB) are not sent. Audited:
+`report.schedule-created`, `report.schedule-deleted`, `report.schedule-disabled`, and each sending as
+`data.exported` (`details.via` `scheduled`, the recipients). Erasing a person deletes their schedules and takes
+them off others'.
+
+**Time zones.** ReadyRoom runs in one zone (`APPLICATION_TIMEZONE`), which the pages, the absence check and the
+day boundaries of the metrics still use. Reports, downloads, scheduled reports and the public API show each
+person's times in **their own** time zone: the one they chose on their profile (*Time zone*), else their site's,
+else the application's. Sites are mapped by the directory's location attribute:
+
+| Variable | Default | |
+|---|---|---|
+| `APPLICATION_REPORTS_SITETIMEZONES` | (none) | `<location>=<IANA zone>`, comma separated, e.g. `New York=America/New_York,Los Angeles=America/Los_Angeles`; an unknown zone stops startup |
+| `APPLICATION_REPORTS_MAXRANGEDAYS` | `366` | The most days one export covers |
+| `APPLICATION_REPORTS_MAXATTACHMENTBYTES` | `10485760` | A scheduled report's largest attachment |
+| `APPLICATION_REPORTS_MAXRECIPIENTS` | `20` | A scheduled report's most recipients |
+
+A group report's download can instead show every row in the viewer's own zone (*My time zone*). Per-site absence
+checks and translated pages are not done yet (see the accessibility conformance report).
+
+---
+
+## Public API and webhooks
+
+ReadyRoom has a versioned, read-only REST API for HR, payroll and workforce systems, and sends signed webhooks
+for absence alerts and status changes. Both are set up by an administrator on *Administration &rarr;
+Integrations* (`/app/admin/integrations`). Outlook and HRIS imports are planned (Wave 4).
+
+**The API** is `/api/v1`. Its OpenAPI 3 document is served at `/api/v1/openapi` (JSON) and
+`/api/v1/openapi.yaml` without a token, with the public base URL (`APPLICATION_BASE_URL`) as its server; a
+copy is kept in [`docs/api/readyroom-api-v1.json`](docs/api/readyroom-api-v1.json), which the build checks
+against the code (and CI keeps as an artifact).
+
+| Endpoint | Scope | What |
+|---|---|---|
+| `GET /api/v1/people?q=&location=&organization=&page=&size=` | `people:read` | Tracked people and their status today |
+| `GET /api/v1/attendance/events?from=&to=&dn=&page=&size=` | `attendance:read` | Check-ins, locks, unlocks and check-outs, oldest first |
+| `GET /api/v1/absences?from=&to=&dn=&page=&size=` | `absences:read` | Days with leave, telework, an absence or another status |
+| `GET /api/v1/absences/requests?from=&to=&dn=&state=&page=&size=` | `absences:read` | Leave requests covering the range, with their decision (no notes) |
+
+Dates are `YYYY-MM-DD`, both ends included, at most `APPLICATION_API_MAXRANGEDAYS` (366) days; pages count
+from 1 and hold up to `APPLICATION_API_MAXPAGESIZE` (500) items. Times are ISO-8601 with an offset, in each
+person's time zone. Errors are `{"error": "...", "message": "..."}`.
+
+```bash
+curl -H "Authorization: Bearer ensapi_..." \
+  "https://readyroom.example.com/api/v1/attendance/events?from=2026-10-01&to=2026-10-31&size=500"
+```
+
+**Tokens** (`ensapi_...`) are created by administrators only, each with a name, its scopes, an expiry (1 to
+`APPLICATION_API_MAXTOKENDAYS`, 366, days) and a rate limit (requests a minute, up to
+`APPLICATION_API_MAXRATEPERMINUTE`; past it, `429` with `Retry-After`; counted per replica). A token is shown
+once, in the page that creates it (never through the session), and only its SHA-256 is stored; it is never
+logged. It acts for the administrator who created it and **never sees more than they may see now**: their roles
+are loaded again on every call, so a token whose creator is no longer an administrator sees only what that
+person may (themselves and the people they are responsible for, and coworkers as
+`application.privacy.coworker-visibility` says), and one whose creator has left the directory is refused.
+Revoked and expired tokens stop at once. **Every call checks the owner live in the directory** (not the user
+cache): their entry must still exist and match `application.user-ldap-filter` and
+`APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, must not be disabled (Active Directory `userAccountControl` bit 0x2,
+389/OpenLDAP `nsAccountLock=true`) or expired (Active Directory `accountExpires`), and must not be locked out,
+where any doubt means locked: Active Directory `msDS-User-Account-Control-Computed` bit 0x10 when the server returns
+it, otherwise a non-zero `lockoutTime` unless the domain's `lockoutDuration` is known, not 0 or "never", and has
+passed; OpenLDAP ppolicy `pwdAccountLockedTime` unless the account's policy (`pwdPolicySubentry`) has a known,
+non-zero `pwdLockoutDuration` that has passed (no `pwdPolicySubentry`, an unreadable policy or a duration of 0 mean
+locked; `APPLICATION_LDAP_ACCOUNTSTATUS_LOCKOUTDURATION`, unset by default, may give the default policy's duration);
+389 Directory Server `accountUnlockTime` in the future or `19700101000000Z`. A status value that is not a number, and
+on Active Directory (`APPLICATION_LDAP_ACCOUNTSTATUS_ACTIVEDIRECTORY`: `auto`, an entry with the objectClass
+`user`; or `true`/`false`) an entry without `userAccountControl`, refuse: **the bind account (`LDAP_USERNAME`)
+must be able to read `userAccountControl`, `lockoutTime`, `accountExpires` and
+`msDS-User-Account-Control-Computed` (Active Directory), `nsAccountLock` and `accountUnlockTime` (389),
+`pwdAccountLockedTime`, `pwdPolicySubentry` and the policies' `pwdLockoutDuration` (OpenLDAP), and the domain
+root's `lockoutDuration` (Active Directory)**. and must still be an administrator; otherwise, or when the directory cannot
+be read, the token is refused. A usable account is remembered for at most `APPLICATION_LDAP_ACCOUNTSTATUS_CACHESECONDS`
+(60, the maximum; 0 turns it off); refusals are never remembered. The same check applies to webhook owners and to
+scheduled reports' owners and recipients. `APPLICATION_LDAP_ACCOUNTSTATUS_BUILTINCHECKS=false` turns the built-in
+attribute checks off (the filters still apply). The API's security chain accepts bearer tokens and nothing else: it
+reads and creates no session, so it needs no CSRF token, and a browser's session cookie signs nothing in on it;
+it serves GETs only. Audited: `api.token-created` and `api.token-revoked` (with scopes, expiry and owner), each
+read as `data.exported` (`details.via` `api`, the actor the token), refused tokens as a failed `auth.login`
+(method `public-api-token`, with the reason), and a token's first request over its limit in a minute as
+`access.denied` (`rate_limited`). The API answers in the license states the features it reads are licensed in
+(attendance, calendar).
+
+**Webhooks** are HTTPS `POST`s of JSON:
+
+```json
+{"id": "4c1e...", "type": "status.changed", "createdAt": "2026-10-21T12:02:11Z",
+ "data": {"person": {"dn": "CN=Jane Doe,OU=Users,DC=example,DC=com", "name": "Jane Doe"},
+          "kind": "presence", "status": "IN", "action": "CHECK_IN", "at": "2026-10-21T08:02:11-04:00", "forced": false}}
+```
+
+| Event | When | `data` |
+|---|---|---|
+| `absence.alert` | someone is not in by their expected time plus the grace period, and their managers were alerted | `person`, `date`, `expectedBy`, `managersNotified` |
+| `status.changed` | a check-in, lock, unlock or check-out (`kind` `presence`: `status` `IN`, `AWAY` or `OUT`, `action`, `at`, `forced`), or a status put on someone's calendar (`kind` `calendar`: `status`, `statusName`, `dates`, `source` `request`, `self` or `manager`) | as described |
+| `ping` | an administrator presses *Send test* | `message` |
+
+Each delivery carries `X-ReadyRoom-Event`, `X-ReadyRoom-Delivery` (the event id: delivery is at least once,
+so de-duplicate on it), `X-ReadyRoom-Timestamp` (Unix seconds) and
+`X-ReadyRoom-Signature: t=<timestamp>,v1=<hex>`, where the hex is HMAC-SHA256, keyed with the endpoint's signing
+secret (`whsec_...`, shown once when the webhook is added), of `<timestamp>.<raw body>`. To verify: recompute it
+over the exact bytes received, compare in constant time, and refuse a timestamp more than five minutes from your
+clock. Deliveries are queued in the database once the change commits, and sent within seconds by one replica at
+a time, each claimed (`claimed_until`, a conditional update) just before it is sent so that no two replicas send it
+at once. A try is cut off after `APPLICATION_WEBHOOKS_ATTEMPTTIMEOUT` (30s) altogether, whatever the receiver does
+(a handshake or answer sent a byte at a time, and the host's DNS lookup, included); a run starts no try after
+`APPLICATION_WEBHOOKS_RUNBUDGET` (40s); due deliveries are taken per endpoint, least recently served endpoint
+first, at most
+`APPLICATION_WEBHOOKS_PERENDPOINTMAX` (20) tries and `APPLICATION_WEBHOOKS_PERENDPOINTBUDGET` (20s) each; and an
+endpoint that gives no HTTP answer at all is paused with backoff (30 seconds, then 2, 10 and 30 minutes, 1, 2, 4
+and 8 hours) until any answer, so a slow or dead receiver, however long its backlog, cannot hold the others up.
+Host lookups run on a pool of 4 threads; one that never got a thread before the deadline is not counted as a
+try and does not pause the endpoint. A claim and a result are recorded only on the row as it was read, so a stale copy can neither send a delivery
+another node rescheduled nor lower its count of tries. Delivery is at least once (a reply lost after
+the receiver processed it is sent again): receivers de-duplicate on `X-ReadyRoom-Delivery`; anything but a 2xx answer (a redirect included) is retried after 30 seconds, 2, 10 and 30 minutes, then
+1, 2, 4 and 8 hours, up to `APPLICATION_WEBHOOKS_MAXATTEMPTS` (8) tries, then marked failed. The page shows each
+webhook's recent deliveries (state, tries, last status, error); the log is kept
+`APPLICATION_WEBHOOKS_DELIVERYLOGDAYS` (30) days. A webhook acts for the administrator who added it: while they
+are no longer one, nothing is sent to it.
+
+**Where webhooks may go.** `https://` only, with no user name or password in the URL. Every address the host
+resolves to must be public: loopback, private (RFC 1918, unique local), link-local, shared (100.64/10),
+reserved, documentation, benchmarking, broadcast and multicast addresses are refused, including IPv4 ones
+inside IPv6 (mapped, NAT64, 6to4). An internal receiver is allowed by listing its range in
+`APPLICATION_WEBHOOKS_ALLOWEDCIDRS` (comma separated, e.g. `10.20.0.0/16`); cloud metadata addresses
+(169.254.169.254, fd00:ec2::254, 100.100.100.200, 169.254.170.2) are refused whatever it says. The check runs
+when a webhook is saved and again on every delivery, and the connection is made to the address just checked
+(TLS still verifies the certificate against the host name), so a name that later resolves somewhere internal
+(DNS rebinding) is not sent to. Webhooks connect directly, without a proxy; the JVM's trust store applies.
+
+| Variable | Default | |
+|---|---|---|
+| `APPLICATION_WEBHOOKS_SECRETKEY` | (none: webhooks off) | The key the signing secrets are encrypted with in the database (AES-256-GCM), 32 characters or more, the same on every replica and across upgrades (Helm: `webhooks.enabled` and `webhooks.secretKey`; never generated). If it changes, existing webhooks must be added again. |
+| `APPLICATION_WEBHOOKS_ALLOWEDCIDRS` | (none) | Internal ranges webhooks may be sent to |
+| `APPLICATION_WEBHOOKS_MAXATTEMPTS` | `8` | Tries per delivery |
+| `APPLICATION_WEBHOOKS_DELIVERYLOGDAYS` | `30` | Days delivered and failed deliveries are kept |
+| `APPLICATION_WEBHOOKS_CONNECTTIMEOUT`, `_READTIMEOUT` | `5s`, `10s` | |
+| `APPLICATION_WEBHOOKS_ATTEMPTTIMEOUT`, `_RUNBUDGET`, `_PERENDPOINTMAX`, `_PERENDPOINTBUDGET` | `30s`, `40s`, `20`, `20s` | A try's overall deadline, and one run's limits |
+| `APPLICATION_LDAP_ACCOUNTSTATUS_FILTER`, `_LOCKOUTDURATION`, `_CACHESECONDS`, `_BUILTINCHECKS`, `_ACTIVEDIRECTORY` | (none), (unset), `60`, `true`, `auto` | The live account check of token, webhook and scheduled report owners (above) |
+| `APPLICATION_API_MAXTOKENDAYS`, `_DEFAULTRATEPERMINUTE`, `_MAXRATEPERMINUTE`, `_MAXRANGEDAYS`, `_MAXPAGESIZE` | `366`, `120`, `1200`, `366`, `500` | |
+
+Audited: `webhook.created`, `webhook.disabled`, `webhook.enabled`, `webhook.deleted` (the secret appears only as
+its first characters). With the Helm chart's NetworkPolicy on, egress to port 443 is opened for webhooks
+(`webhooks.ports`).
+
+
+### Upgrading to the release with the public API, exports and the accessibility work
+
+Nothing to do by hand. Flyway adds `api_tokens`, `webhook_endpoints`, `webhook_deliveries` (V9),
+`report_schedules` and `user_records.time_zone` (V10); nothing existing changes. What operators may want:
+
+- **Webhooks** stay off until `APPLICATION_WEBHOOKS_SECRETKEY` is set (Helm: `webhooks.enabled: true` with
+  `webhooks.secretKey`, a value or your Secret; with the release bundle, set it in `.env`). With the chart's
+  NetworkPolicy on, egress to port 443 is then opened for them (`webhooks.ports`).
+- **Site time zones**: set `APPLICATION_REPORTS_SITETIMEZONES` where people work in more than one zone; until then
+  reports look as before (everyone in `APPLICATION_TIMEZONE`).
+- **Calendar colours**: the organization calendar's and requested statuses' default colours are darker (see
+  [Accessibility](#accessibility)); colours you configured are kept.
+- The public API is reachable at `/api/v1` once an administrator creates a token; nothing is reachable without
+  one but its OpenAPI document. Put `/api/v1` behind the same ingress rules as the rest of the application.
+
+---
+
+## Accessibility
+
+ReadyRoom targets WCAG 2.1 level AA (Section 508). Every push runs axe-core (the WCAG 2.0 and 2.1 A and AA rules)
+through Playwright against the main pages, at desktop and 320-pixel widths, as an administrator, a manager and a
+user (the `accessibility` job in CI); a serious or critical violation fails the build. To run it locally:
+
+```bash
+./gradlew a11yServer          # ReadyRoom with seeded test data on http://localhost:8199 (carol, alice, bob / password)
+cd a11y && npm ci && npx playwright install chromium && npx playwright test
+```
+
+Findings of every impact are written to `a11y/results/`. The self-audit, with what was fixed and what still falls
+short, is [`docs/accessibility/wcag-2.1-aa-self-audit.md`](docs/accessibility/wcag-2.1-aa-self-audit.md), and a
+draft conformance report (ITI VPAT 2.5, 508 edition) for ENS to complete is
+[`docs/accessibility/vpat-2.5-draft.md`](docs/accessibility/vpat-2.5-draft.md). Repairs to what third-party widgets
+draw (tables, calendars) are in `static/js/a11y.js`; colour overrides for contrast at the end of `static/css/app.css`.
+The interface is English only; translation is planned.
+
+**Changed defaults:** the calendar colours of organization events (`APPLICATION_CALENDARGLOBALEVENTCOLOR`, was
+`orange`, now `#a84400`) and of requested statuses (`APPLICATION_CALENDARREQUESTEDEVENTCOLOR`, was `gray`, now
+`#5c636a`), so their white text is readable. Configured colours are kept.
+
+---
+
 ## Database migrations
 
 ReadyRoom migrates its own schema with [Flyway](https://documentation.red-gate.com/flyway) when it starts,
@@ -1169,6 +1382,8 @@ index an interrupted script left invalid is rebuilt.
 | `V2__status_requests.sql` | The `status_requests` table, and `user_event_records.request_id`, the approved request a calendar day comes from (see [Statuses and approvals](#statuses-and-approvals)). Existing rows are untouched. |
 | `V3__admin_managed_delegates.sql` | `user_records.alternate_managers` widened to 2000 characters, and `alternate_managers_review_pending`, set on every person who had delegates they chose themselves (see [Delegates](#delegates)). |
 | `V4__retention_summaries.sql` | `attendance_summaries` and `attendance_summary_statuses` (monthly roll-ups the retention purge writes), `retention_state` (one row: how far it has purged), and an index on `notification_records.notification_date` |
+| `V9__public_api.sql` | `api_tokens` (public API tokens, by SHA-256), `webhook_endpoints` (signing secrets encrypted) and `webhook_deliveries` (the queue and delivery log); see [Public API and webhooks](#public-api-and-webhooks). New tables only. |
+| `V10__reports.sql` | `user_records.time_zone` (a person's chosen time zone, null for their site's) and `report_schedules` (scheduled, e-mailed reports); see [Reports, exports and time zones](#reports-exports-and-time-zones). |
 
 **Upgrading from a release before Flyway.** Back up the database, then upgrade as usual. On first start
 Flyway finds tables but no `flyway_schema_history`, records the existing schema as version 0 (the
@@ -1672,12 +1887,18 @@ src/main/java/com/winllc/innoutwork/
   security/    AppUserDetailsService, PermissionEvaluator
   license/     ENS license wiring: features, gate, license screen, job guard, size limit
   audit/       The audit trail (ens-audit/1): store, hash chain, outputs, audit log page, pull API
+  api/         The public API (/api/v1): tokens, its security chain, controllers, OpenAPI
+  webhook/     Signed webhooks: endpoints, SSRF guard, delivery queue and sender
+  export/      CSV and XLSX writers, report downloads, scheduled reports
 src/main/java/com/enssolutions/license/  The ENS portal's license verifier, copied unchanged
 Dockerfile     Production image, built from source; the license lives in the /var/lib/ens volume
 docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from source
 docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
+a11y/          Accessibility checks: axe-core through Playwright (CI's accessibility job)
+docs/api/      The public API's OpenAPI document, checked against the code by the build
+docs/accessibility/  WCAG 2.1 AA self-audit and the draft conformance report (VPAT)
 src/main/resources/db/migration/  Flyway migrations, run at startup (see db/README.md)
 db/legacy/     The psql scripts used before Flyway, for reference; db/perf/ the volume seed
 deploy/bundle/ The customer release bundle: production compose, env template, install/upgrade

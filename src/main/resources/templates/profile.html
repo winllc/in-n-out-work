@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html xmlns:th="http://www.thymeleaf.org"
+<html lang="en" xmlns:th="http://www.thymeleaf.org"
       xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
       layout:decorate="~{layout}">
 <head>
@@ -103,6 +103,18 @@
                                 used to determine if you are expected to be working and notify your managers if you
                                 are not available within your normal login window. If you do not select a time your
                                 Average Login time will be used.
+                            </small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="time-zone" class="form-label">Time zone</label>
+                            <select id="time-zone" class="form-select" th:field="*{timeZone}"
+                                    aria-describedby="timeZoneHelp">
+                                <option value="">My site's time zone</option>
+                                <option th:each="z : ${timeZones}" th:value="${z}" th:text="${z}"></option>
+                            </select>
+                            <small id="timeZoneHelp" class="form-hint">The time zone your arrival and departure times
+                                are shown in on reports and exports. Leave it on your site's unless you work elsewhere.
                             </small>
                         </div>
 
@@ -210,6 +222,8 @@
             if (!calendarEl) return; // calendar not licensed
 
             const calendar = new FullCalendar.Calendar(calendarEl, {
+                // Its full height, without an inner scrolling region a keyboard could not reach (WCAG 2.1.1).
+                height: 'auto',
                 initialView: 'dayGridMonth',
                 themeSystem: 'bootstrap5',
                 headerToolbar: {

@@ -17,6 +17,12 @@
 {{- /* The identity provider's discovery, keys, token endpoint or metadata, over HTTPS. */ -}}
 {{- $ports = append $ports 443 -}}
 {{- end -}}
+{{- if $v.webhooks.enabled -}}
+{{- range $v.webhooks.ports -}}
+{{- /* Signed webhooks, to the HTTPS endpoints administrators register. */ -}}
+{{- $ports = append $ports (int .) -}}
+{{- end -}}
+{{- end -}}
 {{- range $np.egress.extraPorts -}}
 {{- $ports = append $ports (int .) -}}
 {{- end -}}

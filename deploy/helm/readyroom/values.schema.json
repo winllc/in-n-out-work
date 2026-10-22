@@ -248,6 +248,93 @@
         }
       }
     },
+    "reports": {
+      "type": "object",
+      "properties": {
+        "siteTimeZones": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[^=]+=[A-Za-z0-9_+\\-/]+$"
+          }
+        },
+        "maxRangeDays": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxAttachmentBytes": {
+          "type": "integer",
+          "minimum": 10000
+        },
+        "maxRecipients": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "api": {
+      "type": "object",
+      "properties": {
+        "maxTokenDays": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3660
+        },
+        "defaultRatePerMinute": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxRatePerMinute": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "webhooks": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "secretKey": {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string",
+              "anyOf": [
+                {
+                  "maxLength": 0
+                },
+                {
+                  "minLength": 32
+                }
+              ]
+            },
+            "existingSecret": {
+              "type": "string"
+            },
+            "existingSecretKey": {
+              "type": "string"
+            }
+          }
+        },
+        "allowedCidrs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$"
+          }
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          }
+        }
+      }
+    },
     "superUserDns": {
       "type": "array",
       "items": {

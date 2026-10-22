@@ -54,6 +54,14 @@ public class NotificationService {
         this.audit = audit;
     }
 
+    /** Absence alerts and status changes for the webhooks; absent in tests that build this by hand. */
+    private org.springframework.context.ApplicationEventPublisher events;
+
+    @Autowired(required = false)
+    public void setEventPublisher(org.springframework.context.ApplicationEventPublisher events) {
+        this.events = events;
+    }
+
     /** The mail sender is absent when no mail server is configured (SPRING_MAIL_HOST): alerts are then not sent. */
     @Autowired
     public NotificationService(ObjectProvider<JavaMailSender> mailSender, NotificationRepository notificationRepository,
@@ -146,6 +154,10 @@ public class NotificationService {
             if (!notifications.isEmpty()) {
                 notificationRepository.saveAll(notifications);
                 emails.forEach(this::sendNotification);
+                // absence.alert for the webhooks, queued once this transaction (if any) commits.
+                com.winllc.innoutwork.webhook.WebhookEvents.absence(events, userDn,
+                        notifications.getFirst().getNotificationDate().toLocalDate(), expectedCheckInTime,
+                        notifications.size());
             }
         }
     }
@@ -190,6 +202,8 @@ public class NotificationService {
         }
         event.setStatus(status);
         userEventRecordRepository.save(event);
+        com.winllc.innoutwork.webhook.WebhookEvents.calendar(events, notification.getAboutUserDn(), status,
+                java.util.List.of(day), "manager");
 
         // In this method's transaction: the response and its audit record are committed together.
         audit.record(AuditEntry.of(AuditEntry.Category.DATA, "absence.alert-responded")

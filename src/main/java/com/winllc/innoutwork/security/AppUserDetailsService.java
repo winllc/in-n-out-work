@@ -9,6 +9,7 @@ import com.winllc.innoutwork.data.LdapUser;
 import com.winllc.innoutwork.model.UserRecord;
 import com.winllc.innoutwork.service.TrackedPeopleLimitException;
 import com.winllc.innoutwork.service.UserService;
+import com.winllc.innoutwork.util.LogSafe;
 import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -60,6 +61,16 @@ public class AppUserDetailsService implements UserDetailsService {
         LdapUser ldapUser = userCache.get(username);
 
         if (ldapUser != null) {
+            return detailsFor(dn, ldapUser);
+        } else {
+            log.debug("Refused sign-in for {}: no such user in the directory", LogSafe.of(String.valueOf(dn)));
+            throw new UsernameNotFoundException("No directory user " + dn);
+        }
+    }
+
+    /** {@code ldapUser}'s details and roles, as at sign-in, from an entry already read from the directory. */
+    public UserDetails detailsFor(LdapDn dn, LdapUser ldapUser) {
+        {
             Set<UserRoleEnum> roles = new HashSet<>();
             roles.add(UserRoleEnum.USER);
 
@@ -90,10 +101,6 @@ public class AppUserDetailsService implements UserDetailsService {
             }
 
             return details;
-
-        } else {
-            log.debug("Refused sign-in for {}: no such user in the directory", dn);
-            throw new UsernameNotFoundException("No directory user " + dn);
         }
     }
 
