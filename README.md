@@ -1810,21 +1810,20 @@ builds the customer release bundle with `scripts/release-bundle.sh`:
 | `SHA256SUMS` | Checksums of the files above |
 | `SHA256SUMS.asc` | Detached GPG signature of `SHA256SUMS`, when a signing key is configured |
 
-**The GitHub Release.** Once the `image` job has succeeded on a tag, the `github-release` job
-attaches these files to the tag's GitHub Release, `readyroom-<version>.tar.gz` first. Make the release on
-GitHub (Releases > Draft a new release, with a new `vX.Y.Z` tag) and CI adds the files to it; push a
-tag without a release and CI creates one with generated notes (a pre-release for a `-suffix` tag).
-Either way the notes start with a short "Deployment package" section naming the file to download:
-GitHub adds its own "Source code" archives to every release and they can't be removed. The job needs
-no configuration; the repository is public, so the release files are public downloads.
+**Releases are delivered from the S3 bucket**, not from GitHub Releases: nothing is attached to a
+GitHub Release, whose own "Source code" archives are not an installable package. On a release tag the
+`image` job first checks that `RELEASE_S3_BUCKET` and the AWS credentials below are set, and fails
+before anything is built or published if they aren't. Customers get the files from the bucket, for
+example through a presigned link (`aws s3 presign`, valid for up to 7 days) or a download site in front
+of it.
 
-The files are also uploaded to `s3://<bucket>/readyroom/1.2.3/`, and `readyroom/latest.txt` is set to `1.2.3`
+The files are uploaded to `s3://<bucket>/readyroom/1.2.3/`, and `readyroom/latest.txt` is set to `1.2.3`
 (not for pre-releases), and kept as the workflow artifact `release-readyroom-1.2.3` for 30 days.
 Every pull request builds the bundle and packages the chart as a dry run (`0.0.0-pr<number>`), kept
 as an artifact for 3 days and never uploaded or pushed. The `helm` job lints the chart and validates
 what it renders (kubeconform, Kubernetes 1.29) with each of `deploy/helm/readyroom/ci/*.yaml` on every
-push and pull request. Signing and upload are skipped, with the reason in the job summary, until
-these are configured (Settings > Secrets and variables > Actions):
+push and pull request. Signing is skipped, with the reason in the job summary, until a key is
+configured; a release tag needs the bucket and its credentials (Settings > Secrets and variables > Actions):
 
 | Name | Kind | Purpose |
 |---|---|---|
