@@ -3,6 +3,8 @@
 #
 #     ./backup.sh                 # into ./backups
 #     ./backup.sh /mnt/backups    # or a directory of your own
+#     ./backup.sh --engine podman # Docker or Podman: see lib/engine.sh (default: Docker if its daemon
+#                                 # answers, else Podman; or CONTAINER_ENGINE=)
 #
 # Writes, with a UTC timestamp:
 #   readyroom-db-<stamp>.dump        pg_dump of the database, custom format (restore.sh / pg_restore)
@@ -18,14 +20,18 @@ cd "$(dirname "$0")"
 say() { printf '%s\n' "$*"; }
 die() { printf 'backup.sh: %s\n' "$*" >&2; exit 1; }
 
-dest="${1:-backups}"
+# shellcheck source=lib/engine.sh
+. lib/engine.sh
+engine_args "$@"
+[ "${#ARGS[@]}" -le 1 ] || die "usage: ./backup.sh [--engine docker|podman] [directory]"
+dest="${ARGS[0]:-backups}"
 retention="${BACKUP_RETENTION_DAYS:-14}"
 [[ "$retention" =~ ^[0-9]+$ ]] || die "BACKUP_RETENTION_DAYS must be a number of days."
-command -v docker > /dev/null 2>&1 || die "docker is not installed or not on PATH."
 [ -f .env ] || die "no .env here: run this from the directory ReadyRoom was installed from."
+engine_select
 
-postgres="$(docker compose ps -q postgres)"
-[ -n "$postgres" ] || die "the postgres container is not running (docker compose ps)."
+postgres="$(service_container postgres)"
+[ -n "$postgres" ] || die "the postgres container is not running (./compose.sh ps)."
 
 mkdir -p "$dest"
 chmod 0700 "$dest"
@@ -33,14 +39,15 @@ stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 umask 077
 
 say "Dumping the database to $dest/readyroom-db-$stamp.dump ..."
-docker compose exec -T postgres sh -c 'pg_dump --format=custom --no-owner -U "$POSTGRES_USER" "$POSTGRES_DB"' \
+# shellcheck disable=SC2016 # expanded by the shell in the container
+"$ENGINE" exec -i "$postgres" sh -c 'pg_dump --format=custom --no-owner -U "$POSTGRES_USER" "$POSTGRES_DB"' < /dev/null \
     > "$dest/readyroom-db-$stamp.dump.partial"
 mv "$dest/readyroom-db-$stamp.dump.partial" "$dest/readyroom-db-$stamp.dump"
 
 # The license volume, read through a throwaway container of the PostgreSQL image already on this host.
 say "Copying the license volume to $dest/readyroom-license-$stamp.tar.gz ..."
-image="$(docker inspect --format '{{.Config.Image}}' "$postgres")"
-docker run --rm -v readyroom_ens-license:/license:ro "$image" tar -C /license -czf - . \
+image="$("$ENGINE" inspect --format '{{.Config.Image}}' "$postgres")"
+"$ENGINE" run --rm -v "$(volume_name ens-license)":/license:ro "$image" tar -C /license -czf - . \
     > "$dest/readyroom-license-$stamp.tar.gz"
 
 if [ "$retention" -gt 0 ]; then
