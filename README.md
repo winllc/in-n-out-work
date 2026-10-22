@@ -1810,7 +1810,15 @@ builds the customer release bundle with `scripts/release-bundle.sh`:
 | `SHA256SUMS` | Checksums of the files above |
 | `SHA256SUMS.asc` | Detached GPG signature of `SHA256SUMS`, when a signing key is configured |
 
-They are uploaded to `s3://<bucket>/readyroom/1.2.3/`, and `readyroom/latest.txt` is set to `1.2.3`
+**The GitHub Release.** Once the `image` job has succeeded on a tag, the `github-release` job
+attaches these files to the tag's GitHub Release, `readyroom-<version>.tar.gz` first. Make the release on
+GitHub (Releases > Draft a new release, with a new `vX.Y.Z` tag) and CI adds the files to it; push a
+tag without a release and CI creates one with generated notes (a pre-release for a `-suffix` tag).
+Either way the notes start with a short "Deployment package" section naming the file to download:
+GitHub adds its own "Source code" archives to every release and they can't be removed. The job needs
+no configuration; the repository is public, so the release files are public downloads.
+
+The files are also uploaded to `s3://<bucket>/readyroom/1.2.3/`, and `readyroom/latest.txt` is set to `1.2.3`
 (not for pre-releases), and kept as the workflow artifact `release-readyroom-1.2.3` for 30 days.
 Every pull request builds the bundle and packages the chart as a dry run (`0.0.0-pr<number>`), kept
 as an artifact for 3 days and never uploaded or pushed. The `helm` job lints the chart and validates
