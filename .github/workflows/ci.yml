@@ -130,6 +130,61 @@ jobs:
           # Without the volume, ReadyRoom must never make up an installation id.
           helm template readyroom "$CHART" -f "$CHART/ci/ha-values.yaml" | grep -A1 "ENS_LICENSE_EXPECT_INSTALLATION_ID" | grep -q '"true"'
 
+  bundle:
+    # The customer release bundle's scripts and compose files (deploy/bundle), for Docker and Podman:
+    # shellcheck, and every compose-file combination the bundle README documents through "docker compose
+    # config" and podman-compose (pinned to the oldest version the README supports).
+    runs-on: ubuntu-latest
+
+    env:
+      PODMAN_COMPOSE_VERSION: "1.3.0"
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: shellcheck
+        run: |
+          shellcheck --version
+          cd deploy/bundle
+          shellcheck -x install.sh upgrade.sh backup.sh restore.sh compose.sh lib/engine.sh
+          shellcheck -x ../../scripts/release-bundle.sh
+
+      - name: Install podman-compose
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pc"
+          "$RUNNER_TEMP/pc/bin/pip" install --quiet "podman-compose==$PODMAN_COMPOSE_VERSION"
+          echo "$RUNNER_TEMP/pc/bin" >> "$GITHUB_PATH"
+
+      - name: Compose files are valid for Docker and Podman
+        run: |
+          # As install.sh would see them: the image filled in, .env from env.template, and the files the
+          # optional pieces mount.
+          dir="$RUNNER_TEMP/bundle"
+          mkdir -p "$dir/tls" "$dir/kerberos"
+          sed 's|__READYROOM_IMAGE__|ghcr.io/winllc/in-n-out-work:ci|' deploy/bundle/docker-compose.yml > "$dir/docker-compose.yml"
+          cp deploy/bundle/docker-compose.tls.yml deploy/bundle/docker-compose.windows-auth.yml "$dir/"
+          sed 's/^DB_PASSWORD=CHANGE_ME$/DB_PASSWORD=ci/' deploy/bundle/env.template > "$dir/.env"
+          touch "$dir/tls/keystore.p12" "$dir/tls/truststore.p12" "$dir/kerberos/krb5.conf" "$dir/kerberos/http.keytab"
+          cd "$dir"
+          docker compose version
+          podman --version
+          podman-compose version
+          for files in docker-compose.yml \
+              docker-compose.yml:docker-compose.tls.yml \
+              docker-compose.yml:docker-compose.windows-auth.yml \
+              docker-compose.yml:docker-compose.tls.yml:docker-compose.windows-auth.yml; do
+            echo "::group::$files"
+            COMPOSE_FILE="$files" docker compose config --quiet
+            COMPOSE_FILE="$files" podman-compose config > /dev/null
+            echo "::endgroup::"
+          done
+          # The default publishes the app port on every interface, and images are fully qualified.
+          docker compose config | grep -q 'host_ip: 0.0.0.0'
+          if grep -E '^[[:space:]]*image:[[:space:]]*[^./[:space:]]+(:[^/]*)?$' docker-compose.yml; then
+            echo "use fully qualified image names: Podman has no default registry"
+            exit 1
+          fi
+
   windows-client:
     # The Windows client (powershell/): PSScriptAnalyzer and the Pester tests, with Pester and PSScriptAnalyzer
     # pinned by version and SHA-256 in Invoke-ClientChecks.ps1. Linux runs everything that does not need Windows;
