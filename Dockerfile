@@ -52,6 +52,9 @@ LABEL org.opencontainers.image.title="ReadyRoom" \
 # JVM validates tickets itself. /etc/in-n-out is where the keytab is mounted; group 0 is the runtime user's
 # group (and OpenShift's arbitrary UIDs'), so it can read it.
 USER root
+# PACKAGES_REFRESH changes on every CI build (the run id), so a cached layer never holds back an
+# update: without it the build cache would keep whichever packages this step first saw.
+ARG PACKAGES_REFRESH=
 RUN microdnf update -y --nodocs \
  && microdnf install -y --nodocs krb5-workstation \
  && microdnf clean all \
