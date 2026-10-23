@@ -48,7 +48,7 @@
 
 services:
   postgres:
-    image: postgres:16
+    image: docker.io/library/postgres:16
     container_name: demo-postgres
     restart: unless-stopped
     environment:
@@ -66,7 +66,7 @@ services:
       - demo
 
   openldap:
-    image: osixia/openldap:1.5.0
+    image: docker.io/osixia/openldap:1.5.0
     container_name: demo-openldap
     restart: unless-stopped
     environment:
@@ -84,7 +84,7 @@ services:
     volumes:
       - demo_openldap_data:/var/lib/ldap
       - demo_openldap_config:/etc/ldap/slapd.d
-      - ./test/openldap/enable-pagination.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/enable-pagination.ldif
+      - ./test/openldap/enable-pagination.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/enable-pagination.ldif:Z
     healthcheck:
       test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost:389 -b dc=winllc,dc=com -s base -D cn=admin,dc=winllc,dc=com -w adminpassword >/dev/null 2>&1"]
       interval: 5s
@@ -100,7 +100,7 @@ services:
   # license screen is not overwritten by an older file. Runs and exits before the app starts; reuses
   # the postgres image, so nothing else is pulled.
   license-init:
-    image: postgres:16
+    image: docker.io/library/postgres:16
     container_name: demo-license-init
     entrypoint:
       - sh
@@ -117,7 +117,7 @@ services:
         chown -R 185:0 "$$dir" && chmod 0770 "$$dir"
         [ ! -f "$$dir/license.lic" ] || chmod 0660 "$$dir/license.lic"
     volumes:
-      - ./license:/license:ro
+      - ./license:/license:ro,Z
       - demo_ens_license:/var/lib/ens/readyroom
       # The audit log file, when ENS_AUDIT_FILE=/var/log/ens/readyroom/audit.jsonl.
       - demo_ens_audit:/var/log/ens
@@ -186,7 +186,7 @@ services:
       context: .
       dockerfile: test/Dockerfile.seed
       args:
-        BASE_IMAGE: osixia/openldap:1.5.0
+        BASE_IMAGE: docker.io/osixia/openldap:1.5.0
     container_name: demo-seed-ldap
     depends_on:
       openldap:
@@ -207,7 +207,7 @@ services:
       context: .
       dockerfile: test/Dockerfile.seed
       args:
-        BASE_IMAGE: postgres:16
+        BASE_IMAGE: docker.io/library/postgres:16
     container_name: demo-seed-db
     depends_on:
       postgres:
