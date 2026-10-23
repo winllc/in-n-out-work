@@ -9,12 +9,13 @@
 # Nothing is published to the host. The application listens on 8181 inside the demo network only,
 # because the demo publishes working credentials, and binding that to the host by default would put
 # everything those accounts can see within reach of the machine. Reach it on purpose instead,
-# either by putting something in front of it on this network, or with an override file:
+# either by attaching a reverse proxy to this project's network (readyroom-demo_demo) and pointing
+# it at app:8181, or with an override file you write yourself:
 #
 #     # demo-ports.yml
 #     services:
 #       app:
-#         ports: ["8181:8181"]
+#         ports: ["127.0.0.1:8181:8181"]
 #
 #     docker compose -f docker-compose.demo.yml -f demo-ports.yml -p readyroom-demo up --build
 #
@@ -45,6 +46,14 @@
 # THIS IS NOT A PRODUCTION CONFIGURATION. The credentials are published on the login page, so
 # everything those accounts can see is readable by anyone who can reach the port. The data is the
 # mock fixture from test/seed-mock-data.sh and nothing else belongs in it.
+#
+# To reset - stop it and delete its data, so the next "up" seeds from scratch:
+#
+#     docker compose -f docker-compose.demo.yml -p readyroom-demo down -v
+#
+# Docker and Podman alike (podman-compose works with the same commands): the images are fully
+# qualified, since Podman has no default registry, and the bind mounts carry :Z for SELinux hosts,
+# which Docker without SELinux ignores.
 
 services:
   postgres:
@@ -139,7 +148,7 @@ services:
       license-init:
         condition: service_completed_successfully
     environment:
-      # Read-only, no sign-in, presented as the seeded Demo Admin. See application-demo.yml.
+      # Read-only, with the seeded accounts listed on the login page. See application-demo.yml.
       SPRING_PROFILES_ACTIVE: demo
       # The packaged defaults already name the postgres and openldap services, so there is
       # nothing to override here and no mounted config file.
@@ -167,8 +176,8 @@ services:
       - demo_ens_license:/var/lib/ens/readyroom
       # The audit log file, when ENS_AUDIT_FILE=/var/log/ens/readyroom/audit.jsonl.
       - demo_ens_audit:/var/log/ens
-    # No port published to the host. Demo mode has no authentication, so binding it to the host by
-    # default would put an unauthenticated copy of the application on the machine's interfaces for
+    # No port published to the host. The demo's credentials are on its login page, so binding it to
+    # the host by default would put everything those accounts can see on the machine's interfaces for
     # anything that can reach them. It listens on 8181 inside the demo network, which is where
     # something in front of it - or a deliberate override, see the header - reaches it.
     expose:
