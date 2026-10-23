@@ -205,6 +205,13 @@ jobs:
             exit 1
           fi
 
+      - name: Demo compose file is valid and publishes no ports
+        run: |
+          podman-compose -f docker-compose.demo.yml config > /dev/null
+          docker compose -f docker-compose.demo.yml config --format json \
+            | jq -e '[.services[] | select(has("ports"))] == []' > /dev/null \
+            || { echo "docker-compose.demo.yml must not publish ports: use expose"; exit 1; }
+
   accessibility:
     # axe-core (WCAG 2.0 and 2.1, A and AA rules) through Playwright against ReadyRoom's main pages, at desktop and
     # 320-pixel widths, signed in as an administrator, a manager and a user: a serious or critical violation fails
