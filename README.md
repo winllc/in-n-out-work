@@ -1675,21 +1675,26 @@ The demo publishes working credentials, so binding it to the host by default wou
 those accounts can see on the machine's interfaces for anything that can reach them — exposing it
 should be a decision, not a default.
 
-To reach it, put something in front of it on the same network, or add a small override file:
+To reach it, attach a reverse proxy to the demo's network (`readyroom-demo_demo`) and point it at
+`app:8181`, or write yourself a small override file:
 
 ```yaml
 # demo-ports.yml
 services:
   app:
-    ports: ["8181:8181"]
+    ports: ["127.0.0.1:8181:8181"]
 ```
 
 ```bash
 docker compose -f docker-compose.demo.yml -f demo-ports.yml -p readyroom-demo up --build
 ```
 
-Then <http://localhost:8181>. Bind to a single interface (`"127.0.0.1:8181:8181"`) if the machine is
-reachable by others.
+Then <http://localhost:8181>. Keep `ports:` out of `docker-compose.demo.yml` itself; CI checks that
+it publishes nothing.
+
+To reset, `docker compose -f docker-compose.demo.yml -p readyroom-demo down -v` stops it and deletes
+its volumes, so the next `up` seeds from scratch. The same commands work with `podman-compose`: the
+images are fully qualified and the bind mounts carry `:Z`.
 
 | Service | What it does |
 |---|---|
@@ -1900,7 +1905,7 @@ src/main/java/com/winllc/innoutwork/
 src/main/java/com/enssolutions/license/  The ENS portal's license verifier, copied unchanged
 Dockerfile     Production image, built from source; the license lives in the /var/lib/ens volume
 docker-compose.yml  The whole stack: PostgreSQL, OpenLDAP and the app from source
-docker-compose.demo.yml  Self-seeding demo of the whole application, no sign-in
+docker-compose.demo.yml  Self-seeding demo of the whole application, read-only, nothing published
 powershell/    Windows client + scheduled task definitions
 product-site/  Product page: static site, nginx config and container
 a11y/          Accessibility checks: axe-core through Playwright (CI's accessibility job)
